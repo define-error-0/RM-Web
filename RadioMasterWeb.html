@@ -1,0 +1,2061 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>串口设备配置管理</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css?family=Roboto:400,700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Roboto', sans-serif;
+      background: linear-gradient(135deg, #e0e7ff 0%, #f4f6fb 100%);
+      color: #222;
+      min-height: 100vh;
+    }
+    .center-wrapper {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+    }
+    .card {
+      background: #fff;
+      border-radius: 22px;
+      box-shadow: 0 8px 36px rgba(79,140,255,0.15);
+      padding: 48px 60px 40px 60px;
+      min-width: 380px;
+      max-width: 520px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      animation: fadeIn 0.5s;
+    }
+    .card-title {
+      font-size: 1.7em;
+      font-weight: bold;
+      color: #3358e0;
+      margin-bottom: 32px;
+      letter-spacing: 1px;
+    }
+    .form-group {
+      width: 100%;
+      margin-bottom: 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .form-group label {
+      font-size: 1.08em;
+      color: #3358e0;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    .form-group select, .form-group input {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1.5px solid #d0d7e6;
+      border-radius: 8px;
+      font-size: 1.08em;
+      outline: none;
+      transition: border 0.2s;
+      margin-bottom: 0;
+    }
+    .form-group input:focus, .form-group select:focus {
+      border: 2px solid #4f8cff;
+    }
+    .connect-btn {
+      width: 100%;
+      background: linear-gradient(90deg, #4f8cff 0%, #3358e0 100%);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 16px 0;
+      font-size: 1.18em;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s;
+      margin-top: 16px;
+    }
+    .connect-btn:disabled {
+      background: #b3cfff;
+      cursor: not-allowed;
+    }
+    .connect-status {
+      margin-top: 24px;
+      font-size: 1.12em;
+      color: #4f8cff;
+      font-weight: bold;
+      letter-spacing: 1px;
+      min-height: 28px;
+    }
+    /* 通信页面布局 */
+    .comm-container, .calib-container {
+      width: 100%;
+      max-width: 1200px;
+      min-width: 0;
+      margin: 0 auto !important;
+      padding: 0 !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+      min-height: calc(100vh - 64px) !important;
+      height: calc(100vh - 64px) !important;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      align-items: stretch;
+    }
+    .main-content-area {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: flex-start;
+      min-height: 0;
+      height: 100%;
+      width: 100vw;
+      max-width: 100vw;
+      box-sizing: border-box;
+      padding-left: 0;
+      padding-right: 0;
+    }
+    .comm-title {
+      font-size: 1.3em;
+      font-weight: bold;
+      color: #3358e0;
+      margin-bottom: 8px;
+      letter-spacing: 1px;
+    }
+    .comm-output-box {
+      background: #f4f6fb;
+      color: #222;
+      border-radius: 8px;
+      padding: 16px 12px 16px 16px;
+      flex: 1 1 0;
+      min-height: 180px;
+      max-height: 100%;
+      font-family: 'Roboto Mono', monospace;
+      font-size: 1.08em;
+      white-space: pre-wrap;
+      box-shadow: 0 1px 4px rgba(79,140,255,0.04);
+      overflow-y: auto;
+      word-break: break-all;
+      position: relative;
+      margin-bottom: 0;
+    }
+    .output-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .clear-btn {
+      background: #e0e7ff;
+      color: #3358e0;
+      border: none;
+      border-radius: 5px;
+      padding: 5px 14px;
+      font-size: 0.98em;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+      margin-left: 8px;
+    }
+    .clear-btn:hover {
+      background: #3358e0;
+      color: #fff;
+    }
+    .comm-input-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 8px;
+    }
+    .comm-input-row input[type="text"] {
+      flex: 1;
+      padding: 10px 12px;
+      border: 1px solid #d0d7e6;
+      border-radius: 6px;
+      font-size: 1em;
+      outline: none;
+      transition: border 0.2s;
+    }
+    .comm-input-row input[type="text"]:focus {
+      border: 1.5px solid #4f8cff;
+    }
+    .comm-input-row select {
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid #d0d7e6;
+      font-size: 1em;
+      outline: none;
+      transition: border 0.2s;
+    }
+    .comm-input-row button {
+      background: #4f8cff;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 18px;
+      font-size: 1em;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s;
+    }
+    .comm-input-row button:disabled {
+      background: #b3cfff;
+      cursor: not-allowed;
+    }
+    .comm-input-row button:not(:disabled):hover {
+      background: #3358e0;
+      transform: scale(1.04);
+    }
+    @media (max-width: 1300px) {
+      .comm-container, .calib-container {
+        max-width: 98vw;
+      }
+    }
+    @media (max-width: 700px) {
+      .comm-container, .calib-container {
+        max-width: 100vw;
+        min-width: 0;
+        border-radius: 0 !important;
+      }
+    }
+    /* 顶部信息栏 */
+    #device-info-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1200;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #1a1a1a;
+      padding: 10px 32px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+      min-height: 64px;
+    }
+    .logo-section {
+      width: 200px;
+      display: flex;
+      align-items: center;
+    }
+    #logo-img {
+      height: 44px;
+      width: auto;
+      max-width: 120px;
+      cursor: pointer;
+      border-radius: 8px;
+    }
+    .menu-section {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .menu-bar {
+      display: flex;
+      gap: 18px;
+      justify-content: center;
+      background: none;
+      animation: fadeIn 0.7s;
+    }
+    .battery-section {
+      width: 200px;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+    }
+    .battery-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    /* 新电池图标样式 */
+    .battery-outer {
+      position: relative;
+      width: 32px;
+      height: 18px;
+      border: 2.5px solid #fff;
+      border-radius: 7px;
+      background: #23272f;
+      box-shadow: 0 1px 4px rgba(79,140,255,0.10);
+      display: flex;
+      align-items: center;
+      margin-right: 2px;
+    }
+    .battery-head {
+      position: absolute;
+      right: -6px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 5px;
+      height: 8px;
+      background: #fff;
+      border-radius: 2px;
+      box-shadow: 0 0 2px #fff;
+    }
+    .battery-inner {
+      position: absolute;
+      left: 2.5px;
+      top: 2.5px;
+      bottom: 2.5px;
+      width: 0;
+      border-radius: 4px;
+      transition: all 0.4s;
+    }
+    .battery-inner.high {
+      background: linear-gradient(90deg, #2ecc71 60%, #b6fcd5 100%);
+    }
+    .battery-inner.medium {
+      background: linear-gradient(90deg, #f1c40f 60%, #fffbe6 100%);
+    }
+    .battery-inner.low {
+      background: linear-gradient(90deg, #e74c3c 60%, #ffd6d6 100%);
+    }
+    .battery-num {
+      color: #fff;
+      font-weight: 500;
+      font-size: 1.08em;
+      min-width: 40px;
+      letter-spacing: 1px;
+    }
+    /* 菜单栏美化 */
+    .menu-btn {
+      background: none;
+      color: #fff;
+      border: none;
+      padding: 10px 24px;
+      font-size: 1em;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.3s;
+      position: relative;
+      letter-spacing: 1px;
+    }
+    .menu-btn::after {
+      content: '';
+      position: absolute;
+      bottom: 6px;
+      left: 24px;
+      right: 24px;
+      height: 2px;
+      background: #fff;
+      transform: scaleX(0);
+      transition: transform 0.3s;
+    }
+    .menu-btn:hover::after,
+    .menu-btn.active::after {
+      transform: scaleX(1);
+    }
+    .menu-btn.active {
+      color: #fff;
+    }
+    .menu-btn:hover {
+      color: #fff;
+    }
+    .main-flex-root {
+      padding-top: 84px;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      width: 100vw;
+      box-sizing: border-box;
+      padding-left: 0;
+      padding-right: 0;
+    }
+    .wireless-settings {
+      padding: 0 !important;
+      max-width: 100vw;
+      margin: 0;
+      gap: 18px;
+      background: none;
+    }
+    .param-container {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .setting-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 18px 22px;
+      background: #f4f8ff;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(79,140,255,0.07);
+      border: 1.5px solid #e0e7ff;
+      transition: box-shadow 0.2s, border 0.2s;
+      position: relative;
+    }
+    .setting-item:hover {
+      box-shadow: 0 4px 16px rgba(79,140,255,0.13);
+      border: 1.5px solid #4f8cff;
+    }
+    .setting-label {
+      flex: 1 1 0;
+      font-size: 1.08em;
+      color: #3358e0;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      min-width: 120px;
+      margin-right: 18px;
+      text-align: right;
+    }
+    .setting-control {
+      min-width: 160px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .setting-control input[type="number"] {
+      width: 90px;
+      padding: 8px 10px;
+      border: 1.5px solid #d0d7e6;
+      border-radius: 6px;
+      font-size: 1em;
+      outline: none;
+      transition: border 0.2s;
+    }
+    .setting-control input[type="number"]:focus {
+      border: 1.5px solid #4f8cff;
+    }
+    .setting-control select {
+      width: 120px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1.5px solid #d0d7e6;
+      font-size: 1em;
+      outline: none;
+      transition: border 0.2s;
+      background: #fff;
+    }
+    .setting-control select:focus {
+      border: 1.5px solid #4f8cff;
+    }
+    .setting-control button {
+      padding: 8px 18px;
+      background: linear-gradient(90deg, #4f8cff 0%, #3358e0 100%);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 1em;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s, box-shadow 0.2s;
+      box-shadow: 0 1px 4px rgba(79,140,255,0.08);
+    }
+    .setting-control button:hover {
+      background: linear-gradient(90deg, #3358e0 0%, #4f8cff 100%);
+      box-shadow: 0 2px 8px rgba(79,140,255,0.13);
+    }
+    .setting-control span {
+      color: #222;
+      font-size: 1.05em;
+      background: none;
+      padding: 0 4px;
+    }
+    @media (max-width: 700px) {
+      .wireless-settings, .param-container { padding: 8px 2vw; }
+      .setting-item { flex-direction: column; align-items: flex-start; padding: 14px 8px; }
+      .setting-label { text-align: left; margin-bottom: 6px; }
+      .setting-control { min-width: 0; width: 100%; }
+      .setting-control input, .setting-control select { width: 100%; }
+    }
+    .device-info {
+      background: #eaf1ff;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(79,140,255,0.07);
+      border: 1.5px solid #d0d7e6;
+      padding: 18px 22px 10px 22px;
+      margin-bottom: 18px;
+    }
+    /* --- UI美化 --- */
+    /* 优化comm-container和param-container宽度、padding、控件尺寸 */
+    .comm-container {
+      max-width: 1100px !important;
+      min-width: 600px !important;
+      padding: 18px 18px 12px 18px !important;
+      margin-bottom: 12px !important;
+    }
+    .param-container {
+      gap: 10px !important;
+      padding: 4px 2px !important;
+    }
+    .setting-item {
+      padding: 8px 10px !important;
+      gap: 8px !important;
+      font-size: 1em !important;
+    }
+    .setting-label {
+      min-width: 90px !important;
+      font-size: 1em !important;
+    }
+    .setting-control input, .setting-control select, .setting-control button {
+      font-size: 0.98em !important;
+      padding: 5px 8px !important;
+      min-height: 28px !important;
+      height: 28px !important;
+    }
+    .setting-control button {
+      padding: 5px 14px !important;
+    }
+    /* 父菜单样式 */
+    .param-folder-root {
+      background: #eaf1ff !important;
+      color: #3358e0 !important;
+      font-weight: bold !important;
+      border-radius: 8px !important;
+      font-size: 1.13em !important;
+      padding-left: 18px !important;
+      margin-bottom: 6px !important;
+      display: flex;
+      align-items: center;
+      box-shadow: 0 2px 8px rgba(79,140,255,0.07);
+      border: 1.5px solid #e0e7ff;
+    }
+    .param-folder-root .folder-icon {
+      width: 18px; height: 18px; margin-right: 8px; opacity: 0.7;
+    }
+    .param-folder-child {
+      background: #f7faff !important;
+      color: #3358e0 !important;
+      font-weight: 500 !important;
+      border-radius: 6px !important;
+      font-size: 1.05em !important;
+      padding-left: 32px !important;
+      margin-bottom: 4px !important;
+      border: 1px solid #e0e7ff;
+    }
+    /* 校准页面样式 */
+    .calib-title {
+      font-size: 1.3em;
+      font-weight: bold;
+      color: #3358e0;
+      margin-bottom: 8px;
+      letter-spacing: 1px;
+    }
+    .calib-btn-group {
+      display: flex;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+    .calib-btn {
+      border: none;
+      border-radius: 8px;
+      background: #eaf1ff;
+      color: #3358e0;
+      font-size: 1.08em;
+      font-weight: 500;
+      padding: 10px 22px;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+      outline: none;
+    }
+    .calib-btn.active-high { background: #2ecc71; color: #fff; }
+    .calib-btn.active-mid { background: #f1c40f; color: #fff; }
+    .calib-btn.active-low { background: #e74c3c; color: #fff; }
+    .calib-slider-row {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+    .calib-slider-label {
+      color: #3358e0;
+      font-weight: 500;
+      min-width: 40px;
+    }
+    .calib-slider {
+      flex: 1;
+      accent-color: #4f8cff;
+      height: 6px;
+      border-radius: 4px;
+    }
+    .calib-slider-value {
+      min-width: 36px;
+      color: #3358e0;
+      font-weight: bold;
+      font-size: 1.08em;
+    }
+    .calib-joystick-row {
+      display: flex;
+      flex-direction: row;
+      justify-content: center;
+      align-items: center;
+      gap: 96px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 0;
+      position: relative;
+    }
+    .calib-joystick-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 1050px;
+      height: 1050px;
+      position: relative;
+    }
+    .calib-joystick {
+      width: 1050px !important;
+      height: 1050px !important;
+      max-width: 60vw !important;
+      max-height: 90vh !important;
+      min-width: 400px;
+      min-height: 400px;
+      margin: 0;
+      display: block;
+      background: #f4f6fb;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(79,140,255,0.07);
+      border: 1.5px solid #e0e7ff;
+    }
+    .calib-joystick-label {
+      text-align: center;
+      color: #3358e0;
+      font-weight: 500;
+      margin-bottom: 6px;
+    }
+    @media (max-width: 2200px) {
+      .calib-joystick, .calib-joystick-wrap { width: 700px !important; height: 700px !important; }
+    }
+    @media (max-width: 1400px) {
+      .calib-joystick, .calib-joystick-wrap { width: 400px !important; height: 400px !important; min-width: 200px; min-height: 200px; }
+    }
+    @media (max-width: 900px) {
+      .calib-joystick, .calib-joystick-wrap { width: 220px !important; height: 220px !important; min-width: 120px; min-height: 120px; }
+      .calib-joystick-row { flex-direction: column; align-items: center; gap: 32px; }
+    }
+    /* 设备校准页面全白背景 */
+    #page-calib {
+      background: #fff !important;
+      min-height: calc(100vh - 64px);
+      width: 100vw;
+      position: relative;
+      z-index: 1;
+    }
+  </style>
+</head>
+<body style="margin:0;">
+  <!-- 统一顶部栏 -->
+  <div id="device-info-bar">
+    <div class="logo-section">
+      <img id="logo-img" src="data:image/png;base64,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" alt="logo"/>
+    </div>
+    <div class="menu-section">
+      <div class="menu-bar">
+        <button class="menu-btn" data-page="comm">串口通信</button>
+        <button class="menu-btn" data-page="attr">设备属性</button>
+        <button class="menu-btn" data-page="config">设备配置</button>
+        <button class="menu-btn" data-page="net">无线配置</button>
+        <button class="menu-btn" data-page="calib">设备校准</button>
+        <button class="menu-btn" data-page="fw">固件更新</button>
+      </div>
+    </div>
+    <div class="battery-section">
+      <div class="battery-container">
+        <div class="battery-outer">
+          <div class="battery-inner" id="battery-bar-fill"></div>
+          <div class="battery-head"></div>
+          <div class="battery-head-fill"></div>
+        </div>
+        <span class="battery-num" id="battery-bar-num">50%</span>
+      </div>
+    </div>
+  </div>
+  <!-- 主体布局 -->
+  <div class="main-flex-root">
+    <!-- 连接页面 -->
+    <div class="center-wrapper" id="connect-page">
+      <div class="card">
+        <div class="card-title">串口连接</div>
+        <div class="form-group">
+          <label>串口选择</label>
+          <span style="color:#888;font-size:0.98em;">点击下方"连接"按钮，浏览器会弹出串口选择窗口</span>
+        </div>
+        <div class="form-group">
+          <label for="baudrate">波特率</label>
+          <input id="baudrate" type="number" min="1200" max="921600" step="1" value="115200" placeholder="波特率">
+        </div>
+        <button class="connect-btn" id="connect">连接</button>
+        <div class="connect-status" id="serial-status">未连接</div>
+      </div>
+    </div>
+    <!-- 菜单栏和内容区 -->
+    <div id="main-app" style="display:none;">
+      <div class="main-content-area">
+        <div id="page-comm" class="main-page">
+          <div class="comm-container">
+            <div class="comm-title">串口通信</div>
+            <div class="output-header">
+              <span>输出端</span>
+              <button class="clear-btn" id="clear-output">一键清空</button>
+            </div>
+            <div class="comm-output-box" id="output"></div>
+            <div class="comm-input-row">
+              <select id="send-mode">
+                <option value="text">文本发送</option>
+                <option value="hex">16进制发送</option>
+              </select>
+              <input id="input" type="text" placeholder="输入要发送的数据">
+              <button id="send">发送</button>
+            </div>
+            <div style="margin-top:4px;align-self:flex-end;">
+              <label style="font-size:0.98em;color:#3358e0;font-weight:bold;">
+                <input type="checkbox" id="recv-hex"> 16进制显示接收内容
+              </label>
+            </div>
+            <button class="connect-btn" id="disconnect" style="margin-top:18px;background:linear-gradient(90deg,#e74c3c 0%,#c0392b 100%);">断开连接</button>
+          </div>
+        </div>
+        <div id="page-attr" class="main-page" style="display:none;">
+          <div class="comm-container"><div class="comm-title">设备属性</div><div>这里是设备属性内容。</div></div>
+        </div>
+        <div id="page-config" class="main-page" style="display:none;">
+          <div class="comm-container"><div class="comm-title">设备配置</div><div>这里是设备配置内容。</div></div>
+        </div>
+        <div id="page-net" class="main-page" style="display:none;">
+          <div class="comm-container">
+            <div class="comm-title">LUA配置</div>
+            <div id="wireless-settings" class="wireless-settings">
+              <!-- 动态添加设置项 -->
+            </div>
+            <div id="crsf-result" style="white-space:pre-wrap;color:#3358e0;font-size:0.98em;margin:12px 0;"></div>
+              <div class="wireless-controls">
+                <button id="refresh-settings" class="connect-btn">刷新TX</button>
+                <span id="settings-status" class="settings-status"></span>
+                <button id="refresh-settings-rx" class="connect-btn" style="margin-left:12px;">刷新RX</button>
+                <span id="settings-status-rx" class="settings-status"></span>
+              </div>
+          </div>
+        </div>
+        <div id="page-calib" class="main-page" style="display:none;">
+          <div class="comm-container">
+            <div class="calib-title">设备校准</div>
+            <div class="calib-btn-slider-row" style="display:flex;align-items:center;gap:32px;margin-bottom:18px;">
+              <div class="calib-btn-group" id="calib-btn-group" style="display:flex;gap:18px;"></div>
+              <div class="calib-slider-row" style="display:flex;align-items:center;gap:12px;min-width:220px;">
+                <span class="calib-slider-label">S1</span>
+                <input type="range" min="0" max="100" value="50" class="calib-slider-sao" id="calib-slider">
+                <span class="calib-slider-value" id="calib-slider-value">50</span>
+              </div>
+            </div>
+            <div class="calib-joystick-row">
+              <div class="calib-joystick-wrap">
+                <div class="calib-joystick-label">左摇杆</div>
+                <canvas class="calib-joystick" id="joystick1" width="1050" height="1050"></canvas>
+              </div>
+              <div class="calib-joystick-wrap">
+                <div class="calib-joystick-label">右摇杆</div>
+                <canvas class="calib-joystick" id="joystick2" width="1050" height="1050"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="page-fw" class="main-page" style="display:none;">
+          <div class="comm-container" style="display:flex;justify-content:center;align-items:center;min-height:calc(100vh - 64px);background:linear-gradient(135deg,#e0e7ff 0%,#f4f6fb 100%);">
+            <div id="fw-card" style="background:#fff;border-radius:22px;box-shadow:0 8px 36px rgba(79,140,255,0.15);padding:48px 60px 40px 60px;min-width:380px;max-width:520px;width:100%;display:flex;flex-direction:column;align-items:center;">
+              <div class="comm-title" style="margin-bottom:32px;">固件更新</div>
+              <div style="margin-bottom:22px;width:100%;display:flex;flex-direction:column;align-items:flex-start;">
+                <label style="font-weight:bold;color:#3358e0;margin-bottom:8px;">设备型号</label>
+                <select id="fw-device-type" style="padding:12px 14px;border-radius:8px;border:1.5px solid #d0d7e6;font-size:1.08em;width:100%;outline:none;transition:border 0.2s;">
+                  <option value="A">型号A</option>
+                  <option value="B">型号B</option>
+                  <option value="C">型号C</option>
+                </select>
+              </div>
+              <div style="margin-bottom:22px;width:100%;display:flex;flex-direction:column;align-items:flex-start;">
+                <label style="font-weight:bold;color:#3358e0;margin-bottom:8px;">选择固件文件</label>
+                <input type="file" id="fw-file" accept=".bin,.hex" style="font-size:1.08em;padding:10px 0;">
+              </div>
+              <div style="margin-bottom:22px;width:100%;display:flex;flex-direction:column;align-items:flex-start;">
+                <label style="font-weight:bold;color:#3358e0;margin-bottom:8px;">更新进度</label>
+                <div style="display:flex;align-items:center;width:100%;">
+                  <progress id="fw-progress" value="0" max="100" style="width:70%;height:18px;border-radius:8px;background:#e0e7ff;"></progress>
+                  <span id="fw-progress-text" style="margin-left:18px;font-weight:bold;color:#3358e0;min-width:48px;">0%</span>
+                </div>
+              </div>
+              <button id="fw-update-btn" class="connect-btn" style="width:100%;margin-top:8px;margin-bottom:8px;font-size:1.15em;">确认更新</button>
+              <div id="fw-status" style="margin-top:10px;color:#e74c3c;font-weight:bold;min-height:28px;text-align:center;width:100%;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    // 新结构页面元素
+    const connectPage = document.getElementById('connect-page');
+    const mainApp = document.getElementById('main-app');
+    const connectBtn = document.getElementById('connect');
+    const disconnectBtn = document.getElementById('disconnect');
+    const sendBtn = document.getElementById('send');
+    const inputBox = document.getElementById('input');
+    const outputBox = document.getElementById('output');
+    const statusBox = document.getElementById('serial-status');
+    const sendMode = document.getElementById('send-mode');
+    const recvHex = document.getElementById('recv-hex');
+    const baudrateInput = document.getElementById('baudrate');
+    const clearOutputBtn = document.getElementById('clear-output');
+
+    let port = null;
+    let writer = null;
+    let reader = null;
+    let isSerialConnected = false;
+    let buffer = [];
+    let isReading = false;
+
+    // 页面切换逻辑
+    const menuBtns = document.querySelectorAll('.menu-btn');
+    const mainPages = document.querySelectorAll('.main-page');
+    function showMainPage(page) {
+      mainPages.forEach(p => p.style.display = 'none');
+      document.getElementById('page-' + page).style.display = '';
+      menuBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.page === page));
+    }
+    menuBtns.forEach(btn => {
+      btn.onclick = () => showMainPage(btn.dataset.page);
+    });
+    // 连接成功后显示主菜单和内容
+    function showCommPage() {
+      connectPage.style.display = 'none';
+      mainApp.style.display = '';
+      showMainPage('comm');
+      inputBox.focus();
+    }
+    // 断开连接后返回连接页面
+    function showConnectPage() {
+      connectPage.style.display = '';
+      mainApp.style.display = 'none';
+      statusBox.textContent = '未连接';
+      connectBtn.textContent = '连接';
+      connectBtn.disabled = false;
+      baudrateInput.disabled = false;
+      inputBox.value = '';
+      outputBox.textContent = '';
+    }
+
+    // 设备信息栏
+    const deviceInfoBar = document.getElementById('device-info-bar');
+    const batteryBarFill = document.getElementById('battery-bar-fill');
+    const batteryBarNum = document.getElementById('battery-bar-num');
+    function updateDeviceInfoBar() {
+      // 电量进度条
+      let percent = 0;
+      // 如果已连接设备后会被覆盖
+      if (window._batteryPercent !== undefined) percent = window._batteryPercent;
+      const batteryFill = document.getElementById('battery-bar-fill');
+      const batteryHeadFill = document.querySelector('.battery-head-fill');
+      // 更新电量百分比
+      batteryFill.style.width = `${(percent / 100) * 27}px`;
+      batteryBarNum.textContent = percent + '%';
+      // 更新电量状态颜色
+      const batteryState = percent > 60 ? 'high' : percent > 40 ? 'medium' : percent > 20 ? 'medium' : 'low';
+      batteryFill.className = 'battery-inner ' + batteryState;
+      // 满电时显示电池头填充
+      if (batteryHeadFill) {
+        batteryHeadFill.style.background = 
+          batteryState === 'high' ? '#2ecc71' : 
+          batteryState === 'medium' ? '#f1c40f' : '#e74c3c';
+        batteryHeadFill.classList.toggle('show', percent >= 95);
+      }
+      deviceInfoBar.style.display = 'flex';
+    }
+    function hideDeviceInfoBar() {
+      deviceInfoBar.style.display = 'none';
+    }
+
+    // 连接逻辑
+    connectBtn.onclick = async () => {
+      if (isSerialConnected) return;
+      connectBtn.disabled = true;
+      statusBox.textContent = '正在连接...';
+      try {
+        // 始终弹出串口选择
+        const selectedPort = await navigator.serial.requestPort();
+        const baudRate = parseInt(baudrateInput.value) || 115200;
+        await selectedPort.open({ baudRate });
+        port = selectedPort;
+        writer = port.writable.getWriter();
+        reader = port.readable.getReader();
+        isSerialConnected = true;
+        // 状态栏显示友好名称（如有）或VID/PID
+        let portInfo = '已连接';
+        // Chrome 115+ 可能有 port.getInfo().usbProductId/usbVendorId
+        const info = port.getInfo();
+        if (port.getInfo && (info.usbVendorId || info.usbProductId)) {
+          portInfo += ` (VID:${info.usbVendorId ? info.usbVendorId.toString(16).toUpperCase() : ''}`;
+          portInfo += info.usbProductId ? ` PID:${info.usbProductId.toString(16).toUpperCase()}` : '';
+          portInfo += ')';
+        }
+        // 尝试显示friendlyName（部分浏览器实现）
+        if (port.friendlyName) {
+          portInfo = '已连接：' + port.friendlyName;
+        }
+        statusBox.textContent = portInfo;
+        baudrateInput.disabled = true;
+        updateDeviceInfoBar();
+        showCommPage();
+        readLoop();
+      } catch (err) {
+        statusBox.textContent = '连接失败: ' + err;
+        connectBtn.disabled = false;
+      }
+    };
+
+    // 断开连接逻辑
+    disconnectBtn.onclick = async () => {
+      if (!isSerialConnected) return;
+      try {
+        isSerialConnected = false;
+        if (reader) { await reader.cancel(); reader.releaseLock(); }
+        if (writer) writer.releaseLock();
+        if (port) await port.close();
+      } catch (e) {}
+      port = null; writer = null; reader = null;
+      showConnectPage();
+      hideDeviceInfoBar();
+    };
+
+    // 发送数据（发送后不清空输入框）
+    sendBtn.onclick = async () => {
+      const data = inputBox.value.trim(); 
+      if (!writer || !data) return;
+      if (sendMode.value === 'hex') {
+        // 16进制发送
+        try {
+          const bytes = data.split(/\s+/).map(b => {
+            if (!/^([0-9a-fA-F]{2})$/.test(b)) throw new Error('请输入空格分隔的两位16进制数');
+            return parseInt(b, 16);
+          });
+          await writer.write(new Uint8Array(bytes));
+        } catch (e) {
+          alert('16进制输入有误: ' + e.message);
+        }
+      } else {
+        // 文本发送
+        const encoder = new TextEncoder();
+        await writer.write(encoder.encode(data + '\n'));
+      }
+      // 不清空inputBox
+    };
+
+    // 一键清空输出端
+    clearOutputBtn.onclick = () => {
+      outputBox.textContent = '';
+    };
+
+    // 读取串口数据
+    async function readLoop() {
+      if (isReading) return; // 防止多重循环
+      isReading = true;
+      const decoder = new TextDecoder();
+      const commOutputBox = document.getElementById('output');
+      let abnormalCount = 0;
+      while (isSerialConnected) {
+        // === YMODEM期间跳过串口消费 ===
+        if (window._isYmodemBusy) {
+          await new Promise(r => setTimeout(r, 20));
+          continue;
+        }
+        try {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) {
+            if (commOutputBox) {
+              if (recvHex && recvHex.checked) {
+                const hexStr = Array.from(value).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                commOutputBox.textContent += `\n[RECV] ${hexStr}`;
+              } else {
+                const textStr = decoder.decode(new Uint8Array(value));
+                commOutputBox.textContent += `\n[RECV] ${textStr}`;
+              }
+              commOutputBox.scrollTop = commOutputBox.scrollHeight;
+            }
+            buffer.push(...value);
+            // 检查是否收满大包
+            while (buffer.length >= 2) {
+              const bigLen = (buffer[0] << 8) | buffer[1];
+              // 健壮性校验
+              if (bigLen < 2 || bigLen > 8192) {
+                abnormalCount++;
+                // console.warn('[readLoop] 异常包头，bigLen=', bigLen, 'buffer=', buffer.slice(0, 16), 'abnormalCount=', abnormalCount); // 已关闭异常包头日志
+                const before = buffer.length;
+                buffer.shift(); // 丢弃一个字节，避免死循环
+                if (buffer.length === before) {
+                  // 极端情况下buffer未减少，强制break防止死循环
+                  // console.error('[readLoop] buffer.shift()无效，强制break'); // 已关闭异常包头日志
+                  break;
+                }
+                if (abnormalCount > 10) {
+                  // console.error('[readLoop] 异常包头连续过多，清空buffer'); // 已关闭异常包头日志
+                  buffer = [];
+                  abnormalCount = 0;
+                  break;
+                }
+                continue;
+              } else {
+                abnormalCount = 0;
+              }
+              if (buffer.length >= bigLen) {
+                const bigPacket = new Uint8Array(buffer.slice(0, bigLen));
+                const container = document.getElementById('wireless-settings');
+                if (container) container.innerHTML = '';
+                parseCRSFPacket(bigPacket);
+                buffer = buffer.slice(bigLen);
+                document.getElementById('refresh-settings').disabled = false;
+                document.getElementById('settings-status').textContent = '刷新完成';
+              } else {
+                break;
+              }
+            }
+          }
+        } catch (error) {
+          // console.error('读取数据错误:', error); // 已关闭串口读取错误日志
+          break;
+        }
+      }
+      isReading = false;
+    }
+
+    // 监听串口断开事件
+    if (navigator.serial) {
+      navigator.serial.addEventListener('disconnect', (event) => {
+        if (isSerialConnected && port === event.target) {
+          isSerialConnected = false;
+          port = null; writer = null; reader = null;
+          showConnectPage();
+          hideDeviceInfoBar();
+        }
+      });
+    }
+
+    // 页面初始化
+    showConnectPage();
+
+    // logo点击跳转设备属性页面
+    document.getElementById('logo-img').onclick = () => {
+      showMainPage('attr');
+    };
+
+    // 初始化电池电量为0
+    batteryBarFill.style.width = '0';
+    batteryBarNum.textContent = '0%';
+    // 立即刷新电池栏为0%
+    updateDeviceInfoBar();
+
+    // ========== CRSF协议 0x2B参数包解析重构 ========== //
+    // 分包缓存和去重变量（放在函数外部，防止多包时丢失）
+    if (!window._crsfParamChunkCache) window._crsfParamChunkCache = new Map();
+    if (!window._crsfLastParamNum) window._crsfLastParamNum = null;
+    if (!window._crsfLastChunkNum) window._crsfLastChunkNum = null;
+    // 新增：全局参数数据缓存
+    if (!window._crsfParamDataMap) window._crsfParamDataMap = new Map();
+
+    // 解析单个参数数据
+    function parseParamData(paramData) {
+      let p = 0;
+      const parentFolder = paramData[p++];
+      const dataType = paramData[p++];
+      const baseType = dataType & 0x7F;
+      const hidden = (dataType & 0x80) !== 0;
+      // 解析name
+      let nameEnd = p;
+      while (paramData[nameEnd] !== 0) nameEnd++;
+      const name = new TextDecoder().decode(paramData.slice(p, nameEnd));
+      p = nameEnd + 1;
+      let value = null, min = null, max = null, def = null, unit = '', decimal = null, step = null, strMaxLen = null, options = null, status = null, timeout = null, info = null;
+      if ([0,1].includes(baseType)) { // UINT8/INT8
+        value = paramData[p++]; min = paramData[p++]; max = paramData[p++]; def = paramData[p++];
+        let unitEnd = p; while (paramData[unitEnd] !== 0) unitEnd++;
+        unit = new TextDecoder().decode(paramData.slice(p, unitEnd));
+        p = unitEnd + 1;
+      } else if ([2,3].includes(baseType)) { // UINT16/INT16
+        value = paramData[p] | (paramData[p+1] << 8); p += 2;
+        min = paramData[p] | (paramData[p+1] << 8); p += 2;
+        max = paramData[p] | (paramData[p+1] << 8); p += 2;
+        def = paramData[p] | (paramData[p+1] << 8); p += 2;
+        let unitEnd = p; while (paramData[unitEnd] !== 0) unitEnd++;
+        unit = new TextDecoder().decode(paramData.slice(p, unitEnd));
+        p = unitEnd + 1;
+      } else if (baseType === 8) { // FLOAT
+        value = (paramData[p] | (paramData[p+1]<<8) | (paramData[p+2]<<16) | (paramData[p+3]<<24)); p += 4;
+        min = (paramData[p] | (paramData[p+1]<<8) | (paramData[p+2]<<16) | (paramData[p+3]<<24)); p += 4;
+        max = (paramData[p] | (paramData[p+1]<<8) | (paramData[p+2]<<16) | (paramData[p+3]<<24)); p += 4;
+        def = (paramData[p] | (paramData[p+1]<<8) | (paramData[p+2]<<16) | (paramData[p+3]<<24)); p += 4;
+        decimal = paramData[p++];
+        step = (paramData[p] | (paramData[p+1]<<8) | (paramData[p+2]<<16) | (paramData[p+3]<<24)); p += 4;
+        let unitEnd = p; while (paramData[unitEnd] !== 0) unitEnd++;
+        unit = new TextDecoder().decode(paramData.slice(p, unitEnd));
+        p = unitEnd + 1;
+      } else if (baseType === 9) { // TEXT_SELECTION
+        let optsEnd = p; while (paramData[optsEnd] !== 0) optsEnd++;
+        const optionsStr = new TextDecoder().decode(paramData.slice(p, optsEnd));
+        options = optionsStr.split(';');
+        p = optsEnd + 1;
+        value = paramData[p++];
+        min = paramData[p++];
+        max = paramData[p++];
+        def = paramData[p++];
+        let unitEnd = p; while (paramData[unitEnd] !== 0) unitEnd++;
+        unit = new TextDecoder().decode(paramData.slice(p, unitEnd));
+        p = unitEnd + 1;
+      } else if (baseType === 10) { // STRING
+        strMaxLen = paramData[p++];
+        let strEnd = p; while (paramData[strEnd] !== 0) strEnd++;
+        value = new TextDecoder().decode(paramData.slice(p, strEnd));
+        p = strEnd + 1;
+        let defEnd = p; while (paramData[defEnd] !== 0) defEnd++;
+        def = new TextDecoder().decode(paramData.slice(p, defEnd));
+        p = defEnd + 1;
+      } else if (baseType === 11) { // FOLDER
+        // nothing more
+      } else if (baseType === 12) { // INFO
+        let infoEnd = p; while (paramData[infoEnd] !== 0) infoEnd++;
+        value = new TextDecoder().decode(paramData.slice(p, infoEnd));
+        p = infoEnd + 1;
+      } else if (baseType === 13) { // COMMAND
+        status = paramData[p++];
+        timeout = paramData[p++];
+        let infoEnd = p; while (paramData[infoEnd] !== 0) infoEnd++;
+        info = new TextDecoder().decode(paramData.slice(p, infoEnd));
+        p = infoEnd + 1;
+      }
+      return { parentFolder, dataType, baseType, hidden, name, value, min, max, def, unit, decimal, step, strMaxLen, options, status, timeout, info };
+    }
+
+    // 解析大包并渲染参数控件
+    function parseCRSFPacket(bigPacket) {
+      if (!bigPacket || bigPacket.length < 4) return '数据太短';
+      let rxOrTx = '';
+      // 跳过前2字节长度，去掉末尾3字节（CRC/0A/0D），判断包头
+      if (bigPacket.length > 8) {
+        // 例如: EE xx EE EC (RX) 或 EE xx EA EE (TX)
+        const  b1 = bigPacket[5], b2 = bigPacket[6];
+        // 打印前8字节内容
+        console.log('CRSF包头前8字节:', Array.from(bigPacket.slice(0, 8)));
+        if (b1 === 0xEE && b2 === 0xEC) {
+          rxOrTx = 'RX';
+          console.log('识别到类型: RX');
+        } else if (b1 === 0xEA && b2 === 0xEE) {
+          rxOrTx = 'TX';
+          console.log('识别到类型: TX');
+        } else {
+          console.log('未识别到RX/TX类型');
+        }
+      }
+      // 更新LUA配置标题
+      const pageNet = document.getElementById('page-net');
+      if (pageNet) {
+        const titles = pageNet.getElementsByClassName('comm-title');
+        for (let i = 0; i < titles.length; i++) {
+          if (titles[i].textContent.startsWith('LUA配置')) {
+            titles[i].textContent = 'LUA配置' + (rxOrTx ? ` (${rxOrTx})` : '');
+          }
+        }
+      }
+      // ====== 原有参数解析逻辑 ======
+      let offset = 2;
+      const paramChunkCache = new Map(); // paramNum -> {chunks:[], chunkNums:Set}
+      while (offset + 2 < bigPacket.length) {
+        const head = bigPacket[offset];
+        const len = bigPacket[offset+1];
+        const type = bigPacket[offset+2];
+        if (len === 0) {
+          offset++;
+          continue;
+        }
+        const packetTotalLen = 2 + len;
+        if (offset + packetTotalLen > bigPacket.length) break;
+        const pkt = bigPacket.slice(offset + 2, offset + 2 + len); // pkt[0]=type
+        if (type === 0x2B) {
+          let po = 0;
+          po++; // 跳过type
+          const srcNode = pkt[po++];
+          const dstNode = pkt[po++];
+          const paramNum = pkt[po++];
+          const chunkNum = pkt[po++];
+          if (!paramChunkCache.has(paramNum)) paramChunkCache.set(paramNum, {chunks:[], chunkNums:new Set()});
+          const entry = paramChunkCache.get(paramNum);
+          if (entry.chunkNums.has(chunkNum)) {
+            offset += packetTotalLen;
+            continue;
+          }
+          entry.chunkNums.add(chunkNum);
+          entry.chunks.push(pkt.slice(5));
+        }
+        offset += packetTotalLen;
+      }
+      // 组合结果：Map paramNum -> Uint8Array
+      const paramDataMap = new Map();
+      for (const [paramNum, entry] of paramChunkCache.entries()) {
+        const fullData = new Uint8Array([].concat(...entry.chunks.map(a => Array.from(a))));
+        paramDataMap.set(paramNum, fullData);
+      }
+      // 解析所有参数为结构化对象
+      const paramList = [];
+      for (const [paramNum, paramData] of paramDataMap.entries()) {
+        const paramObj = parseParamData(paramData);
+        paramObj.paramNum = paramNum;
+        paramList.push(paramObj);
+      }
+      // 排序：只按paramNum（Parameter number）升序
+      paramList.sort((a, b) => a.paramNum - b.paramNum);
+      // 渲染参数控件
+      const container = document.getElementById('wireless-settings');
+      container.innerHTML = '';
+      renderParameterControls(paramList, container);
+      return paramList;
+    }
+
+    // --- 渲染参数控件回退为统一样式 ---
+    function renderParameterControls(params, container, parent = 0,mode = null) {
+      if (!mode) {
+        // 通过标题判断
+        const commTitle = document.querySelector('#page-net .comm-title');
+        if (commTitle && commTitle.textContent.includes('RX')) mode = 'RX';
+        else mode = 'TX';
+      }
+      // 渲染所有FOLDER类型为菜单（不区分父/子菜单样式）
+      params.filter(p => p.baseType === 11 && p.parentFolder === parent && !p.hidden).forEach(folder => {
+        const folderDiv = document.createElement('div');
+        folderDiv.className = 'setting-item';
+        folderDiv.style.background = '#eaf1ff';
+        folderDiv.style.cursor = 'pointer';
+        folderDiv.style.fontWeight = 'bold';
+        folderDiv.textContent = folder.name;
+        folderDiv.onclick = function() {
+          const sub = folderDiv.nextSibling;
+          if (sub && sub.className === 'param-container') {
+            sub.style.display = (sub.style.display === 'none' ? '' : 'none');
+          }
+        };
+        container.appendChild(folderDiv);
+        const subContainer = document.createElement('div');
+        subContainer.className = 'param-container';
+        subContainer.style.marginLeft = '24px';
+        container.appendChild(subContainer);
+        renderParameterControls(params, subContainer, folder.paramNum, mode);
+      });
+      // 渲染当前parent下的非FOLDER参数
+      params.filter(p => p.parentFolder === parent && p.baseType !== 11 && !p.hidden).forEach(param => {
+        const item = document.createElement('div');
+        item.className = 'setting-item';
+        const label = document.createElement('span');
+        label.className = 'setting-label';
+        label.textContent = param.name + (param.unit ? ' (' + param.unit + ')' : '');
+        item.appendChild(label);
+        const control = document.createElement('div');
+        control.className = 'setting-control';
+        // 数值型
+        if ([0,1,2,3,8].includes(param.baseType)) {
+          const input = document.createElement('input');
+          input.type = 'number';
+          input.value = param.value;
+          if (param.min !== null) input.min = param.min;
+          if (param.max !== null) input.max = param.max;
+          if (param.step !== null) input.step = param.step;
+          input.onchange = () => {
+            const modeByte = mode === 'TX' ? 0x11 : 0x22;
+            const arr = [0xA5, 0x33, modeByte, param.paramNum, input.value, 0x0D, 0x0A];
+            if (writer) writer.write(new Uint8Array(arr));
+            console.log('数值型控件变更:', param.paramNum, '新值:', input.value);
+            // sendParameterSet(param, input.value);
+          };
+          control.appendChild(input);
+        } else if (param.baseType === 9 && param.options) {
+          // TEXT_SELECTION
+          const select = document.createElement('select');
+          param.options.forEach((opt, idx) => {
+            const option = document.createElement('option');
+            option.value = idx;
+            option.textContent = opt;
+            if (idx === param.value) option.selected = true;
+            select.appendChild(option);
+          });
+          select.onchange = () => {
+            const modeByte = mode === 'TX' ? 0x11 : 0x22;
+            const arr = [0xA5, 0x33, modeByte, param.paramNum, Number(select.value), 0x0D, 0x0A];
+            if (writer) writer.write(new Uint8Array(arr));
+            console.log('已发送:', arr.map(x=>x.toString(16).padStart(2,'0')).join(' '));
+          };
+          control.appendChild(select);
+        } else if (param.baseType === 10) {
+          // STRING
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.value = param.value;
+          input.maxLength = param.strMaxLen || 32;
+          input.onchange = () => {
+            console.log('字符串控件变更:', param.paramNum, '新值:', input.value);
+            // sendParameterSet(param, input.value);
+          };
+          control.appendChild(input);
+        } else if (param.baseType === 13) {
+          // COMMAND
+          const btn = document.createElement('button');
+          btn.textContent = '启动'; // 统一命名为启动
+          btn.style.minWidth = '130px';
+          btn.style.maxWidth = '130px';
+          btn.onclick = () => {
+            console.log('命令按钮点击:', param.paramNum, '状态:', param.status);
+            const modeByte = mode === 'TX' ? 0x11 : 0x22;
+            const arrStart = [0xA5, 0x33, modeByte, param.paramNum, 1, 0x0D, 0x0A];
+            if (writer) writer.write(new Uint8Array(arrStart));
+            console.log('已发送START:', arrStart.map(x=>x.toString(16).padStart(2,'0')).join(' '));
+            // 弹窗逻辑...
+            // ... existing code ...
+          };
+          control.appendChild(btn);
+          if (param.info) {
+            const infoSpan = document.createElement('span');
+            infoSpan.textContent = param.info;
+            infoSpan.style.marginLeft = '8px';
+            control.appendChild(infoSpan);
+          }
+        } else if (param.baseType === 12) {
+          // INFO
+          const span = document.createElement('span');
+          span.textContent = param.value;
+          control.appendChild(span);
+        } else {
+          // 其他类型只读
+          const span = document.createElement('span');
+          span.textContent = param.value;
+          control.appendChild(span);
+        }
+        item.appendChild(control);
+        container.appendChild(item);
+      });
+    }
+
+    // 发送参数设置命令
+    async function sendParameterSet(param, value) {
+      if (!writer) return;
+      // 组包, 这里只做简单示例, 实际需按协议组包
+      // 假设: [0xA5, 0x12, param.id, value, 0x0D, 0x0A]
+      let val = Number(value);
+      const arr = [0xA5, 0x12, param.id, val, 0x0D, 0x0A];
+      await writer.write(new Uint8Array(arr));
+    }
+
+    // 修改refreshSettings函数，确保发送的是16进制数据
+    async function refreshSettings() {
+      if (!writer) return;
+      const refreshCmd = new Uint8Array([0xA5, 0x11, 0x00, 0x0D, 0x0A]);
+      try {
+        const statusElem = document.getElementById('settings-status');
+        statusElem.textContent = '正在获取设置...';
+        await writer.write(refreshCmd);
+      } catch (err) {
+        console.error('发送刷新命令失败:', err);
+      }
+    }
+
+    // 刷新按钮事件一键修复
+    document.getElementById('refresh-settings').onclick = async () => {
+      buffer = []; // 清空buffer，防止旧数据残留
+      document.getElementById('refresh-settings').disabled = true;
+      const statusElem = document.getElementById('settings-status');
+      statusElem.textContent = '正在获取设置...';
+      let timeout = setTimeout(() => {
+        document.getElementById('refresh-settings').disabled = false;
+        statusElem.textContent = '超时';
+      }, 20000);
+      await refreshSettings(); // 发送刷新命令
+      // 等待数据到来，readLoop会自动处理
+      // 成功时清除超时
+      setTimeout(() => {
+        if (statusElem.textContent === '刷新完成') clearTimeout(timeout);
+      }, 1000);
+    };
+
+    // 新增刷新RX函数
+    async function refreshSettingsRX() {
+      if (!writer) return;
+      const refreshCmd = new Uint8Array([0xA5, 0x22, 0x00, 0x0D, 0x0A]);
+      try {
+        const statusElem = document.getElementById('settings-status-rx');
+        statusElem.textContent = '正在获取设置...';
+        await writer.write(refreshCmd);
+      } catch (err) {
+        console.error('发送刷新RX命令失败:', err);
+      }
+    }
+    // 刷新RX按钮事件
+    document.getElementById('refresh-settings-rx').onclick = async () => {
+      buffer = [];
+      document.getElementById('refresh-settings-rx').disabled = true;
+      const statusElem = document.getElementById('settings-status-rx');
+      statusElem.textContent = '正在获取设置...';
+      let timeout = setTimeout(() => {
+        document.getElementById('refresh-settings-rx').disabled = false;
+        statusElem.textContent = '超时';
+      }, 20000);
+      await refreshSettingsRX();
+      setTimeout(() => {
+        if (statusElem.textContent === '刷新完成') clearTimeout(timeout);
+      }, 1000);
+    };
+
+
+    // --- 设备校准页面 ---
+    function renderCalibPage() {
+      const calibPage = document.getElementById('page-calib');
+      calibPage.innerHTML = `<div class="calib-container">
+        <div class="calib-title">设备校准</div>
+        <div class="calib-btn-slider-row" style="display:flex;align-items:center;gap:32px;margin-bottom:18px;">
+          <div class="calib-btn-group" id="calib-btn-group" style="display:flex;gap:18px;"></div>
+          <div class="calib-slider-row" style="display:flex;align-items:center;gap:12px;min-width:220px;">
+            <span class="calib-slider-label">S1</span>
+            <input type="range" min="0" max="100" value="50" class="calib-slider-sao" id="calib-slider">
+            <span class="calib-slider-value" id="calib-slider-value">50</span>
+          </div>
+        </div>
+        <div class="calib-joystick-row">
+          <div class="calib-joystick-wrap">
+            <div class="calib-joystick-label">左摇杆</div>
+            <canvas class="calib-joystick" id="joystick1" width="1050" height="1050"></canvas>
+          </div>
+          <div class="calib-joystick-wrap">
+            <div class="calib-joystick-label">右摇杆</div>
+            <canvas class="calib-joystick" id="joystick2" width="1050" height="1050"></canvas>
+          </div>
+        </div>
+      </div>`;
+      // 三态按钮
+      const btnNames = ['SA', 'SB', 'SC', 'SD', 'SE'];
+      const btnGroup = document.getElementById('calib-btn-group');
+      const stateSvgs = [
+        // 低：倒三角
+        '<svg width="28" height="28" viewBox="0 0 28 28"><polygon points="14,22 4,8 24,8" fill="#e74c3c" stroke="#b71c1c" stroke-width="2"/></svg>',
+        // 中：菱形
+        '<svg width="28" height="28" viewBox="0 0 28 28"><polygon points="14,5 25,14 14,23 3,14" fill="#f1c40f" stroke="#b7950b" stroke-width="2"/></svg>',
+        // 高：正三角
+        '<svg width="28" height="28" viewBox="0 0 28 28"><polygon points="14,6 24,20 4,20" fill="#2ecc71" stroke="#145a32" stroke-width="2"/></svg>'
+      ];
+      const stateNames = ['low', 'mid', 'high'];
+      btnNames.forEach((name, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'calib-btn-state';
+        btn.dataset.state = 'mid';
+        btn.innerHTML = `<div class="calib-btn-svg">${stateSvgs[1]}</div><div style="font-size:0.98em;color:#3358e0;margin-top:2px;">${name}</div>`;
+        btn.onclick = function() {
+          let state = btn.dataset.state;
+          let next = state === 'mid' ? 'high' : state === 'high' ? 'low' : 'mid';
+          btn.dataset.state = next;
+          let idx = stateNames.indexOf(next);
+          btn.querySelector('.calib-btn-svg').innerHTML = stateSvgs[idx];
+        };
+        btn.onmouseenter = function() { btn.style.boxShadow = '0 0 12px 2px #b3cfff'; };
+        btn.onmouseleave = function() { btn.style.boxShadow = ''; };
+        btnGroup.appendChild(btn);
+      });
+      // 滑动电位器
+      const slider = document.getElementById('calib-slider');
+      const sliderValue = document.getElementById('calib-slider-value');
+      slider.oninput = function() {
+        sliderValue.textContent = slider.value;
+        slider.style.background = `linear-gradient(90deg, #4f8cff ${(slider.value)}%, #e0e7ff ${(slider.value)}%)`;
+      };
+      slider.style.background = `linear-gradient(90deg, #4f8cff 50%, #e0e7ff 50%)`;
+      // 摇杆
+      let joy1 = {x: 0, y: 0};
+      let joy2 = {x: 0, y: 0};
+      const joy1Canvas = document.getElementById('joystick1');
+      const joy2Canvas = document.getElementById('joystick2');
+      // 动画参数
+      let animStart = Date.now();
+      function drawJoystick(canvas, phase) {
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+        // 背景
+        ctx.fillStyle = '#f4f6fb';
+        ctx.fillRect(0, 0, w, h);
+        // 虚线十字线
+        ctx.save();
+        ctx.setLineDash([12, 10]);
+        ctx.strokeStyle = '#bbb';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(w/2, 0); ctx.lineTo(w/2, h);
+        ctx.moveTo(0, h/2); ctx.lineTo(w, h/2);
+        ctx.stroke();
+        ctx.restore();
+        // 中心红点
+        ctx.beginPath();
+        ctx.arc(w/2, h/2, 12, 0, 2 * Math.PI);
+        ctx.fillStyle = '#e74c3c';
+        ctx.shadowColor = '#e74c3c';
+        ctx.shadowBlur = 8;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        // 动画：黑点沿边框方形运动，射线从中心到黑点
+        // 计算黑点位置
+        const perim = 4 * (w - 40); // 20px边距
+        const speed = 120; // px/s
+        const t = ((Date.now() - animStart) / 1000) * speed;
+        let pos = (t + phase * perim/2) % perim;
+        let bx, by;
+        if (pos < w-40) { // top
+          bx = 20 + pos; by = 20;
+        } else if (pos < w-40 + h-40) { // right
+          bx = w-20; by = 20 + (pos - (w-40));
+        } else if (pos < 2*(w-40) + h-40) { // bottom
+          bx = w-20 - (pos - (w-40 + h-40)); by = h-20;
+        } else { // left
+          bx = 20; by = h-20 - (pos - (2*(w-40) + h-40));
+        }
+        // 射线
+        ctx.beginPath();
+        ctx.moveTo(w/2, h/2);
+        ctx.lineTo(bx, by);
+        ctx.strokeStyle = 'rgba(79,140,255,0.95)';
+        ctx.lineWidth = 5;
+        ctx.shadowColor = '#4f8cff';
+        ctx.shadowBlur = 10;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        // 黑点
+        ctx.beginPath();
+        ctx.arc(bx, by, 14, 0, 2 * Math.PI);
+        ctx.fillStyle = '#111';
+        ctx.shadowColor = '#111';
+        ctx.shadowBlur = 8;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+      // 动画循环
+      function animateJoysticks() {
+        drawJoystick(joy1Canvas, 0);
+        drawJoystick(joy2Canvas, 1); // phase差异实现对称
+        requestAnimationFrame(animateJoysticks);
+      }
+      animateJoysticks();
+    }
+
+    renderCalibPage();
+
+    // --- 校准页面样式增强 ---
+    const calibStyle = document.createElement('style');
+    calibStyle.innerHTML = `
+      .calib-btn-state {
+        background: #fff;
+        border: 2.5px solid #e0e7ff;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(79,140,255,0.07);
+        padding: 2px 6px 0 6px;
+        min-width: 48px;
+        min-height: 56px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        transition: box-shadow 0.2s, border 0.2s;
+        cursor: pointer;
+        outline: none;
+      }
+      .calib-btn-state:active {
+        border-color: #4f8cff;
+        box-shadow: 0 0 12px 2px #b3cfff;
+      }
+      .calib-btn-svg svg { display: block; }
+      .calib-slider-sao {
+        width: 180px;
+        height: 8px;
+        border-radius: 6px;
+        background: linear-gradient(90deg, #4f8cff 50%, #e0e7ff 50%);
+        box-shadow: 0 2px 8px rgba(79,140,255,0.13);
+        outline: none;
+        accent-color: #4f8cff;
+        transition: background 0.3s;
+      }
+      .calib-slider-sao::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #4f8cff 60%, #3358e0 100%);
+        box-shadow: 0 2px 8px #b3cfff;
+        border: 2.5px solid #fff;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      .calib-slider-sao::-moz-range-thumb {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #4f8cff 60%, #3358e0 100%);
+        box-shadow: 0 2px 8px #b3cfff;
+        border: 2.5px solid #fff;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      .calib-slider-sao::-ms-thumb {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #4f8cff 60%, #3358e0 100%);
+        box-shadow: 0 2px 8px #b3cfff;
+        border: 2.5px solid #fff;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      .calib-joystick-row {
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        align-items: center;
+        gap: 96px;
+        width: 100%;
+        margin: 0 auto;
+        padding: 0;
+        position: relative;
+      }
+      .calib-joystick-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 1050px;
+        height: 1050px;
+        position: relative;
+      }
+      .calib-joystick {
+        width: 1050px !important;
+        height: 1050px !important;
+        max-width: 60vw !important;
+        max-height: 90vh !important;
+        min-width: 400px;
+        min-height: 400px;
+        margin: 0;
+        display: block;
+        background: #f4f6fb;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(79,140,255,0.07);
+        border: 1.5px solid #e0e7ff;
+      }
+      @media (max-width: 2200px) {
+        .calib-joystick, .calib-joystick-wrap { width: 700px !important; height: 700px !important; }
+      }
+      @media (max-width: 1400px) {
+        .calib-joystick, .calib-joystick-wrap { width: 400px !important; height: 400px !important; min-width: 200px; min-height: 200px; }
+      }
+      @media (max-width: 900px) {
+        .calib-joystick, .calib-joystick-wrap { width: 220px !important; height: 220px !important; min-width: 120px; min-height: 120px; }
+        .calib-joystick-row { flex-direction: column; align-items: center; gap: 32px; }
+      }
+    `;
+    document.head.appendChild(calibStyle);
+
+    // --- 固件更新页面 YMODEM 入口和进度逻辑 ---
+    const fwFileInput = document.getElementById('fw-file');
+    const fwUpdateBtn = document.getElementById('fw-update-btn');
+    const fwProgress = document.getElementById('fw-progress');
+    const fwProgressText = document.getElementById('fw-progress-text');
+    const fwStatus = document.getElementById('fw-status');
+    const fwDeviceType = document.getElementById('fw-device-type');
+    let fwFileData = null;
+    fwFileInput.onchange = function() {
+      const file = fwFileInput.files[0];
+      if (!file) { fwFileData = null; return; } 
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        fwFileData = new Uint8Array(e.target.result);
+        fwStatus.textContent = `已选择文件：${file.name}，大小：${fwFileData.length} 字节`;
+        fwProgress.value = 0;
+        fwProgressText.textContent = '0%';
+      };
+      reader.readAsArrayBuffer(file);
+    };
+    fwUpdateBtn.onclick = async function() {
+      if (!fwFileData) { fwStatus.textContent = '请先选择固件文件！'; return; }
+      if (!writer) { fwStatus.textContent = '请先连接串口！'; return; }
+      fwStatus.textContent = '正在准备传输...';
+      fwProgress.value = 0;
+      fwProgressText.textContent = '0%';
+      // 这里调用YMODEM传输函数
+      try {
+        await ymodemSend(fwFileData, fwFileInput.files[0].name, (sent, total) => {
+          const percent = Math.floor(sent / total * 100);
+          fwProgress.value = percent;
+          fwProgressText.textContent = percent + '%';
+        });
+        fwStatus.textContent = '固件传输完成！';
+      } catch (e) {
+        fwStatus.textContent = '传输失败：' + e.message;
+      }
+    };
+    // YMODEM协议主入口（实现）
+    async function ymodemSend(fileData, fileName, onProgress) {
+      window._isYmodemBusy = true;
+      try {
+        // YMODEM常量
+        const SOH = 0x01, STX = 0x02, EOT = 0x04, ACK = 0x06, NAK = 0x15, CAN = 0x18, CRC = 0x43;
+        const PACKET_SIZE = 1024;
+        const PACKET_SIZE_128 = 128;
+        const MAX_RETRY = 15;
+        const TIMEOUT = 5000; // ms, 增加等待时间
+        // 工具函数
+        function crc16(buf) {
+          let crc = 0;
+          for (let i = 0; i < buf.length; i++) {
+            crc ^= (buf[i] << 8);
+            for (let j = 0; j < 8; j++) {
+              if (crc & 0x8000) crc = (crc << 1) ^ 0x1021;
+              else crc <<= 1;
+            }
+          }
+          return crc & 0xFFFF;
+        }
+        function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+        // 监听ACK/NAK
+        let ackQueue = [];
+        let listen = true;
+        const ackListener = async () => {
+          while (listen) {
+            try {
+              const { value, done } = await reader.read();
+              if (done) break;
+              if (value && value.length > 0) {
+                console.log('[YMODEM][RECV]', Array.from(value).map(b=>b.toString(16).padStart(2,'0')).join(' '));
+                for (let b of value) {
+                  if ([ACK, NAK, CAN, CRC, EOT].includes(b)) ackQueue.push(b);
+                }
+              }
+            } catch (e) { break; }
+          }
+        };
+        const listenPromise = ackListener();
+        // 等待特定ACK
+        async function waitAck(expect, timeout = TIMEOUT) {
+          let t = Date.now();
+          while (Date.now() - t < timeout) {
+            if (ackQueue.length > 0) {
+              let b = ackQueue.shift();
+              if (expect.includes(b)) return b;
+              // CAN立即中断
+              if (b === CAN) throw new Error('对方中止传输');
+            }
+            await sleep(10);
+          }
+          throw new Error('超时未收到ACK/NAK');
+        }
+        // 1. 等待C
+        let retry = 0;
+        while (retry++ < MAX_RETRY) {
+          try {
+            await waitAck([CRC], 3000); // 握手等待也加长
+            break;
+          } catch (e) {
+            if (retry >= MAX_RETRY) throw new Error('未收到C，设备未响应');
+          }
+        }
+        // 2. 发送头包（SOH+128字节）
+        let header = new Uint8Array(PACKET_SIZE_128 + 5);
+        header[0] = SOH;
+        header[1] = 0x00; // 包号
+        header[2] = 0xFF;
+        // 文件名和大小
+        let nameBytes = new TextEncoder().encode(fileName);
+        let sizeBytes = new TextEncoder().encode(fileData.length.toString());
+        header.set(nameBytes, 3);
+        header[3 + nameBytes.length] = 0x00;
+        header.set(sizeBytes, 4 + nameBytes.length);
+        header[4 + nameBytes.length + sizeBytes.length] = 0x00;
+        // 填充0
+        for (let i = 3 + nameBytes.length + 1 + sizeBytes.length + 1; i < 3 + PACKET_SIZE_128; i++) header[i] = 0;
+        // CRC
+        let crc = crc16(header.slice(3, 3 + PACKET_SIZE_128));
+        header[PACKET_SIZE_128 + 3] = (crc >> 8) & 0xFF;
+        header[PACKET_SIZE_128 + 4] = crc & 0xFF;
+        // 头包重发
+        retry = 0;
+        while (retry++ < MAX_RETRY) {
+          console.log('[YMODEM][SEND]', Array.from(header).map(b=>b.toString(16).padStart(2,'0')).join(' '));
+          await writer.write(header);
+          let buf = [];
+          let t0 = Date.now();
+          let gotAckCrc = false, gotDoubleCrc = false;
+          while (Date.now() - t0 < TIMEOUT) {
+            if (ackQueue.length > 0) {
+              let b = ackQueue.shift();
+              buf.push(b);
+              // 检查06 43
+              if (buf.length >= 2 && buf[buf.length-2] === ACK && buf[buf.length-1] === CRC) {
+                gotAckCrc = true;
+                break;
+              }
+              // 检查43 43
+              if (buf.length >= 2 && buf[buf.length-2] === CRC && buf[buf.length-1] === CRC) {
+                gotDoubleCrc = true;
+                break;
+              }
+              // 检查NAK
+              if (b === NAK) {
+                break;
+              }
+            }
+            await sleep(10);
+          }
+          if (gotAckCrc) break; // 正常流程
+          if (gotDoubleCrc) { console.log('[YMODEM] Got 0x43 0x43, retry header'); continue; }
+          if (retry >= MAX_RETRY) throw new Error('头包未被ACK+CRC');
+        }
+        // 3. 发送数据包（STX+1024字节）
+        let total = fileData.length;
+        let sent = 0;
+        let pktNum = 1;
+        while (sent < total) {
+          let chunk = fileData.slice(sent, sent + PACKET_SIZE);
+          let pkt = new Uint8Array(PACKET_SIZE + 5);
+          pkt[0] = STX;
+          pkt[1] = pktNum & 0xFF;
+          pkt[2] = 0xFF - pkt[1];
+          pkt.set(chunk, 3);
+          for (let i = 3 + chunk.length; i < 3 + PACKET_SIZE; i++) pkt[i] = 0x1A; // 填充Ctrl+Z
+          let crc = crc16(pkt.slice(3, 3 + PACKET_SIZE));
+          pkt[PACKET_SIZE + 3] = (crc >> 8) & 0xFF;
+          pkt[PACKET_SIZE + 4] = crc & 0xFF;
+          retry = 0;
+          while (retry++ < MAX_RETRY) {
+            console.log('[YMODEM][SEND]', Array.from(pkt).map(b=>b.toString(16).padStart(2,'0')).join(' '));
+            await writer.write(pkt);
+            try {
+              let ack = await waitAck([ACK, NAK], TIMEOUT);
+              if (ack === ACK) break;
+            } catch (e) {
+              if (retry >= MAX_RETRY) throw new Error('数据包未被ACK');
+            }
+          }
+          sent += chunk.length;
+          pktNum = (pktNum + 1) & 0xFF;
+          if (onProgress) onProgress(sent, total);
+        }
+        // 4. 发送EOT
+        retry = 0;
+        while (retry++ < MAX_RETRY) {
+          console.log('[YMODEM][SEND]', '04');
+          await writer.write(new Uint8Array([EOT]));
+          try {
+            let ack = await waitAck([ACK], TIMEOUT);
+            if (ack === ACK) break;
+          } catch (e) {
+            if (retry >= MAX_RETRY) throw new Error('EOT未被ACK');
+          }
+        }
+        // 5. 结束包（SOH+128字节空包）
+        let endPkt = new Uint8Array(PACKET_SIZE_128 + 5);
+        endPkt[0] = SOH;
+        endPkt[1] = 0x00;
+        endPkt[2] = 0xFF;
+        for (let i = 3; i < 3 + PACKET_SIZE_128; i++) endPkt[i] = 0;
+        let endCrc = crc16(endPkt.slice(3, 3 + PACKET_SIZE_128));
+        endPkt[PACKET_SIZE_128 + 3] = (endCrc >> 8) & 0xFF;
+        endPkt[PACKET_SIZE_128 + 4] = endCrc & 0xFF;
+        retry = 0;
+        while (retry++ < MAX_RETRY) {
+          console.log('[YMODEM][SEND]', Array.from(endPkt).map(b=>b.toString(16).padStart(2,'0')).join(' '));
+          await writer.write(endPkt);
+          try {
+            let ack = await waitAck([ACK], TIMEOUT);
+            if (ack === ACK) break;
+          } catch (e) {
+            if (retry >= MAX_RETRY) throw new Error('结束包未被ACK');
+          }
+        }
+        listen = false;
+        await sleep(100);
+        if (listenPromise) await listenPromise;
+      } finally {
+        window._isYmodemBusy = false;
+      }
+    }
+
+    // --- 参数控件渲染增强 ---
+    function renderParameterControls(params, container, parent = 0,mode = null) {
+      if (!mode) {
+        const commTitle = document.querySelector('#page-net .comm-title');
+        if (commTitle && commTitle.textContent.includes('RX')) mode = 'RX';
+        else mode = 'TX';
+      }
+      // 过滤掉VTX Administrator父菜单及其子菜单
+      const vtxFolder = params.find(p => p.baseType === 11 && p.name && p.name.includes('VTX Administrator'));
+      let vtxFolderNum = vtxFolder ? vtxFolder.paramNum : null;
+      let filtered = params.filter(p => {
+        if (vtxFolderNum !== null) {
+          if (p.baseType === 11 && p.paramNum === vtxFolderNum) return false;
+          if (p.parentFolder === vtxFolderNum) return false;
+        }
+        return true;
+      });
+      // 渲染所有FOLDER类型为菜单
+      filtered.filter(p => p.baseType === 11 && p.parentFolder === parent && !p.hidden).forEach(folder => {
+        const folderDiv = document.createElement('div');
+        folderDiv.className = 'setting-item';
+        folderDiv.style.background = '#eaf1ff';
+        folderDiv.style.cursor = 'pointer';
+        folderDiv.style.fontWeight = 'bold';
+        folderDiv.style.textAlign = 'left';
+        folderDiv.textContent = folder.name;
+        folderDiv.onclick = function() {
+          const sub = folderDiv.nextSibling;
+          if (sub && sub.className === 'param-container') {
+            sub.style.display = (sub.style.display === 'none' ? '' : 'none');
+          }
+        };
+        container.appendChild(folderDiv);
+        const subContainer = document.createElement('div');
+        subContainer.className = 'param-container';
+        subContainer.style.marginLeft = '24px';
+        container.appendChild(subContainer);
+        renderParameterControls(filtered, subContainer, folder.paramNum, mode);
+      });
+      // 渲染当前parent下的非FOLDER参数
+      filtered.filter(p => p.parentFolder === parent && p.baseType !== 11 && !p.hidden).forEach(param => {
+        const item = document.createElement('div');
+        item.className = 'setting-item';
+        item.style.display = 'flex';
+        item.style.alignItems = 'center';
+        item.style.justifyContent = 'space-between';
+        item.style.gap = '18px';
+        const label = document.createElement('span');
+        label.className = 'setting-label';
+        label.textContent = param.name + (param.unit ? ' (' + param.unit + ')' : '');
+        label.style.textAlign = 'left';
+        label.style.flex = '1 1 0';
+        label.style.minWidth = '120px';
+        label.style.maxWidth = '320px';
+        item.appendChild(label);
+        const control = document.createElement('div');
+        control.className = 'setting-control';
+        control.style.flex = '0 0 auto';
+        control.style.display = 'flex';
+        control.style.alignItems = 'center';
+        control.style.gap = '10px';
+        // 数值型
+        if ([0,1,2,3,8].includes(param.baseType)) {
+          const input = document.createElement('input');
+          input.type = 'number';
+          input.value = param.value;
+          if (param.min !== null) input.min = param.min;
+          if (param.max !== null) input.max = param.max;
+          if (param.step !== null) input.step = param.step;
+          input.style.width = '120px';
+          input.style.minWidth = '120px';
+          input.style.maxWidth = '120px';
+          input.style.textAlign = 'right';
+          input.onchange = () => {
+            const modeByte = mode === 'TX' ? 0x11 : 0x22;
+            const arr = [0xA5, 0x33, modeByte, param.paramNum, input.value, 0x0D, 0x0A];
+            if (writer) writer.write(new Uint8Array(arr));
+            console.log('数值型控件变更:', param.paramNum, '新值:', input.value);
+          };
+          control.appendChild(input);
+        } else if (param.baseType === 9 && param.options) {
+          // TEXT_SELECTION
+          const select = document.createElement('select');
+          select.style.width = '180px';
+          select.style.minWidth = '180px';
+          select.style.maxWidth = '180px';
+          select.style.textAlign = 'right';
+          param.options.forEach((opt, idx) => {
+            const option = document.createElement('option');
+            option.value = idx;
+            option.textContent = opt;
+            if (idx === param.value) option.selected = true;
+            select.appendChild(option);
+          });
+          select.onchange = () => {
+            const modeByte = mode === 'TX' ? 0x11 : 0x22;
+            const arr = [0xA5, 0x33, modeByte, param.paramNum, Number(select.value), 0x0D, 0x0A];
+            if (writer) writer.write(new Uint8Array(arr));
+            console.log('已发送:', arr.map(x=>x.toString(16).padStart(2,'0')).join(' '));
+          };
+          control.appendChild(select);
+        } else if (param.baseType === 10) {
+          // STRING
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.value = param.value;
+          input.maxLength = param.strMaxLen || 32;
+          input.style.width = '180px';
+          input.style.minWidth = '180px';
+          input.style.maxWidth = '180px';
+          input.style.textAlign = 'right';
+          input.onchange = () => {
+            console.log('字符串控件变更:', param.paramNum, '新值:', input.value);
+          };
+          control.appendChild(input);
+        } else if (param.baseType === 13) {
+          // COMMAND
+          const btn = document.createElement('button');
+          btn.textContent = '启动'; // 统一命名为启动
+          btn.style.minWidth = '130px';
+          btn.style.maxWidth = '130px';
+          btn.onclick = () => {
+            console.log('命令按钮点击:', param.paramNum, '状态:', param.status);
+            const modeByte = mode === 'TX' ? 0x11 : 0x22;
+            const arrStart = [0xA5, 0x33, modeByte, param.paramNum, 1, 0x0D, 0x0A];
+            if (writer) writer.write(new Uint8Array(arrStart));
+            console.log('已发送START:', arrStart.map(x=>x.toString(16).padStart(2,'0')).join(' '));
+            // 弹窗逻辑...
+            // ... existing code ...
+          };
+          control.appendChild(btn);
+          if (param.info) {
+            const infoSpan = document.createElement('span');
+            infoSpan.textContent = param.info;
+            infoSpan.style.marginLeft = '8px';
+            control.appendChild(infoSpan);
+          }
+        } else if (param.baseType === 12) {
+          // INFO
+          const span = document.createElement('span');
+          span.textContent = param.value;
+          control.appendChild(span);
+        } else {
+          // 其他类型只读
+          const span = document.createElement('span');
+          span.textContent = param.value;
+          control.appendChild(span);
+        }
+        item.appendChild(control);
+        container.appendChild(item);
+      });
+    }
+
+    // --- 无线配置刷新按钮一行横向并排 ---
+    const wirelessControls = document.querySelector('.wireless-controls');
+    if (wirelessControls) {
+      wirelessControls.style.display = 'flex';
+      wirelessControls.style.flexDirection = 'row';
+      wirelessControls.style.justifyContent = 'center';
+      wirelessControls.style.alignItems = 'center';
+      wirelessControls.style.gap = '22px';
+      wirelessControls.style.margin = '18px 0 0 0';
+      const btns = wirelessControls.querySelectorAll('button');
+      btns.forEach(btn => {
+        btn.style.minWidth = '130px';
+        btn.style.maxWidth = '130px';
+        btn.style.fontSize = '1.08em';
+        btn.style.margin = '0';
+      });
+      const spans = wirelessControls.querySelectorAll('span');
+      spans.forEach(span => {
+        span.style.minWidth = '80px';
+        span.style.textAlign = 'left';
+        span.style.display = 'inline-block';
+      });
+    }
+  </script>
+</body>
+</html> 
