@@ -765,23 +765,20 @@
           <div class="comm-container" style="display:flex;justify-content:center;align-items:center;min-height:calc(100vh - 64px);background:linear-gradient(135deg,#e0e7ff 0%,#f4f6fb 100%);">
             <div id="fw-card" style="background:#fff;border-radius:22px;box-shadow:0 8px 36px rgba(79,140,255,0.15);padding:48px 60px 40px 60px;min-width:380px;max-width:520px;width:100%;display:flex;flex-direction:column;align-items:center;">
               <div class="comm-title" style="margin-bottom:32px;">固件更新</div>
-              <div style="margin-bottom:22px;width:100%;display:flex;flex-direction:column;align-items:flex-start;">
-                <label style="font-weight:bold;color:#3358e0;margin-bottom:8px;">设备型号</label>
-                <select id="fw-device-type" style="padding:12px 14px;border-radius:8px;border:1.5px solid #d0d7e6;font-size:1.08em;width:100%;outline:none;transition:border 0.2s;">
-                  <option value="A">型号A</option>
-                  <option value="B">型号B</option>
-                  <option value="C">型号C</option>
-                </select>
+              <!-- 文件拖拽上传区 -->
+              <div id="fw-drop-area" style="border:2.5px dashed #4f8cff;border-radius:14px;padding:32px 18px;margin-bottom:22px;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:border-color 0.2s;position:relative;background:#f4f8ff;">
+                <div style="font-size:1.13em;color:#3358e0;font-weight:500;margin-bottom:10px;">拖拽固件文件到此处</div>
+                <div style="color:#888;font-size:0.98em;margin-bottom:12px;">或</div>
+                <button id="fw-file-btn" type="button" style="background:linear-gradient(90deg,#4f8cff 0%,#3358e0 100%);color:#fff;border:none;border-radius:8px;padding:12px 32px;font-size:1.08em;font-weight:bold;cursor:pointer;transition:background 0.2s;">选择文件</button>
+                <input type="file" id="fw-file" accept=".bin,.hex" style="display:none;">
+                <div id="fw-file-name" style="margin-top:14px;color:#3358e0;font-weight:500;font-size:1.08em;"></div>
               </div>
-              <div style="margin-bottom:22px;width:100%;display:flex;flex-direction:column;align-items:flex-start;">
-                <label style="font-weight:bold;color:#3358e0;margin-bottom:8px;">选择固件文件</label>
-                <input type="file" id="fw-file" accept=".bin,.hex" style="font-size:1.08em;padding:10px 0;">
-              </div>
+              <!-- 进度条美化 -->
               <div style="margin-bottom:22px;width:100%;display:flex;flex-direction:column;align-items:flex-start;">
                 <label style="font-weight:bold;color:#3358e0;margin-bottom:8px;">更新进度</label>
-                <div style="display:flex;align-items:center;width:100%;">
-                  <progress id="fw-progress" value="0" max="100" style="width:70%;height:18px;border-radius:8px;background:#e0e7ff;"></progress>
-                  <span id="fw-progress-text" style="margin-left:18px;font-weight:bold;color:#3358e0;min-width:48px;">0%</span>
+                <div id="fw-progress-bar-wrap" style="width:100%;height:22px;background:#e0e7ff;border-radius:12px;overflow:hidden;position:relative;">
+                  <div id="fw-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#4f8cff 0%,#3358e0 100%);border-radius:12px;transition:width 0.3s;"></div>
+                  <span id="fw-progress-text" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-weight:bold;color:#3358e0;font-size:1.08em;">0%</span>
                 </div>
               </div>
               <button id="fw-update-btn" class="connect-btn" style="width:100%;margin-top:8px;margin-bottom:8px;font-size:1.15em;">确认更新</button>
@@ -908,17 +905,8 @@
         showMainPage('attr');
         mainApp.style.display = '';
         connectPage.style.display = 'none';
-        // === 延迟1秒后自动发送设备属性指令 ===
-        setTimeout(async () => {
-        const devAttrCmd = new Uint8Array([0xA5, 0x55, 0x1D, 0x0D, 0x0A]);
-        console.log('[自动发送] 设备属性指令准备发送:', Array.from(devAttrCmd).map(x=>x.toString(16).padStart(2,'0')).join(' '), 'writer:', !!writer, '页面:attr', 'isSerialConnected:', isSerialConnected);
-        if (writer) {
-          await writer.write(devAttrCmd);
-          console.log('[自动发送] 设备属性指令已发送:', Array.from(devAttrCmd).map(x=>x.toString(16).padStart(2,'0')).join(' '));
-        } else {
-          console.warn('[自动发送] 设备属性指令未发送，writer无效');
-        }
-        }, 1000);
+        // === 自动查询设备属性 ===
+        onSerialConnected();
         readLoop();
       } catch (err) {
         statusBox.textContent = '连接失败: ' + err;
@@ -1892,21 +1880,35 @@
     document.head.appendChild(calibStyle);
 
     // --- 固件更新页面 YMODEM 入口和进度逻辑 ---
+    // 新拖拽+美化文件选择逻辑
+    const fwDropArea = document.getElementById('fw-drop-area');
     const fwFileInput = document.getElementById('fw-file');
+    const fwFileBtn = document.getElementById('fw-file-btn');
+    const fwFileName = document.getElementById('fw-file-name');
     const fwUpdateBtn = document.getElementById('fw-update-btn');
-    const fwProgress = document.getElementById('fw-progress');
+    const fwProgressBar = document.getElementById('fw-progress-bar');
     const fwProgressText = document.getElementById('fw-progress-text');
     const fwStatus = document.getElementById('fw-status');
-    const fwDeviceType = document.getElementById('fw-device-type');
     let fwFileData = null;
+    fwFileBtn.onclick = () => fwFileInput.click();
+    fwDropArea.ondragover = e => { e.preventDefault(); fwDropArea.style.borderColor = '#3358e0'; };
+    fwDropArea.ondragleave = e => { e.preventDefault(); fwDropArea.style.borderColor = '#4f8cff'; };
+    fwDropArea.ondrop = e => {
+      e.preventDefault();
+      fwDropArea.style.borderColor = '#4f8cff';
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        fwFileInput.files = e.dataTransfer.files;
+        fwFileInput.dispatchEvent(new Event('change'));
+      }
+    };
     fwFileInput.onchange = function() {
       const file = fwFileInput.files[0];
-      if (!file) { fwFileData = null; return; } 
+      if (!file) { fwFileData = null; fwFileName.textContent = ''; return; }
       const reader = new FileReader();
       reader.onload = function(e) {
         fwFileData = new Uint8Array(e.target.result);
-        fwStatus.textContent = `已选择文件：${file.name}，大小：${fwFileData.length} 字节`;
-        fwProgress.value = 0;
+        fwFileName.textContent = `已选择文件：${file.name}，大小：${fwFileData.length} 字节`;
+        fwProgressBar.style.width = '0%';
         fwProgressText.textContent = '0%';
       };
       reader.readAsArrayBuffer(file);
@@ -1915,13 +1917,12 @@
       if (!fwFileData) { fwStatus.textContent = '请先选择固件文件！'; return; }
       if (!writer) { fwStatus.textContent = '请先连接串口！'; return; }
       fwStatus.textContent = '正在准备传输...';
-      fwProgress.value = 0;
+      fwProgressBar.style.width = '0%';
       fwProgressText.textContent = '0%';
-      // 这里调用YMODEM传输函数
       try {
         await ymodemSend(fwFileData, fwFileInput.files[0].name, (sent, total) => {
           const percent = Math.floor(sent / total * 100);
-          fwProgress.value = percent;
+          fwProgressBar.style.width = percent + '%';
           fwProgressText.textContent = percent + '%';
         });
         fwStatus.textContent = '固件传输完成！';
@@ -2447,11 +2448,31 @@
       const attrPage = document.getElementById('page-attr');
       if (!attrPage) return;
       let html = '<div class="comm-container" style="display:flex;justify-content:center;align-items:center;min-height:calc(100vh - 64px);background:linear-gradient(135deg,#e0e7ff 0%,#f4f6fb 100%);">';
+      html += '<div style="background:#fff;border-radius:22px;box-shadow:0 8px 36px rgba(79,140,255,0.15);padding:48px 60px 40px 60px;min-width:380px;max-width:520px;width:100%;display:flex;flex-direction:column;align-items:center;">';
+      html += '<div class="comm-title" style="margin-bottom:32px;display:flex;align-items:center;gap:12px;">';
+      html += '<svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="13" fill="#eaf1ff" stroke="#3358e0" stroke-width="2"/><path d="M9 14h10M14 9v10" stroke="#3358e0" stroke-width="2.5" stroke-linecap="round"/></svg>';
+      html += '设备属性';
+      html += '</div>';
+      // 查询按钮
+      html += '<button id="query-device-attr-btn" class="connect-btn" style="margin-bottom:18px;">查询设备属性</button>';
       if (!dev) {
-        html += '<div style="background:#fff;border-radius:22px;box-shadow:0 8px 36px rgba(79,140,255,0.15);padding:48px 60px 40px 60px;min-width:380px;max-width:520px;width:100%;display:flex;flex-direction:column;align-items:center;">';
-        html += '<div class="comm-title" style="margin-bottom:32px;">设备属性</div>';
         html += '<div>未获取到设备信息。</div></div></div>';
         attrPage.innerHTML = html;
+        // 绑定查询按钮事件
+        const queryBtn = document.getElementById('query-device-attr-btn');
+        if (queryBtn) {
+          queryBtn.onclick = async function() {
+            if (!writer) { alert('请先连接串口！'); return; }
+            const devAttrCmd = new Uint8Array([0xA5, 0x55, 0x1D, 0x0D, 0x0A]);
+            await writer.write(devAttrCmd);
+            queryBtn.disabled = true;
+            queryBtn.textContent = '查询中...';
+            setTimeout(() => {
+              queryBtn.disabled = false;
+              queryBtn.textContent = '查询设备属性';
+            }, 2000);
+          };
+        }
         return;
       }
       // 序列号连续数字显示
@@ -2462,71 +2483,65 @@
         // 去除末尾的00
         serialNumStr = serialNumStr.replace(/(00)+$/, '');
       }
-      html += `<div style="background:#fff;border-radius:22px;box-shadow:0 8px 36px rgba(79,140,255,0.15);padding:48px 60px 40px 60px;min-width:380px;max-width:520px;width:100%;display:flex;flex-direction:column;align-items:center;">
-        <div class="comm-title" style="margin-bottom:32px;display:flex;align-items:center;gap:12px;">
-          <svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="13" fill="#eaf1ff" stroke="#3358e0" stroke-width="2"/><path d="M9 14h10M14 9v10" stroke="#3358e0" stroke-width="2.5" stroke-linecap="round"/></svg>
-          设备属性
+      html += `<div style="width:100%;display:flex;flex-direction:column;gap:18px;">
+        <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#f4f8ff;border-radius:12px;padding:12px 18px;">
+          <span style="color:#3358e0;font-weight:500;min-width:90px;">音量</span>
+          <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.devVolume * 4}</span>
         </div>
-        <div style="width:100%;display:flex;flex-direction:column;gap:18px;">
-          <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#f4f8ff;border-radius:12px;padding:12px 18px;">
-            <span style="color:#3358e0;font-weight:500;min-width:90px;">音量</span>
-            <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.devVolume * 4}</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#eaf1ff;border-radius:12px;padding:12px 18px;">
-            <span style="color:#3358e0;font-weight:500;min-width:90px;">序列号</span>
-            <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;letter-spacing:2px;">${serialNumStr}</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#f4f8ff;border-radius:12px;padding:12px 18px;">
-            <span style="color:#3358e0;font-weight:500;min-width:90px;">ELRS固件版本</span>
-            <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.elrsFirmWare}</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#eaf1ff;border-radius:12px;padding:12px 18px;">
-            <span style="color:#3358e0;font-weight:500;min-width:90px;">设备固件版本</span>
-            <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.deviceFirmWare}</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#f4f8ff;border-radius:12px;padding:12px 18px;">
-            <span style="color:#3358e0;font-weight:500;min-width:90px;">ELRS名字</span>
-            <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.elrsName}</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#eaf1ff;border-radius:12px;padding:12px 18px;">
-            <span style="color:#3358e0;font-weight:500;min-width:90px;">公司名字</span>
-            <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.companyName}</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#f4f8ff;border-radius:12px;padding:12px 18px;">
-            <span style="color:#3358e0;font-weight:500;min-width:90px;">设备名字</span>
-            <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.devName}</span>
-          </div>
+        <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#eaf1ff;border-radius:12px;padding:12px 18px;">
+          <span style="color:#3358e0;font-weight:500;min-width:90px;">序列号</span>
+          <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;letter-spacing:2px;">${serialNumStr}</span>
         </div>
-        <div style="margin-top:32px;width:100%;">
-          <div style="color:#3358e0;font-weight:bold;font-size:1.13em;margin-bottom:10px;">遥控参数</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-            <div style="background:#f4f8ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-              <span style="color:#3358e0;">发送包速率</span><span style="font-family:'Roboto Mono',monospace;">${dev.sendPackSpeed}</span>
-            </div>
-            <div style="background:#eaf1ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-              <span style="color:#3358e0;">返回速率</span><span style="font-family:'Roboto Mono',monospace;">${dev.returnSpeed}</span>
-            </div>
-            <div style="background:#f4f8ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-              <span style="color:#3358e0;">校准标志</span><span style="font-family:'Roboto Mono',monospace;">${dev.calibrationFlag}</span>
-            </div>
-            <div style="background:#eaf1ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-              <span style="color:#3358e0;">连接协议</span><span style="font-family:'Roboto Mono',monospace;">${dev.connectProtocol}</span>
-            </div>
-            <div style="background:#f4f8ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-              <span style="color:#3358e0;">通道数</span><span style="font-family:'Roboto Mono',monospace;">${dev.channelNum}</span>
-            </div>
-            <div style="background:#eaf1ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-              <span style="color:#3358e0;">密钥</span><span style="font-family:'Roboto Mono',monospace;">${dev.secretKey}</span>
-            </div>
-            <div style="background:#f4f8ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-              <span style="color:#3358e0;">功率</span><span style="font-family:'Roboto Mono',monospace;">${dev.powerVal}</span>
-            </div>
-            <div style="background:#eaf1ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-              <span style="color:#3358e0;">遥控类型</span><span style="font-family:'Roboto Mono',monospace;">${dev.remoteCtlClass}</span>
-            </div>
-            <div style="background:#f4f8ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-              <span style="color:#3358e0;">混控</span><span style="font-family:'Roboto Mono',monospace;">${dev.mixedCtl}</span>
-            </div>
+        <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#f4f8ff;border-radius:12px;padding:12px 18px;">
+          <span style="color:#3358e0;font-weight:500;min-width:90px;">ELRS固件版本</span>
+          <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.elrsFirmWare}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#eaf1ff;border-radius:12px;padding:12px 18px;">
+          <span style="color:#3358e0;font-weight:500;min-width:90px;">设备固件版本</span>
+          <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.deviceFirmWare}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#f4f8ff;border-radius:12px;padding:12px 18px;">
+          <span style="color:#3358e0;font-weight:500;min-width:90px;">ELRS名字</span>
+          <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.elrsName}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#eaf1ff;border-radius:12px;padding:12px 18px;">
+          <span style="color:#3358e0;font-weight:500;min-width:90px;">公司名字</span>
+          <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.companyName}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#f4f8ff;border-radius:12px;padding:12px 18px;">
+          <span style="color:#3358e0;font-weight:500;min-width:90px;">设备名字</span>
+          <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.devName}</span>
+        </div>
+      </div>
+      <div style="margin-top:32px;width:100%;">
+        <div style="color:#3358e0;font-weight:bold;font-size:1.13em;margin-bottom:10px;">遥控参数</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div style="background:#f4f8ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#3358e0;">发送包速率</span><span style="font-family:'Roboto Mono',monospace;">${dev.sendPackSpeed}</span>
+          </div>
+          <div style="background:#eaf1ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#3358e0;">返回速率</span><span style="font-family:'Roboto Mono',monospace;">${dev.returnSpeed}</span>
+          </div>
+          <div style="background:#f4f8ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#3358e0;">校准标志</span><span style="font-family:'Roboto Mono',monospace;">${dev.calibrationFlag}</span>
+          </div>
+          <div style="background:#eaf1ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#3358e0;">连接协议</span><span style="font-family:'Roboto Mono',monospace;">${dev.connectProtocol}</span>
+          </div>
+          <div style="background:#f4f8ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#3358e0;">通道数</span><span style="font-family:'Roboto Mono',monospace;">${dev.channelNum}</span>
+          </div>
+          <div style="background:#eaf1ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#3358e0;">密钥</span><span style="font-family:'Roboto Mono',monospace;">${dev.secretKey}</span>
+          </div>
+          <div style="background:#f4f8ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#3358e0;">功率</span><span style="font-family:'Roboto Mono',monospace;">${dev.powerVal}</span>
+          </div>
+          <div style="background:#eaf1ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#3358e0;">遥控类型</span><span style="font-family:'Roboto Mono',monospace;">${dev.remoteCtlClass}</span>
+          </div>
+          <div style="background:#f4f8ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#3358e0;">混控</span><span style="font-family:'Roboto Mono',monospace;">${dev.mixedCtl}</span>
           </div>
         </div>
       </div></div>`;
@@ -2913,32 +2928,45 @@
       for (let i = 0; i < channelNum; i++) {
         html += `<div style="background:#f4f8ff;border-radius:8px;padding:10px 8px;display:flex;flex-direction:column;align-items:center;">
           <span style="color:#3358e0;font-weight:500;">CH${i+1}</span>
-          <span style="font-family:'Roboto Mono',monospace;font-size:1.18em;margin-top:6px;">${channels[i]}</span>
-          <div style="width:100px;height:8px;background:#e0e7ff;border-radius:4px;margin-top:8px;overflow:hidden;">
+          <span id="ch-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.18em;margin-top:6px;">${channels[i]}</span>
+          <div id="ch-bar-${i}" style="width:100px;height:8px;background:#e0e7ff;border-radius:4px;margin-top:8px;overflow:hidden;">
             <div style="height:8px;background:linear-gradient(90deg,#4f8cff 0%,#3358e0 100%);width:${(channels[i]+100)/2}%"></div>
           </div>
+          <input type="number" id="ch-input-${i}" value="${channels[i]}" style="width:70px;margin-top:8px;text-align:center;border:1.5px solid #d0d7e6;border-radius:6px;font-size:1em;" />
         </div>`;
       }
       html += '</div>';
-      // Trim滑块
+      // Trim横杆
       html += '<div style="font-weight:bold;color:#3358e0;margin:24px 0 8px 0;">Trim 行程</div>';
       html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;">';
       for (let i = 0; i < trimNum; i++) {
+        const min = -100, max = 100, val = trims[i];
+        const percent = ((val - min) / (max - min)) * 100;
         html += `<div style="background:#eaf1ff;border-radius:8px;padding:18px 12px;display:flex;flex-direction:column;align-items:center;">
           <span style="color:#3358e0;font-weight:500;margin-bottom:8px;">Trim${i+1}</span>
-          <input type="range" min="-100" max="100" value="${trims[i]}" disabled style="width:90%;accent-color:#f1c40f;background:none;">
-          <span style="font-family:'Roboto Mono',monospace;font-size:1.18em;margin-top:8px;">${trims[i]}</span>
+          <div style="width:120px;height:12px;position:relative;margin:12px 0 8px 0;">
+            <div style="position:absolute;top:5px;left:0;width:100%;height:2px;background:#b3cfff;border-radius:2px;"></div>
+            <div id="trim-dot-${i}" style="position:absolute;top:0;left:calc(${percent}% - 7px);width:14px;height:14px;background:#4f8cff;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 8px #b3cfff;"></div>
+          </div>
+          <span id="trim-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${val}</span>
+          <input type="number" id="trim-input-${i}" value="${val}" style="width:70px;margin-top:8px;text-align:center;border:1.5px solid #d0d7e6;border-radius:6px;font-size:1em;" />
         </div>`;
       }
       html += '</div>';
-      // 中心点滑块
+      // 中心点横杆
       html += '<div style="font-weight:bold;color:#3358e0;margin:24px 0 8px 0;">中心点行程</div>';
       html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;">';
       for (let i = 0; i < centerNum; i++) {
+        const min = -100, max = 100, val = centers[i];
+        const percent = ((val - min) / (max - min)) * 100;
         html += `<div style="background:#f4f8ff;border-radius:8px;padding:18px 12px;display:flex;flex-direction:column;align-items:center;">
           <span style="color:#3358e0;font-weight:500;margin-bottom:8px;">Center${i+1}</span>
-          <input type="range" min="-100" max="100" value="${centers[i]}" disabled style="width:90%;accent-color:#2ecc71;background:none;">
-          <span style="font-family:'Roboto Mono',monospace;font-size:1.18em;margin-top:8px;">${centers[i]}</span>
+          <div style="width:120px;height:12px;position:relative;margin:12px 0 8px 0;">
+            <div style="position:absolute;top:5px;left:0;width:100%;height:2px;background:#b3cfff;border-radius:2px;"></div>
+            <div id="center-dot-${i}" style="position:absolute;top:0;left:calc(${percent}% - 7px);width:14px;height:14px;background:#2ecc71;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 8px #b3cfff;"></div>
+          </div>
+          <span id="center-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${val}</span>
+          <input type="number" id="center-input-${i}" value="${val}" style="width:70px;margin-top:8px;text-align:center;border:1.5px solid #d0d7e6;border-radius:6px;font-size:1em;" />
         </div>`;
       }
       html += '</div>';
@@ -2957,85 +2985,117 @@
       html += '</div>';
       html += '</div>';
       configPage.innerHTML = html;
+      // 交互：输入框动态修改控件
+      for (let i = 0; i < channelNum; i++) {
+        const input = document.getElementById(`ch-input-${i}`);
+        input.oninput = function() {
+          let v = Math.max(-100, Math.min(100, parseInt(input.value)||0));
+          document.getElementById(`ch-val-${i}`).textContent = v;
+          const bar = document.getElementById(`ch-bar-${i}`).children[0];
+          bar.style.width = ((v+100)/2) + '%';
+        };
+      }
+      for (let i = 0; i < trimNum; i++) {
+        const input = document.getElementById(`trim-input-${i}`);
+        input.oninput = function() {
+          let v = Math.max(-100, Math.min(100, parseInt(input.value)||0));
+          document.getElementById(`trim-val-${i}`).textContent = v;
+          document.getElementById(`trim-dot-${i}`).style.left = `calc(${((v+100)/2)}% - 7px)`;
+        };
+      }
+      for (let i = 0; i < centerNum; i++) {
+        const input = document.getElementById(`center-input-${i}`);
+        input.oninput = function() {
+          let v = Math.max(-100, Math.min(100, parseInt(input.value)||0));
+          document.getElementById(`center-val-${i}`).textContent = v;
+          document.getElementById(`center-dot-${i}`).style.left = `calc(${((v+100)/2)}% - 7px)`;
+        };
+      }
       // 画十字指示
       function drawCross(canvas, modeMap, isLeft) {
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0,0,canvas.width,canvas.height);
         const center = canvas.width / 2;
         const crossLen = canvas.width / 2 - 40;
-        // 十字
-        ctx.save();
-        ctx.strokeStyle = '#3358e0';
-        ctx.lineWidth = 10;
-        ctx.beginPath();
-        ctx.moveTo(center, center - crossLen); ctx.lineTo(center, center + crossLen);
-        ctx.moveTo(center - crossLen, center); ctx.lineTo(center + crossLen, center);
-        ctx.stroke();
-        ctx.restore();
-        // 方向定义
-        // 方向: 上, 下, 左, 右
-        const fontSize = 24;
-        ctx.font = `bold ${fontSize}px Roboto`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        // 方向坐标（在十字线上，离中心点70px）
-        const offset = 70;
-        const directions = [
-          { // 上
-            label: isLeft ? modeMap[0] : modeMap[2],
-            x: center, y: center - offset,
-            arrowEnd: {x: center, y: center - offset + 20},
-            color: isLeft ? '#e74c3c' : '#e67e22'
-          },
-          { // 下
-            label: isLeft ? modeMap[0] : modeMap[2],
-            x: center, y: center + offset,
-            arrowEnd: {x: center, y: center + offset - 20},
-            color: isLeft ? '#e74c3c' : '#e67e22'
-          },
-          { // 左
-            label: isLeft ? modeMap[1] : modeMap[3],
-            x: center - offset, y: center,
-            arrowEnd: {x: center - offset + 20, y: center},
-            color: isLeft ? '#4f8cff' : '#16a085'
-          },
-          { // 右
-            label: isLeft ? modeMap[1] : modeMap[3],
-            x: center + offset, y: center,
-            arrowEnd: {x: center + offset - 20, y: center},
-            color: isLeft ? '#4f8cff' : '#16a085'
-          }
-        ];
-        // 画指针和文字
-        directions.forEach(dir => {
-          // 指针
+        // 美化参数
+        const arrowLen = crossLen - 40;
+        const arrowWidth = 18;
+        const fontSize = 32;
+        const labelBg = '#fff';
+        const labelColor = '#3358e0';
+        const labelShadow = 'rgba(79,140,255,0.13)';
+        // 只画两个方向的箭头和字母
+        function drawArrowWithLabel(x0, y0, dx, dy, label, labelAlign) {
+          // 箭头
           ctx.save();
-          ctx.strokeStyle = dir.color;
-          ctx.lineWidth = 6;
           ctx.beginPath();
-          ctx.moveTo(center, center);
-          ctx.lineTo(dir.arrowEnd.x, dir.arrowEnd.y);
+          ctx.moveTo(x0, y0);
+          ctx.lineTo(x0 + dx * (arrowLen - 24), y0 + dy * (arrowLen - 24));
+          ctx.strokeStyle = ctx.createLinearGradient(x0, y0, x0 + dx * arrowLen, y0 + dy * arrowLen);
+          ctx.strokeStyle.addColorStop(0, '#4f8cff');
+          ctx.strokeStyle.addColorStop(1, '#3358e0');
+          ctx.lineWidth = 10;
+          ctx.lineCap = 'round';
           ctx.stroke();
           // 箭头头部
-          const angle = Math.atan2(dir.arrowEnd.y-center, dir.arrowEnd.x-center);
+          const endX = x0 + dx * arrowLen;
+          const endY = y0 + dy * arrowLen;
           ctx.beginPath();
-          ctx.moveTo(dir.arrowEnd.x, dir.arrowEnd.y);
-          ctx.lineTo(
-            dir.arrowEnd.x - 12 * Math.cos(angle - Math.PI/6),
-            dir.arrowEnd.y - 12 * Math.sin(angle - Math.PI/6)
-          );
-          ctx.lineTo(
-            dir.arrowEnd.x - 12 * Math.cos(angle + Math.PI/6),
-            dir.arrowEnd.y - 12 * Math.sin(angle + Math.PI/6)
-          );
-          ctx.lineTo(dir.arrowEnd.x, dir.arrowEnd.y);
-          ctx.fillStyle = dir.color;
+          ctx.moveTo(endX, endY);
+          ctx.lineTo(endX - dy * arrowWidth / 2 - dx * arrowWidth, endY + dx * arrowWidth / 2 - dy * arrowWidth);
+          ctx.lineTo(endX + dy * arrowWidth / 2 - dx * arrowWidth, endY - dx * arrowWidth / 2 - dy * arrowWidth);
+          ctx.closePath();
+          ctx.fillStyle = '#3358e0';
+          ctx.shadowColor = '#b3cfff';
+          ctx.shadowBlur = 6;
           ctx.fill();
+          ctx.shadowBlur = 0;
           ctx.restore();
-          // 文字
-          ctx.fillStyle = dir.color;
-          ctx.fillText(dir.label, dir.x, dir.y);
-        });
+          // 字母
+          ctx.save();
+          ctx.font = `bold ${fontSize}px Roboto`;
+          ctx.textAlign = labelAlign;
+          ctx.textBaseline = 'middle';
+          // 字母位置：箭头外侧
+          const labelOffset = 48;
+          const labelX = x0 + dx * (arrowLen + labelOffset);
+          const labelY = y0 + dy * (arrowLen + labelOffset);
+          // 圆角背景
+          const text = label;
+          const textW = ctx.measureText(text).width + 28;
+          ctx.beginPath();
+          ctx.moveTo(labelX - textW/2, labelY - 24);
+          ctx.lineTo(labelX + textW/2, labelY - 24);
+          ctx.arcTo(labelX + textW/2 + 12, labelY - 24, labelX + textW/2 + 12, labelY + 24, 16);
+          ctx.lineTo(labelX + textW/2 + 12, labelY + 24);
+          ctx.arcTo(labelX + textW/2 + 12, labelY + 40, labelX + textW/2, labelY + 40, 16);
+          ctx.lineTo(labelX - textW/2, labelY + 40);
+          ctx.arcTo(labelX - textW/2 - 12, labelY + 40, labelX - textW/2 - 12, labelY + 24, 16);
+          ctx.lineTo(labelX - textW/2 - 12, labelY - 24);
+          ctx.arcTo(labelX - textW/2 - 12, labelY - 40, labelX - textW/2, labelY - 40, 16);
+          ctx.closePath();
+          ctx.fillStyle = labelBg;
+          ctx.shadowColor = labelShadow;
+          ctx.shadowBlur = 8;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = labelColor;
+          ctx.fillText(text, labelX, labelY);
+          ctx.restore();
+        }
+        if (isLeft) {
+          // 左摇杆：modeMap[0]上下，modeMap[1]左右
+          drawArrowWithLabel(center, center, 0, -1, modeMap[0], 'center'); // 上
+          drawArrowWithLabel(center, center, 0, 1, modeMap[0], 'center');  // 下
+          drawArrowWithLabel(center, center, -1, 0, modeMap[1], 'right');  // 左
+          drawArrowWithLabel(center, center, 1, 0, modeMap[1], 'left');    // 右
+        } else {
+          // 右摇杆：modeMap[2]上下，modeMap[3]左右
+          drawArrowWithLabel(center, center, 0, -1, modeMap[2], 'center'); // 上
+          drawArrowWithLabel(center, center, 0, 1, modeMap[2], 'center');  // 下
+          drawArrowWithLabel(center, center, -1, 0, modeMap[3], 'right');  // 左
+          drawArrowWithLabel(center, center, 1, 0, modeMap[3], 'left');    // 右
+        }
         // 中心点
         ctx.beginPath();
         ctx.arc(center, center, 22, 0, 2*Math.PI);
@@ -3066,6 +3126,34 @@
           };
         }
       }, 0);
+    }
+
+    // 连接成功后自动发送设备属性指令，失败重试3次，否则显示按钮
+    let _autoDevAttrTries = 0;
+    let _autoDevAttrMaxTries = 3;
+    let _autoDevAttrTimer = null;
+    async function autoSendDevAttr() {
+      if (!writer) return;
+      if (_autoDevAttrTries >= _autoDevAttrMaxTries) return;
+      _autoDevAttrTries++;
+      const devAttrCmd = new Uint8Array([0xA5, 0x55, 0x1D, 0x0D, 0x0A]);
+      await writer.write(devAttrCmd);
+      // 等待2秒，如果window._deviceInfo还没被赋值则重试
+      _autoDevAttrTimer = setTimeout(() => {
+        if (!window._deviceInfo && _autoDevAttrTries < _autoDevAttrMaxTries) {
+          autoSendDevAttr();
+        } else if (!window._deviceInfo && _autoDevAttrTries >= _autoDevAttrMaxTries) {
+          // 失败，显示按钮
+          renderDeviceInfoPage();
+        }
+      }, 2000);
+    }
+    // 连接成功后自动触发
+    function onSerialConnected() {
+      _autoDevAttrTries = 0;
+      if (_autoDevAttrTimer) clearTimeout(_autoDevAttrTimer);
+      window._deviceInfo = undefined;
+      autoSendDevAttr();
     }
   </script>
 </body>
