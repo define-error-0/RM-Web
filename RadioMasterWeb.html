@@ -812,8 +812,9 @@
     let writer = null;
     let reader = null;
     let isSerialConnected = false;
-    let buffer = [];
+    let netConfBuffer = [];
     let isReading = false;
+    let ymodem =[];
 
     // 页面切换逻辑
     const menuBtns = document.querySelectorAll('.menu-btn');
@@ -988,7 +989,57 @@
     };
 
     // 读取串口数据
-    let devAttrBuffer = [];
+    let serialBuffer = [];
+    let globalBuffer = new Uint8Array(4096);
+    let globalBufferLen = 0;
+    let globalBufferTimeout = null;
+    let devAttrBufferTimeout = null;
+    const DEV_ATTR_BUFFER_MAX = 4000;
+
+    function tryParseDevAttrBuffer() {
+      // 自动包解析循环
+      while (serialBuffer.length >= 3) { // 至少有命令+长度+crc
+        const cmd = serialBuffer[0];
+        const len = serialBuffer[1];
+        const totalLen = 2 + len; // [cmd][len][data+crc]
+        if (len < 1 || totalLen > DEV_ATTR_BUFFER_MAX) {
+          // 长度异常，丢弃缓冲区
+          console.warn('[serialBuffer] 长度异常，清空缓冲区', len, totalLen);
+          serialBuffer = [];
+          return;
+        }
+        if (serialBuffer.length < totalLen) {
+          // 数据还不够，等待更多
+          break;
+        }
+        // 取出包
+        const packet = serialBuffer.slice(0, totalLen);
+        const data = packet.slice(2, totalLen - 1);
+        const crc = packet[totalLen - 1];
+        const calcCrc = crc8tab_js(data, data.length);
+        if (crc !== calcCrc) {
+          // CRC错误，丢弃缓冲区
+          console.warn('[serialBuffer] CRC校验失败，清空缓冲区', crc, calcCrc);
+          serialBuffer = [];
+          return;
+        }
+        // CRC正确，处理数据
+        // 你可以在这里调用你的数据解析函数，比如：parseYourData(cmd, data)
+        if (typeof parseYourData === 'function') {
+          try { parseYourData(cmd, data); } catch(e) { console.error(e); }
+        } else {
+          console.log('[serialBuffer] 解析出包', cmd, data);
+        }
+        // 移除已处理包
+        serialBuffer = serialBuffer.slice(totalLen);
+        // 继续循环处理下一包
+      }
+      // 超过最大长度，丢弃前面数据
+      if (serialBuffer.length > DEV_ATTR_BUFFER_MAX) {
+        serialBuffer = serialBuffer.slice(serialBuffer.length - DEV_ATTR_BUFFER_MAX);
+      }
+    }
+
     async function readLoop() {
       if (isReading) return; // 防止多重循环
       isReading = true;
@@ -1000,23 +1051,28 @@
       if (window._waitingDevAttr) clearTimeout(window._waitingDevAttr);
       window._waitingDevAttr = setTimeout(() => {
         console.warn('[设备属性] 超时未收到设备属性包！');
-      }, 5000);
+      }, 2000);
       while (isSerialConnected) {
-        // === YMODEM期间跳过串口消费 ===
-        if (window._isYmodemBusy) {
-          await new Promise(r => setTimeout(r, 20));
-          continue;
-        }
         try {
           const { value, done } = await reader.read();
           if (done) break;
           if (value) {
-            // 设备信息包判断
-            devAttrBuffer.push(...value);
-            console.log('[设备属性] devAttrBuffer:', devAttrBuffer.map(x=>x.toString(16).padStart(2,'0')).join(' '), '长度:', devAttrBuffer.length);
-            const len = devAttrBuffer[1]  
+            // === 始终推入serialBuffer，无论YMODEM是否在进行 ===
+            serialBuffer.push(...value);
+            // --- 新增: 0.5秒内未能解析出包则清空缓冲区 ---
+            // if (devAttrBufferTimeout) clearTimeout(devAttrBufferTimeout);
+            // devAttrBufferTimeout = setTimeout(() => {
+            //   if (serialBuffer.length > 0) {
+            //     console.warn('[serialBuffer] 0.5秒未能解析出包，清空缓冲区');
+            //     serialBuffer = [];
+            //   }
+            // }, 500);
+            //tryParseDevAttrBuffer();
+
+            console.log('[设备属性] serialBuffer:', serialBuffer.map(x=>x.toString(16).padStart(2,'0')).join(' '), '长度:', serialBuffer.length);
+            const len = serialBuffer[1]  
             if (value[0] === 0xFF && value.length > 60 && len <= value.length) {
-              console.log('[设备属性] 收到原始包:', Array.from(value).map(x=>x.toString(16).padStart(2,'0')).join(' '), '长度:', value.length);
+              console.log('[设备属性] 收到原始包:', Array.from(serialBuffer).map(x=>x.toString(16).padStart(2,'0')).join(' '), '长度:', value.length);
               // 只处理一次完整包
               const devInfo = parseDeviceInfoPacket(value);
               if (devInfo) {
@@ -1028,6 +1084,24 @@
                 console.warn('[设备属性] 解析失败');
               }
             }
+            else if(value[0] === 0xFF && value.length > 60)
+            {
+              console.log('[设备属性] 收到原始包:', Array.from(serialBuffer).map(x=>x.toString(16).padStart(2,'0')).join(' '), '长度:', value.length);
+              // 只处理一次完整包
+              const devInfo = parseDeviceInfoPacket(value);
+              if (devInfo) {
+                window._deviceInfo = devInfo;
+                renderDeviceInfoPage();
+                if (window._waitingDevAttr) clearTimeout(window._waitingDevAttr);
+              }
+            }
+            else if(value[0] === 0xFF && value.length > 60)
+            {
+
+
+            }
+
+
             if (commOutputBox) {
               if (recvHex && recvHex.checked) {
                 const hexStr = Array.from(value).map(b => b.toString(16).padStart(2, '0')).join(' ');
@@ -1039,50 +1113,54 @@
               commOutputBox.scrollTop = commOutputBox.scrollHeight;
             }
         
-            buffer.push(...value);
-            // 检查是否收满大包
-            while (buffer.length >= 2) {
-              const bigLen = (buffer[0] << 8) | buffer[1];
-              // 健壮性校验
-              if (bigLen < 2 || bigLen > 8192) {
-                abnormalCount++;
-                // console.warn('[readLoop] 异常包头，bigLen=', bigLen, 'buffer=', buffer.slice(0, 16), 'abnormalCount=', abnormalCount); // 已关闭异常包头日志
-                const before = buffer.length;
-                buffer.shift(); // 丢弃一个字节，避免死循环
-                if (buffer.length === before) {
-                  // 极端情况下buffer未减少，强制break防止死循环
-                  // console.error('[readLoop] buffer.shift()无效，强制break'); // 已关闭异常包头日志
-                  break;
-                }
-                if (abnormalCount > 10) {
-                  // console.error('[readLoop] 异常包头连续过多，清空buffer'); // 已关闭异常包头日志
-                  buffer = [];
+
+            // if(window._currentPage === 'net')
+            // {
+              //console.log('netConfBuffertest');
+              netConfBuffer.push(...value);
+              // 检查是否收满大包
+              while (netConfBuffer.length >= 2) {
+                const bigLen = (netConfBuffer[0] << 8) | netConfBuffer[1];
+                // 健壮性校验
+                if (bigLen < 2 || bigLen > 8192) {
+                  abnormalCount++;
+                  // console.warn('[readLoop] 异常包头，bigLen=', bigLen, 'netConfBuffer=', netConfBuffer.slice(0, 16), 'abnormalCount=', abnormalCount); // 已关闭异常包头日志
+                  const before = netConfBuffer.length;
+                  netConfBuffer.shift(); // 丢弃一个字节，避免死循环
+                  if (netConfBuffer.length === before) {
+                    // 极端情况下buffer未减少，强制break防止死循环
+                    // console.error('[readLoop] netConfBuffer.shift()无效，强制break'); // 已关闭异常包头日志
+                    break;
+                  }
+                  if (abnormalCount > 10) {
+                    // console.error('[readLoop] 异常包头连续过多，清空buffer'); // 已关闭异常包头日志
+                    netConfBuffer = [];
+                    abnormalCount = 0;
+
+                    break;
+                  }
+                  continue;
+                } else {
                   abnormalCount = 0;
-
+                }
+                
+                if (netConfBuffer.length >= bigLen) {
+                  console.log('netConfBuffer:', netConfBuffer);
+                  const bigPacket = new Uint8Array(netConfBuffer.slice(0, bigLen));
+                  const container = document.getElementById('wireless-settings');
+                  if (container) container.innerHTML = '';
+                  parseCRSFPacket(bigPacket);
+                  netConfBuffer = netConfBuffer.slice(bigLen);
+                  document.getElementById('refresh-settings').disabled = false;
+                  document.getElementById('settings-status').textContent = '刷新完成';
+                } else {
                   break;
                 }
-                continue;
-              } else {
-                abnormalCount = 0;
-
               }
-
-              if (buffer.length >= bigLen) {
-                const bigPacket = new Uint8Array(buffer.slice(0, bigLen));
-                const container = document.getElementById('wireless-settings');
-                if (container) container.innerHTML = '';
-                parseCRSFPacket(bigPacket);
-                buffer = buffer.slice(bigLen);
-                document.getElementById('refresh-settings').disabled = false;
-                document.getElementById('settings-status').textContent = '刷新完成';
-
-              } else {
-                break;
-              }
-            }
+            //}
           }
         } catch (error) {
-          // console.error('读取数据错误:', error); // 已关闭串口读取错误日志
+           console.error('读取数据错误:', error); // 已关闭串口读取错误日志
           break;
         }
       }
@@ -1110,8 +1188,8 @@
     };
 
     // 初始化电池电量为0
-    batteryBarFill.style.width = '0';
-    batteryBarNum.textContent = '0%';
+    batteryBarFill.style.width = '100';
+    batteryBarNum.textContent = '100%';
     // 立即刷新电池栏为0%
     updateDeviceInfoBar();
 
@@ -1504,7 +1582,7 @@
 
     // 刷新按钮事件一键修复
     document.getElementById('refresh-settings').onclick = async () => {
-      buffer = []; // 清空buffer，防止旧数据残留
+      netConfBuffer = []; // 清空buffer，防止旧数据残留
       document.getElementById('refresh-settings').disabled = true;
       const statusElem = document.getElementById('settings-status');
       statusElem.textContent = '正在获取设置...';
@@ -1534,7 +1612,7 @@
     }
     // 刷新RX按钮事件
     document.getElementById('refresh-settings-rx').onclick = async () => {
-      buffer = [];
+      netConfBuffer = [];
       document.getElementById('refresh-settings-rx').disabled = true;
       const statusElem = document.getElementById('settings-status-rx');
       statusElem.textContent = '正在获取设置...';
@@ -1851,7 +1929,7 @@
         fwStatus.textContent = '传输失败：' + e.message;
       }
     };
-    // YMODEM协议主入口（实现）
+    // YMODEM协议主入口（重写，所有ACK/NAK等通过serialBuffer消费）
     async function ymodemSend(fileData, fileName, onProgress) {
       window._isYmodemBusy = true;
       try {
@@ -1860,7 +1938,7 @@
         const PACKET_SIZE = 1024;
         const PACKET_SIZE_128 = 128;
         const MAX_RETRY = 15;
-        const TIMEOUT = 5000; // ms, 增加等待时间
+        const TIMEOUT = 5000; // ms
         // 工具函数
         function crc16(buf) {
           let crc = 0;
@@ -1874,45 +1952,39 @@
           return crc & 0xFFFF;
         }
         function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-        // 监听ACK/NAK
-        let ackQueue = [];
-        let listen = true;
-        const ackListener = async () => {
-          while (listen) {
-            try {
-              const { value, done } = await reader.read();
-              if (done) break;
-              if (value && value.length > 0) {
-                console.log('[YMODEM][RECV]', Array.from(value).map(b=>b.toString(16).padStart(2,'0')).join(' '));
-                for (let b of value) {
-                  if ([ACK, NAK, CAN, CRC, EOT].includes(b)) ackQueue.push(b);
+
+        // 通过serialBuffer消费ACK/NAK等控制字节
+        async function ymodemWaitAckFromSerialBuffer(expect, timeout = TIMEOUT) {
+          const start = Date.now();
+          while (Date.now() - start < timeout) {
+            if (serialBuffer.length > 0) {
+              // 只消费控制字节
+              for (let i = 0; i < serialBuffer.length; i++) {
+                const b = serialBuffer[i];
+                if ([ACK, NAK, CAN, CRC, EOT].includes(b)) {
+                  serialBuffer.splice(i, 1); // 消费掉
+                  console.log(`[YMODEM][RECV] 控制字节: 0x${b.toString(16).padStart(2,'0')} (${b === ACK ? 'ACK' : b === NAK ? 'NAK' : b === CAN ? 'CAN' : b === CRC ? 'CRC' : b === EOT ? 'EOT' : ''})`);
+                  if (expect.includes(b)) return b;
+                  if (b === CAN) throw new Error('对方中止传输');
+                  // 不是期望的，继续等
                 }
               }
-            } catch (e) { break; }
-          }
-        };
-        const listenPromise = ackListener();
-        // 等待特定ACK
-        async function waitAck(expect, timeout = TIMEOUT) {
-          let t = Date.now();
-          while (Date.now() - t < timeout) {
-            if (ackQueue.length > 0) {
-              let b = ackQueue.shift();
-              if (expect.includes(b)) return b;
-              // CAN立即中断
-              if (b === CAN) throw new Error('对方中止传输');
             }
             await sleep(10);
           }
           throw new Error('超时未收到ACK/NAK');
         }
+
         // 1. 等待C
         let retry = 0;
         while (retry++ < MAX_RETRY) {
           try {
-            await waitAck([CRC], 3000); // 握手等待也加长
+            console.log('[YMODEM] 等待C (0x43) 握手...');
+            await ymodemWaitAckFromSerialBuffer([CRC], 3000);
+            console.log('[YMODEM] 收到C (0x43)，握手成功');
             break;
           } catch (e) {
+            console.warn(`[YMODEM] 握手未收到C，重试${retry}/${MAX_RETRY}`);
             if (retry >= MAX_RETRY) throw new Error('未收到C，设备未响应');
           }
         }
@@ -1937,35 +2009,47 @@
         // 头包重发
         retry = 0;
         while (retry++ < MAX_RETRY) {
-          console.log('[YMODEM][SEND]', Array.from(header).map(b=>b.toString(16).padStart(2,'0')).join(' '));
+          console.log('[YMODEM][SEND] 头包:', Array.from(header).map(b=>b.toString(16).padStart(2,'0')).join(' '));
           await writer.write(header);
-          let buf = [];
-          let t0 = Date.now();
-          let gotAckCrc = false, gotDoubleCrc = false;
-          while (Date.now() - t0 < TIMEOUT) {
-            if (ackQueue.length > 0) {
-              let b = ackQueue.shift();
-              buf.push(b);
-              // 检查06 43
-              if (buf.length >= 2 && buf[buf.length-2] === ACK && buf[buf.length-1] === CRC) {
-                gotAckCrc = true;
-                break;
-              }
-              // 检查43 43
-              if (buf.length >= 2 && buf[buf.length-2] === CRC && buf[buf.length-1] === CRC) {
-                gotDoubleCrc = true;
-                break;
-              }
-              // 检查NAK
-              if (b === NAK) {
-                break;
+          let gotAck = false;
+          const start = Date.now();
+          while (Date.now() - start < TIMEOUT) {
+            if (serialBuffer.length > 0) {
+              for (let i = 0; i < serialBuffer.length; i++) {
+                const b = serialBuffer[i];
+                if (b === ACK) {
+                  serialBuffer.splice(i, 1);
+                  gotAck = true;
+                  console.log('[YMODEM][RECV] 头包收到ACK (0x06)');
+                  break;
+                }
+                if ([CRC, NAK, CAN].includes(b)) {
+                  serialBuffer.splice(i, 1);
+                  if (b === NAK) {
+                    console.warn('[YMODEM][RECV] 收到NAK，重发头包');
+                    break;
+                  }
+                  if (b === CAN) throw new Error('对方中止传输');
+                  // 0x43 (C) 这里直接忽略，后面统一清理
+                }
               }
             }
+            if (gotAck) break;
             await sleep(10);
           }
-          if (gotAckCrc) break; // 正常流程
-          if (gotDoubleCrc) { console.log('[YMODEM] Got 0x43 0x43, retry header'); continue; }
-          if (retry >= MAX_RETRY) throw new Error('头包未被ACK+CRC');
+          if (gotAck) {
+            // 清理所有C(0x43)
+            let removed = 0;
+            for (let i = serialBuffer.length - 1; i >= 0; i--) {
+              if (serialBuffer[i] === CRC) {
+                serialBuffer.splice(i, 1);
+                removed++;
+              }
+            }
+            if (removed > 0) console.log(`[YMODEM] 握手后清理了${removed}个C(0x43)`);
+            break;
+          }
+          if (retry >= MAX_RETRY) throw new Error('头包未被ACK');
         }
         // 3. 发送数据包（STX+1024字节）
         let total = fileData.length;
@@ -1984,11 +2068,12 @@
           pkt[PACKET_SIZE + 4] = crc & 0xFF;
           retry = 0;
           while (retry++ < MAX_RETRY) {
-            console.log('[YMODEM][SEND]', Array.from(pkt).map(b=>b.toString(16).padStart(2,'0')).join(' '));
+            console.log(`[YMODEM][SEND] 数据包#${pktNum}:`, Array.from(pkt).map(b=>b.toString(16).padStart(2,'0')).join(' '));
             await writer.write(pkt);
             try {
-              let ack = await waitAck([ACK, NAK], TIMEOUT);
-              if (ack === ACK) break;
+              let ack = await ymodemWaitAckFromSerialBuffer([ACK, NAK], TIMEOUT);
+              if (ack === ACK) { console.log(`[YMODEM][RECV] 数据包#${pktNum} 收到ACK`); break; }
+              if (ack === NAK) { console.warn(`[YMODEM][RECV] 数据包#${pktNum} 收到NAK，重发`); }
             } catch (e) {
               if (retry >= MAX_RETRY) throw new Error('数据包未被ACK');
             }
@@ -2000,11 +2085,11 @@
         // 4. 发送EOT
         retry = 0;
         while (retry++ < MAX_RETRY) {
-          console.log('[YMODEM][SEND]', '04');
+          console.log('[YMODEM][SEND] EOT (0x04)');
           await writer.write(new Uint8Array([EOT]));
           try {
-            let ack = await waitAck([ACK], TIMEOUT);
-            if (ack === ACK) break;
+            let ack = await ymodemWaitAckFromSerialBuffer([ACK], TIMEOUT);
+            if (ack === ACK) { console.log('[YMODEM][RECV] EOT收到ACK'); break; }
           } catch (e) {
             if (retry >= MAX_RETRY) throw new Error('EOT未被ACK');
           }
@@ -2020,18 +2105,17 @@
         endPkt[PACKET_SIZE_128 + 4] = endCrc & 0xFF;
         retry = 0;
         while (retry++ < MAX_RETRY) {
-          console.log('[YMODEM][SEND]', Array.from(endPkt).map(b=>b.toString(16).padStart(2,'0')).join(' '));
+          console.log('[YMODEM][SEND] 结束包:', Array.from(endPkt).map(b=>b.toString(16).padStart(2,'0')).join(' '));
           await writer.write(endPkt);
           try {
-            let ack = await waitAck([ACK], TIMEOUT);
-            if (ack === ACK) break;
+            let ack = await ymodemWaitAckFromSerialBuffer([ACK], TIMEOUT);
+            if (ack === ACK) { console.log('[YMODEM][RECV] 结束包收到ACK'); break; }
           } catch (e) {
             if (retry >= MAX_RETRY) throw new Error('结束包未被ACK');
           }
         }
-        listen = false;
         await sleep(100);
-        if (listenPromise) await listenPromise;
+        console.log('[YMODEM] 传输完成');
       } finally {
         window._isYmodemBusy = false;
       }
@@ -2208,7 +2292,6 @@
               timer = setTimeout(() => {
                 const arrEnd = [0xA5, 0x33, modeByte, param.paramNum, 6, 0x0D, 0x0A];
                 if (writer) writer.write(new Uint8Array(arrEnd));
-                console.log('bind类2秒后自动发送END:', arrEnd.map(x=>x.toString(16).padStart(2,'0')).join(' '));
                 document.body.removeChild(dialog);
               }, 2000);
             } else {
@@ -2228,7 +2311,6 @@
                 if (poller) clearInterval(poller);
                 const arrStop = [0xA5, 0x33, modeByte, param.paramNum, 5, 0x0D, 0x0A];
                 if (writer) writer.write(new Uint8Array(arrStop));
-                console.log('持续类点击结束发送STOP:', arrStop.map(x=>x.toString(16).padStart(2,'0')).join(' '));
                 document.body.removeChild(dialog);
               };
               inner.appendChild(closeBtn);
@@ -2250,12 +2332,10 @@
             control.appendChild(infoSpan);
           }
         } else if (param.baseType === 12) {
-          // INFO
           const span = document.createElement('span');
           span.textContent = param.value;
           control.appendChild(span);
         } else {
-          // 其他类型只读
           const span = document.createElement('span');
           span.textContent = param.value;
           control.appendChild(span);
@@ -2374,11 +2454,13 @@
         attrPage.innerHTML = html;
         return;
       }
-      // 序列号16进制显示
-      let serialHex = '';
+      // 序列号连续数字显示
+      let serialNumStr = '';
       if (dev.serialNumber) {
         const arr = typeof dev.serialNumber === 'string' ? Array.from(dev.serialNumber).map(c=>c.charCodeAt(0)) : Array.from(dev.serialNumber);
-        serialHex = arr.map(b=>b.toString(16).padStart(2,'0')).join(' ').toUpperCase();
+        serialNumStr = arr.map(b=>b.toString(16).padStart(2,'0')).join('');
+        // 去除末尾的00
+        serialNumStr = serialNumStr.replace(/(00)+$/, '');
       }
       html += `<div style="background:#fff;border-radius:22px;box-shadow:0 8px 36px rgba(79,140,255,0.15);padding:48px 60px 40px 60px;min-width:380px;max-width:520px;width:100%;display:flex;flex-direction:column;align-items:center;">
         <div class="comm-title" style="margin-bottom:32px;display:flex;align-items:center;gap:12px;">
@@ -2392,7 +2474,7 @@
           </div>
           <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#eaf1ff;border-radius:12px;padding:12px 18px;">
             <span style="color:#3358e0;font-weight:500;min-width:90px;">序列号</span>
-            <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;letter-spacing:2px;">${serialHex}</span>
+            <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;letter-spacing:2px;">${serialNumStr}</span>
           </div>
           <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#f4f8ff;border-radius:12px;padding:12px 18px;">
             <span style="color:#3358e0;font-weight:500;min-width:90px;">ELRS固件版本</span>
@@ -2450,12 +2532,19 @@
       </div></div>`;
       attrPage.innerHTML = html;
     }
-    // 页面切换到设备属性时自动刷新
+    // 页面切换时自动刷新
     menuBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      serialBuffer = [];
+      console.log("serialBuffer:", serialBuffer);
+      // 其他切换页面的逻辑...
       if (btn.dataset.page === 'attr') {
-        btn.addEventListener('click', renderDeviceInfoPage);
+        renderDeviceInfoPage();
       }
+      // 你原有的showMainPage逻辑也可以放这里
+      showMainPage(btn.dataset.page);
     });
+  });
 
     // ========== 自动刷新TX/RX工具 ==========
     window._autoRefreshTask = null;
@@ -2753,15 +2842,19 @@
       if (page === 'net') {
         if (!window._netPageAutoRefreshed) {
           window._netPageAutoRefreshed = true;
-          buffer = [];
+          netConfBuffer = [];
           autoRefresh('TX');
         }
+      }
+      // 新增：切换到设备配置页面时渲染通道/trim/中心点
+      if (page === 'config') {
+        renderConfigPage();
       }
     };
 
     // ========== 刷新RX按钮逻辑增强 ==========
     document.getElementById('refresh-settings-rx').onclick = async () => {
-      buffer = [];
+      netConfBuffer = [];
       document.getElementById('refresh-settings-rx').disabled = true;
       const statusElem = document.getElementById('settings-status-rx');
       statusElem.textContent = '正在获取设置...';
@@ -2775,6 +2868,206 @@
       }, 1000);
       // 切换到RX控件（不自动刷新RX，只渲染）
     };
+
+    // 设备配置页面渲染函数
+    function renderConfigPage() {
+      const configPage = document.getElementById('page-config');
+      if (!configPage) return;
+      // 操作模式定义（标准飞控手法）
+      // M1: 左油门右副翼, M2: 左副翼右油门, M3: 左油门右方向, M4: 左方向右油门
+      const modeList = [
+        { name: 'M1', map: ['ELE', 'RUD', 'THR', 'AIL'] }, // 左油门右副翼
+        { name: 'M2', map: ['THR', 'RUD', 'ELE', 'AIL'] }, // 左副翼右油门
+        { name: 'M3', map: ['ELE', 'AIL', 'THR', 'RUD'] }, // 左油门右方向
+        { name: 'M4', map: ['THR', 'AIL', 'ELE', 'RUD'] }, // 左方向右油门
+      ];
+      let currentModeIdx = window._currentModeIdx || 0;
+      function getModeMap(idx) { return modeList[idx].map; }
+      let html = '<div class="comm-container"><div class="comm-title">设备配置</div>';
+      html += '<div style="margin:18px 0 24px 0;display:flex;align-items:center;gap:24px;">';
+      html += '<label style="font-weight:bold;color:#3358e0;font-size:1.13em;">操作模式：</label>';
+      html += '<select id="mode-select" style="font-size:1.13em;padding:8px 18px;border-radius:8px;border:1.5px solid #d0d7e6;">';
+      modeList.forEach((m, i) => {
+        html += `<option value="${i}"${i===currentModeIdx?' selected':''}>${m.name}</option>`;
+      });
+      html += '</select>';
+      html += '</div>';
+      // ...原有通道/trim/中心点渲染...
+      const channelNum = 10;
+      const trimNum = 4;
+      const centerNum = 4;
+      let channels = [];
+      for (let i = 0; i < channelNum; i++) {
+        channels.push(Math.round(Math.random() * 200 - 100));
+      }
+      let trims = [];
+      for (let i = 0; i < trimNum; i++) {
+        trims.push(Math.round(Math.random() * 200 - 100));
+      }
+      let centers = [];
+      for (let i = 0; i < centerNum; i++) {
+        centers.push(Math.round(Math.random() * 200 - 100));
+      }
+      html += '<div style="font-weight:bold;color:#3358e0;margin-bottom:8px;">通道数据</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;">';
+      for (let i = 0; i < channelNum; i++) {
+        html += `<div style="background:#f4f8ff;border-radius:8px;padding:10px 8px;display:flex;flex-direction:column;align-items:center;">
+          <span style="color:#3358e0;font-weight:500;">CH${i+1}</span>
+          <span style="font-family:'Roboto Mono',monospace;font-size:1.18em;margin-top:6px;">${channels[i]}</span>
+          <div style="width:100px;height:8px;background:#e0e7ff;border-radius:4px;margin-top:8px;overflow:hidden;">
+            <div style="height:8px;background:linear-gradient(90deg,#4f8cff 0%,#3358e0 100%);width:${(channels[i]+100)/2}%"></div>
+          </div>
+        </div>`;
+      }
+      html += '</div>';
+      // Trim滑块
+      html += '<div style="font-weight:bold;color:#3358e0;margin:24px 0 8px 0;">Trim 行程</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;">';
+      for (let i = 0; i < trimNum; i++) {
+        html += `<div style="background:#eaf1ff;border-radius:8px;padding:18px 12px;display:flex;flex-direction:column;align-items:center;">
+          <span style="color:#3358e0;font-weight:500;margin-bottom:8px;">Trim${i+1}</span>
+          <input type="range" min="-100" max="100" value="${trims[i]}" disabled style="width:90%;accent-color:#f1c40f;background:none;">
+          <span style="font-family:'Roboto Mono',monospace;font-size:1.18em;margin-top:8px;">${trims[i]}</span>
+        </div>`;
+      }
+      html += '</div>';
+      // 中心点滑块
+      html += '<div style="font-weight:bold;color:#3358e0;margin:24px 0 8px 0;">中心点行程</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;">';
+      for (let i = 0; i < centerNum; i++) {
+        html += `<div style="background:#f4f8ff;border-radius:8px;padding:18px 12px;display:flex;flex-direction:column;align-items:center;">
+          <span style="color:#3358e0;font-weight:500;margin-bottom:8px;">Center${i+1}</span>
+          <input type="range" min="-100" max="100" value="${centers[i]}" disabled style="width:90%;accent-color:#2ecc71;background:none;">
+          <span style="font-family:'Roboto Mono',monospace;font-size:1.18em;margin-top:8px;">${centers[i]}</span>
+        </div>`;
+      }
+      html += '</div>';
+      // 十字指示区（更大）
+      html += '<div style="margin-top:48px;display:flex;gap:80px;justify-content:center;">';
+      // 左手
+      html += '<div style="display:flex;flex-direction:column;align-items:center;">';
+      html += '<div style="font-weight:bold;color:#3358e0;margin-bottom:16px;font-size:1.22em;">左手摇杆</div>';
+      html += '<canvas id="cross-left" width="426" height="426" style="background:#f4f8ff;border-radius:22px;box-shadow:0 2px 16px #e0e7ff;"></canvas>';
+      html += '</div>';
+      // 右手
+      html += '<div style="display:flex;flex-direction:column;align-items:center;">';
+      html += '<div style="font-weight:bold;color:#3358e0;margin-bottom:16px;font-size:1.22em;">右手摇杆</div>';
+      html += '<canvas id="cross-right" width="426" height="426" style="background:#f4f8ff;border-radius:22px;box-shadow:0 2px 16px #e0e7ff;"></canvas>';
+      html += '</div>';
+      html += '</div>';
+      html += '</div>';
+      configPage.innerHTML = html;
+      // 画十字指示
+      function drawCross(canvas, modeMap, isLeft) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        const center = canvas.width / 2;
+        const crossLen = canvas.width / 2 - 40;
+        // 十字
+        ctx.save();
+        ctx.strokeStyle = '#3358e0';
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.moveTo(center, center - crossLen); ctx.lineTo(center, center + crossLen);
+        ctx.moveTo(center - crossLen, center); ctx.lineTo(center + crossLen, center);
+        ctx.stroke();
+        ctx.restore();
+        // 方向定义
+        // 方向: 上, 下, 左, 右
+        const fontSize = 24;
+        ctx.font = `bold ${fontSize}px Roboto`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        // 方向坐标（在十字线上，离中心点70px）
+        const offset = 70;
+        const directions = [
+          { // 上
+            label: isLeft ? modeMap[0] : modeMap[2],
+            x: center, y: center - offset,
+            arrowEnd: {x: center, y: center - offset + 20},
+            color: isLeft ? '#e74c3c' : '#e67e22'
+          },
+          { // 下
+            label: isLeft ? modeMap[0] : modeMap[2],
+            x: center, y: center + offset,
+            arrowEnd: {x: center, y: center + offset - 20},
+            color: isLeft ? '#e74c3c' : '#e67e22'
+          },
+          { // 左
+            label: isLeft ? modeMap[1] : modeMap[3],
+            x: center - offset, y: center,
+            arrowEnd: {x: center - offset + 20, y: center},
+            color: isLeft ? '#4f8cff' : '#16a085'
+          },
+          { // 右
+            label: isLeft ? modeMap[1] : modeMap[3],
+            x: center + offset, y: center,
+            arrowEnd: {x: center + offset - 20, y: center},
+            color: isLeft ? '#4f8cff' : '#16a085'
+          }
+        ];
+        // 画指针和文字
+        directions.forEach(dir => {
+          // 指针
+          ctx.save();
+          ctx.strokeStyle = dir.color;
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.moveTo(center, center);
+          ctx.lineTo(dir.arrowEnd.x, dir.arrowEnd.y);
+          ctx.stroke();
+          // 箭头头部
+          const angle = Math.atan2(dir.arrowEnd.y-center, dir.arrowEnd.x-center);
+          ctx.beginPath();
+          ctx.moveTo(dir.arrowEnd.x, dir.arrowEnd.y);
+          ctx.lineTo(
+            dir.arrowEnd.x - 12 * Math.cos(angle - Math.PI/6),
+            dir.arrowEnd.y - 12 * Math.sin(angle - Math.PI/6)
+          );
+          ctx.lineTo(
+            dir.arrowEnd.x - 12 * Math.cos(angle + Math.PI/6),
+            dir.arrowEnd.y - 12 * Math.sin(angle + Math.PI/6)
+          );
+          ctx.lineTo(dir.arrowEnd.x, dir.arrowEnd.y);
+          ctx.fillStyle = dir.color;
+          ctx.fill();
+          ctx.restore();
+          // 文字
+          ctx.fillStyle = dir.color;
+          ctx.fillText(dir.label, dir.x, dir.y);
+        });
+        // 中心点
+        ctx.beginPath();
+        ctx.arc(center, center, 22, 0, 2*Math.PI);
+        ctx.fillStyle = '#3358e0';
+        ctx.fill();
+      }
+      // 初始绘制
+      setTimeout(() => {
+        const left = document.getElementById('cross-left');
+        const right = document.getElementById('cross-right');
+        if (left && right) {
+          drawCross(left, getModeMap(currentModeIdx), 1);
+          drawCross(right, getModeMap(currentModeIdx), 0);
+        }
+      }, 0);
+      // 监听模式切换
+      setTimeout(() => {
+        const sel = document.getElementById('mode-select');
+        if (sel) {
+          sel.onchange = function() {
+            window._currentModeIdx = parseInt(sel.value);
+            const left = document.getElementById('cross-left');
+            const right = document.getElementById('cross-right');
+            if (left && right) {
+              drawCross(left, getModeMap(window._currentModeIdx), 1);
+              drawCross(right, getModeMap(window._currentModeIdx), 0);
+            }
+          };
+        }
+      }, 0);
+    }
   </script>
 </body>
+</html> 
 </html> 
