@@ -426,7 +426,7 @@
     }
     .setting-control select {
       width: 120px;
-      padding: 8px 10px;
+      padding: 8px 22px 8px 10px; /* 右侧22px，左侧10px */
       border-radius: 6px;
       border: 1.5px solid #d0d7e6;
       font-size: 1em;
@@ -739,7 +739,7 @@
           <div class="comm-container">
             <div class="calib-title">设备校准</div>
             <div style="display:flex;align-items:center;gap:22px;margin-bottom:18px;">
-              <button id="calib-get-attr" class="connect-btn" style="min-width:140px;">获取属性</button>
+              <button id="calib-action-btn" class="connect-btn" style="min-width:140px;">校准</button>
               <div class="calib-btn-slider-row" style="display:flex;align-items:center;gap:32px;">
                 <div class="calib-btn-group" id="calib-btn-group" style="display:flex;gap:18px;"></div>
                 <div class="calib-slider-row" style="display:flex;align-items:center;gap:12px;min-width:220px;">
@@ -1408,8 +1408,8 @@
           select.style.maxWidth = '180px';
           select.style.textAlign = 'right';
           param.options.forEach((opt, idx) => {
-            // 只保留可见ASCII字符，异常部分剔除
-            let cleanOpt = opt.replace(/[^\x20-\x7E]/g, '');
+            // 只保留数字、字母大小写、括号、空格、负号
+            let cleanOpt = opt.replace(/[^0-9a-zA-Z\(\)\-: ]/g, '');
             if (cleanOpt.length === 0) cleanOpt = '(空)';
             const option = document.createElement('option');
             option.value = idx;
@@ -1621,7 +1621,7 @@
       calibPage.innerHTML = `<div class="calib-container">
         <div class="calib-title">设备校准</div>
         <div style="display:flex;align-items:center;gap:22px;margin-bottom:18px;">
-          <button id="calib-get-attr" class="connect-btn" style="min-width:140px;">获取属性</button>
+          <button id="calib-action-btn" class="connect-btn" style="min-width:140px;">校准</button>
           <div class="calib-btn-slider-row" style="display:flex;align-items:center;gap:32px;">
             <div class="calib-btn-group" id="calib-btn-group" style="display:flex;gap:18px;"></div>
             <div class="calib-slider-row" style="display:flex;align-items:center;gap:12px;min-width:220px;">
@@ -1654,6 +1654,16 @@
         '<svg width="28" height="28" viewBox="0 0 28 28"><polygon points="14,6 24,20 4,20" fill="#2ecc71" stroke="#145a32" stroke-width="2"/></svg>'
       ];
       const stateNames = ['low', 'mid', 'high'];
+      // 进度条
+      const slider = document.getElementById('calib-slider');
+      const sliderValue = document.getElementById('calib-slider-value');
+      slider.oninput = function() {
+        sliderValue.textContent = slider.value;
+        slider.style.background = `linear-gradient(90deg, #4f8cff ${slider.value}%, #e0e7ff ${slider.value}%)`;
+      };
+      slider.style.background = `linear-gradient(90deg, #4f8cff 50%, #e0e7ff 50%)`;
+      // 三态按钮初始化
+      let switchStates = [1,1,1,1,1];
       btnNames.forEach((name, idx) => {
         const btn = document.createElement('button');
         btn.className = 'calib-btn-state';
@@ -1663,37 +1673,24 @@
           let state = btn.dataset.state;
           let next = state === 'mid' ? 'high' : state === 'high' ? 'low' : 'mid';
           btn.dataset.state = next;
-          let idx = stateNames.indexOf(next);
-          btn.querySelector('.calib-btn-svg').innerHTML = stateSvgs[idx];
+          let idx2 = stateNames.indexOf(next);
+          btn.querySelector('.calib-btn-svg').innerHTML = stateSvgs[idx2];
+          switchStates[idx] = idx2;
         };
         btn.onmouseenter = function() { btn.style.boxShadow = '0 0 12px 2px #b3cfff'; };
         btn.onmouseleave = function() { btn.style.boxShadow = ''; };
         btnGroup.appendChild(btn);
       });
-      // 滑动电位器
-      const slider = document.getElementById('calib-slider');
-      const sliderValue = document.getElementById('calib-slider-value');
-      slider.oninput = function() {
-        sliderValue.textContent = slider.value;
-        slider.style.background = `linear-gradient(90deg, #4f8cff ${(slider.value)}%, #e0e7ff ${(slider.value)}%)`;
-      };
-      slider.style.background = `linear-gradient(90deg, #4f8cff 50%, #e0e7ff 50%)`;
-      // 摇杆
-      let joy1 = {x: 0, y: 0};
-      let joy2 = {x: 0, y: 0};
+      // 摇杆显示（无动画，默认中点）
       const joy1Canvas = document.getElementById('joystick1');
       const joy2Canvas = document.getElementById('joystick2');
-      // 动画参数
-      let animStart = Date.now();
-      function drawJoystick(canvas, phase) {
+      function drawJoystick(canvas, x, y) {
         const ctx = canvas.getContext('2d');
         const w = canvas.width;
         const h = canvas.height;
         ctx.clearRect(0, 0, w, h);
-        // 背景
         ctx.fillStyle = '#f4f6fb';
         ctx.fillRect(0, 0, w, h);
-        // 虚线十字线
         ctx.save();
         ctx.setLineDash([12, 10]);
         ctx.strokeStyle = '#bbb';
@@ -1703,7 +1700,6 @@
         ctx.moveTo(0, h/2); ctx.lineTo(w, h/2);
         ctx.stroke();
         ctx.restore();
-        // 中心红点
         ctx.beginPath();
         ctx.arc(w/2, h/2, 12, 0, 2 * Math.PI);
         ctx.fillStyle = '#e74c3c';
@@ -1711,33 +1707,18 @@
         ctx.shadowBlur = 8;
         ctx.fill();
         ctx.shadowBlur = 0;
-        // 动画：黑点沿边框方形运动，射线从中心到黑点
-        // 计算黑点位置
-        const perim = 4 * (w - 40); // 20px边距
-        const speed = 120; // px/s
-        const t = ((Date.now() - animStart) / 1000) * speed;
-        let pos = (t + phase * perim/2) % perim;
-        let bx, by;
-        if (pos < w-40) { // top
-          bx = 20 + pos; by = 20;
-        } else if (pos < w-40 + h-40) { // right
-          bx = w-20; by = 20 + (pos - (w-40));
-        } else if (pos < 2*(w-40) + h-40) { // bottom
-          bx = w-20 - (pos - (w-40 + h-40)); by = h-20;
-        } else { // left
-          bx = 20; by = h-20 - (pos - (2*(w-40) + h-40));
-        }
-        // 射线
+        // 黑点
+        let bx = w/2 + (x||0) * (w/2-40) / 100;
+        let by = h/2 - (y||0) * (h/2-40) / 100;
+        // 指针线段
+        ctx.save();
+        ctx.strokeStyle = '#3358e0';
+        ctx.lineWidth = 4;
         ctx.beginPath();
         ctx.moveTo(w/2, h/2);
         ctx.lineTo(bx, by);
-        ctx.strokeStyle = 'rgba(79,140,255,0.95)';
-        ctx.lineWidth = 5;
-        ctx.shadowColor = '#4f8cff';
-        ctx.shadowBlur = 10;
         ctx.stroke();
-        ctx.shadowBlur = 0;
-        // 黑点
+        ctx.restore();
         ctx.beginPath();
         ctx.arc(bx, by, 14, 0, 2 * Math.PI);
         ctx.fillStyle = '#111';
@@ -1746,23 +1727,152 @@
         ctx.fill();
         ctx.shadowBlur = 0;
       }
-      // 动画循环
-      function animateJoysticks() {
-        drawJoystick(joy1Canvas, 0);
-        drawJoystick(joy2Canvas, 1); // phase差异实现对称
-        requestAnimationFrame(animateJoysticks);
+      // 默认中点
+      drawJoystick(joy1Canvas, 0, 0);
+      drawJoystick(joy2Canvas, 0, 0);
+
+      // 校准状态管理
+      let calibState = 'idle'; // idle, calibrating
+      let origChannelTimer = null;
+      let lastChannelData = [];
+      let centerMeans = [0,0,0,0];
+
+      // 进入页面时先发map指令
+      async function requestChannelMapForCalib() {
+        if (!writer) return;
+        await writer.write(new Uint8Array([0xA5,0x55,0x0D,0,0,0x0D,0x0A]));
       }
-      animateJoysticks();
-      // 新增"获取属性"按钮事件
-      const getAttrBtn = document.getElementById('calib-get-attr');
-      if (getAttrBtn) {
-        getAttrBtn.onclick = async function() {
-          if (!writer) { console.warn('[校准] 未连接串口，无法发送获取属性指令'); return; }
-          const cmd = new Uint8Array([0xA5, 0x55, 0x0D, 0, 0, 0x0D, 0x0A]);
-          console.log('[校准] 发送获取属性指令:', Array.from(cmd).map(x=>x.toString(16).padStart(2,'0')).join(' '));
-          await writer.write(cmd);
-        };
+      // 解析0x44包
+      function tryParseChannelMapPacketCalib(buf) {
+        if (!buf || buf.length < 3) return false;
+        if (buf[0] !== 0x44) return false;
+        const len = buf[1];
+        if (buf.length < len + 2) return false;
+        const crc = buf[len+1];
+        const calcCrc = crc8tab_js(buf.slice(2,2+len-1), len-1);
+        if (crc !== calcCrc) return false;
+        // 收到map后开始请求原始通道数据
+        if (origChannelTimer) clearInterval(origChannelTimer);
+        origChannelTimer = setInterval(() => {
+          if (calibState === 'idle') {
+            writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A]));
+          }
+        }, 20);
+        return true;
       }
+      // 解析0x22包
+      function tryParseOrigChannelPacketCalib(buf) {
+        if (!buf || buf.length < 3) return false;
+        if (buf[0] !== 0x22) return false;
+        const len = buf[1];
+        if (buf.length < len + 2) return false;
+        const crc = buf[len+1];
+        const calcCrc = crc8tab_js(buf.slice(2,2+len-1), len-1);
+        if (crc !== calcCrc) return false;
+        let recvChannel = [];
+        for(let i=0;i<10;i++){
+          let off = 8 + i*2;
+          let val = buf[off] | (buf[off+1]<<8);
+          recvChannel[i] = val;
+        }
+        lastChannelData = recvChannel;
+        // 前4个通道映射到摇杆
+        // 左摇杆: CH1/CH2, 右摇杆: CH3/CH4
+        let joy1x = Math.round((recvChannel[0]-1500)/5);
+        let joy1y = Math.round((recvChannel[1]-1500)/5);
+        let joy2x = Math.round((recvChannel[2]-1500)/5);
+        let joy2y = Math.round((recvChannel[3]-1500)/5);
+        drawJoystick(joy1Canvas, joy1x, joy1y);
+        drawJoystick(joy2Canvas, joy2x, joy2y);
+        // 三态开关
+        for(let i=0;i<5;i++){
+          let btn = btnGroup.children[i];
+          let v = recvChannel[4+i];
+          let stateIdx = 1;
+          if (v < 1300) stateIdx = 0;
+          else if (v > 1700) stateIdx = 2;
+          btn.dataset.state = stateNames[stateIdx];
+          btn.querySelector('.calib-btn-svg').innerHTML = stateSvgs[stateIdx];
+          switchStates[i] = stateIdx;
+        }
+        // 进度条（第10通道）
+        let s1val = recvChannel[9];
+        let percent = Math.round((s1val-988)/(2012-988)*100);
+        slider.value = percent;
+        sliderValue.textContent = percent;
+        slider.style.background = `linear-gradient(90deg, #4f8cff ${percent}%, #e0e7ff ${percent}%)`;
+      }
+      // 监听串口数据
+      if (!window._calibSerialBuffer) window._calibSerialBuffer = [];
+      // 只在校准页面时处理
+      window._calibSerialBuffer.length = 0;
+      // 代理push
+      if (!window._calibPushProxy) {
+        window._calibPushProxy = true;
+        const origPush = Array.prototype.push;
+        Array.prototype.push = function(...args) {
+          const ret = origPush.apply(this, args);
+          // 检查0x44
+          for (let i = 0; i < this.length - 2; i++) {
+            if (this[i] === 0x44) {
+              const len = this[i+1];
+              if (this.length >= i + len + 2) {
+                const buf = this.slice(i, i+len+2);
+                if (tryParseChannelMapPacketCalib(buf)) {
+                  this.splice(i, len+2);
+                  break;
+                }
+              }
+            }
+            if (this[i] === 0x22) {
+              const len = this[i+1];
+              if (this.length >= i + len + 2) {
+                const buf = this.slice(i, i+len+2);
+                if (tryParseOrigChannelPacketCalib(buf)) {
+                  this.splice(i, len+2);
+                  break;
+                }
+              }
+            }
+          }
+          return ret;
+        }
+      }
+      // 进入页面时发map
+      requestChannelMapForCalib();
+
+      // 校准按钮逻辑
+      const calibBtn = document.getElementById('calib-action-btn');
+      calibBtn.onclick = async function() {
+        if (calibState === 'idle') {
+          calibState = 'calibrating';
+          calibBtn.textContent = '确认中心点';
+          if (origChannelTimer) { clearInterval(origChannelTimer); origChannelTimer = null; }
+        } else if (calibState === 'calibrating') {
+          // 计算中心点均值
+          let means = [0,0,0,0];
+          for(let i=0;i<4;i++){
+            means[i] = lastChannelData[i] || 1500;
+          }
+          centerMeans = means;
+          // 打印到控制台
+          console.log('中心点均值:', centerMeans);
+          // 发送指令
+          if (writer) {
+            await writer.write(new Uint8Array([0xA5,0x55,0x22,4,0x0D,0x0A]));
+          }
+          calibState = 'idle';
+          calibBtn.textContent = '校准';
+          // 恢复原始通道数据请求
+          if (!origChannelTimer) {
+            origChannelTimer = setInterval(() => {
+              if (calibState === 'idle') {
+                writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A]));
+              }
+            }, 20);
+          }
+        }
+      };
     }
 
     renderCalibPage();
@@ -1994,7 +2104,7 @@
         header[0] = SOH;
         header[1] = 0x00; // 包号
         header[2] = 0xFF;
-        // 文件名和大小
+        //c:\Users\11868\Desktop\project\Web\RadioMasterWeb.html 文件名和大小
         let nameBytes = new TextEncoder().encode(fileName);
         let sizeBytes = new TextEncoder().encode(fileData.length.toString());
         header.set(nameBytes, 3);
@@ -2210,8 +2320,8 @@
           select.style.maxWidth = '180px';
           select.style.textAlign = 'right';
           param.options.forEach((opt, idx) => {
-            // 只保留可见ASCII字符，异常部分剔除
-            let cleanOpt = opt.replace(/[^\x20-\x7E]/g, '');
+            // 只保留数字、字母大小写、括号、空格、负号
+            let cleanOpt = opt.replace(/[^0-9a-zA-Z\(\)\-: ]/g, '');
             if (cleanOpt.length === 0) cleanOpt = '(空)';
             const option = document.createElement('option');
             option.value = idx;
@@ -2709,7 +2819,7 @@
           select.style.maxWidth = '180px';
           select.style.textAlign = 'right';
           param.options.forEach((opt, idx) => {
-            let cleanOpt = opt.replace(/[^\x20-\x7E]/g, '');
+            let cleanOpt = opt.replace(/[^0-9a-zA-Z\(\)\-: ]/g, '');
             if (cleanOpt.length === 0) cleanOpt = '(空)';
             const option = document.createElement('option');
             option.value = idx;
@@ -2911,9 +3021,10 @@
       const channelNum = 10;
       const trimNum = 4;
       const centerNum = 4;
+      // CH默认值全部为1500
       let channels = [];
       for (let i = 0; i < channelNum; i++) {
-        channels.push(Math.round(Math.random() * 200 - 100));
+        channels.push(1500);
       }
       let trims = [];
       for (let i = 0; i < trimNum; i++) {
@@ -2929,10 +3040,16 @@
         html += `<div style="background:#f4f8ff;border-radius:8px;padding:10px 8px;display:flex;flex-direction:column;align-items:center;">
           <span style="color:#3358e0;font-weight:500;">CH${i+1}</span>
           <span id="ch-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.18em;margin-top:6px;">${channels[i]}</span>
-          <div id="ch-bar-${i}" style="width:100px;height:8px;background:#e0e7ff;border-radius:4px;margin-top:8px;overflow:hidden;">
-            <div style="height:8px;background:linear-gradient(90deg,#4f8cff 0%,#3358e0 100%);width:${(channels[i]+100)/2}%"></div>
+          <div id="ch-bar-${i}" style="width:100px;height:8px;background:#e0e7ff;border-radius:4px;margin-top:8px;overflow:hidden;position:relative;">
+            <div style="height:8px;background:linear-gradient(90deg,#4f8cff 0%,#3358e0 100%);width:${((channels[i]-988)/(2012-988)*100)}%"></div>
+            <div style="position:absolute;left:${((1500-988)/(2012-988)*100)}%;top:0;bottom:0;width:2px;background:#bbb;opacity:0.7;"></div>
           </div>
-          <input type="number" id="ch-input-${i}" value="${channels[i]}" style="width:70px;margin-top:8px;text-align:center;border:1.5px solid #d0d7e6;border-radius:6px;font-size:1em;" />
+          <div style='display:flex;align-items:center;gap:6px;margin-top:8px;'>
+            <button id="ch-dir-btn-${i}" style="min-width:38px;padding:2px 8px;border-radius:6px;border:1.5px solid #b3cfff;background:#fff;color:#3358e0;font-weight:bold;cursor:pointer;">NOR</button>
+            <span style='font-size:0.98em;color:#888;'>左</span><span id="ch-left-${i}" style='min-width:32px;text-align:center;'>0</span>
+            <span style='font-size:0.98em;color:#888;'>右</span><span id="ch-right-${i}" style='min-width:32px;text-align:center;'>0</span>
+          </div>
+          <input type="number" id="ch-input-${i}" value="${channels[i]}" style="width:70px;margin-top:8px;text-align:center;border:1.5px solid #d0d7e6;border-radius:6px;font-size:1em;display:none;" />
         </div>`;
       }
       html += '</div>';
@@ -2940,16 +3057,17 @@
       html += '<div style="font-weight:bold;color:#3358e0;margin:24px 0 8px 0;">Trim 行程</div>';
       html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;">';
       for (let i = 0; i < trimNum; i++) {
-        const min = -100, max = 100, val = trims[i];
+        const min = -130, max = 130, val = trims[i];
         const percent = ((val - min) / (max - min)) * 100;
-        html += `<div style="background:#eaf1ff;border-radius:8px;padding:18px 12px;display:flex;flex-direction:column;align-items:center;">
+        html += `<div style="background:#eaf1ff;border-radius:8px;padding:18px 12px;display:flex;flex-direction:column;align-items:center;position:relative;">
           <span style="color:#3358e0;font-weight:500;margin-bottom:8px;">Trim${i+1}</span>
           <div style="width:120px;height:12px;position:relative;margin:12px 0 8px 0;">
             <div style="position:absolute;top:5px;left:0;width:100%;height:2px;background:#b3cfff;border-radius:2px;"></div>
             <div id="trim-dot-${i}" style="position:absolute;top:0;left:calc(${percent}% - 7px);width:14px;height:14px;background:#4f8cff;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 8px #b3cfff;"></div>
+            <div style="position:absolute;top:0;left:50%;width:2px;height:14px;background:#e74c3c;border-radius:2px;z-index:2;"></div>
           </div>
-          <span id="trim-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${val}</span>
-          <input type="number" id="trim-input-${i}" value="${val}" style="width:70px;margin-top:8px;text-align:center;border:1.5px solid #d0d7e6;border-radius:6px;font-size:1em;" />
+          <span id="trim-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.08em;${val===0?'background:#ffe066;border-radius:6px;padding:2px 8px;font-weight:bold;':''}">${val}</span>
+          <input type="number" id="trim-input-${i}" value="${val}" min="-130" max="130" style="width:70px;margin-top:8px;text-align:center;border:1.5px solid #d0d7e6;border-radius:6px;font-size:1em;" />
         </div>`;
       }
       html += '</div>';
@@ -2959,14 +3077,15 @@
       for (let i = 0; i < centerNum; i++) {
         const min = -100, max = 100, val = centers[i];
         const percent = ((val - min) / (max - min)) * 100;
-        html += `<div style="background:#f4f8ff;border-radius:8px;padding:18px 12px;display:flex;flex-direction:column;align-items:center;">
+        html += `<div style="background:#f4f8ff;border-radius:8px;padding:18px 12px;display:flex;flex-direction:column;align-items:center;position:relative;">
           <span style="color:#3358e0;font-weight:500;margin-bottom:8px;">Center${i+1}</span>
           <div style="width:120px;height:12px;position:relative;margin:12px 0 8px 0;">
             <div style="position:absolute;top:5px;left:0;width:100%;height:2px;background:#b3cfff;border-radius:2px;"></div>
             <div id="center-dot-${i}" style="position:absolute;top:0;left:calc(${percent}% - 7px);width:14px;height:14px;background:#2ecc71;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 8px #b3cfff;"></div>
+            <div style="position:absolute;top:0;left:50%;width:2px;height:14px;background:#e74c3c;border-radius:2px;z-index:2;"></div>
           </div>
-          <span id="center-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${val}</span>
-          <input type="number" id="center-input-${i}" value="${val}" style="width:70px;margin-top:8px;text-align:center;border:1.5px solid #d0d7e6;border-radius:6px;font-size:1em;" />
+          <span id="center-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.08em;${val===0?'background:#ffe066;border-radius:6px;padding:2px 8px;font-weight:bold;':''}">${val}</span>
+          <input type="number" id="center-input-${i}" value="${val}" min="-100" max="100" style="width:70px;margin-top:8px;text-align:center;border:1.5px solid #d0d7e6;border-radius:6px;font-size:1em;" />
         </div>`;
       }
       html += '</div>';
@@ -2988,119 +3107,179 @@
       // 交互：输入框动态修改控件
       for (let i = 0; i < channelNum; i++) {
         const input = document.getElementById(`ch-input-${i}`);
+        input.min = 988;
+        input.max = 2012;
         input.oninput = function() {
-          let v = Math.max(-100, Math.min(100, parseInt(input.value)||0));
+          let v = Math.max(988, Math.min(2012, parseInt(input.value)||1500));
           document.getElementById(`ch-val-${i}`).textContent = v;
           const bar = document.getElementById(`ch-bar-${i}`).children[0];
-          bar.style.width = ((v+100)/2) + '%';
+          bar.style.width = ((v-988)/(2012-988)*100) + '%';
         };
+      }
+      // Trim节流发送逻辑
+      let trimSendTimer = null, trimLastSend = 0;
+      async function sendTrimData(force=false) {
+        let now = Date.now();
+        if (!force && now - trimLastSend < 500) return;
+        trimLastSend = now;
+        let trims = [];
+        for(let j=0;j<4;j++){
+          let val = Math.max(-130, Math.min(130, parseInt(document.getElementById(`trim-input-${j}`).value)||0));
+          trims.push(val);
+        }
+        let buf = [0xA5,0x55,0x0F];
+        for(let t of trims){
+          let t16 = (t<0)?(t+0x10000):t;
+          buf.push(t16&0xFF, (t16>>8)&0xFF);
+        }
+        buf.push(0x0D,0x0A);
+        if(typeof writer!=="undefined"&&writer) await writer.write(new Uint8Array(buf));
       }
       for (let i = 0; i < trimNum; i++) {
         const input = document.getElementById(`trim-input-${i}`);
+        input.min = -130;
+        input.max = 130;
         input.oninput = function() {
-          let v = Math.max(-100, Math.min(100, parseInt(input.value)||0));
+          let v = Math.max(-130, Math.min(130, parseInt(input.value)||0));
           document.getElementById(`trim-val-${i}`).textContent = v;
-          document.getElementById(`trim-dot-${i}`).style.left = `calc(${((v+100)/2)}% - 7px)`;
+          document.getElementById(`trim-dot-${i}`).style.left = `calc(${((v+130)/2.6)}% - 7px)`;
+          // 节流发送
+          if (trimSendTimer) clearTimeout(trimSendTimer);
+          trimSendTimer = setTimeout(()=>sendTrimData(true), 500);
+          sendTrimData(false);
         };
+        // 松手/失焦/变更时强制发送
+        ['change','mouseup','blur'].forEach(evt=>{
+          input.addEventListener(evt, ()=>sendTrimData(true));
+        });
+      }
+      // Center节流发送逻辑
+      let centerSendTimer = null, centerLastSend = 0;
+      async function sendCenterData(force=false) {
+        let now = Date.now();
+        if (!force && now - centerLastSend < 500) return;
+        centerLastSend = now;
+        let centers = [];
+        for(let j=0;j<4;j++){
+          let val = Math.max(-100, Math.min(100, parseInt(document.getElementById(`center-input-${j}`).value)||0));
+          let sendVal = Math.round(val*512/100);
+          centers.push(sendVal);
+        }
+        let buf = [0xA5,0x55,0x1A];
+        for(let c of centers){
+          let c16 = (c<0)?(c+0x10000):c;
+          buf.push(c16&0xFF, (c16>>8)&0xFF);
+        }
+        buf.push(0x0D,0x0A);
+        if(typeof writer!=="undefined"&&writer) await writer.write(new Uint8Array(buf));
       }
       for (let i = 0; i < centerNum; i++) {
         const input = document.getElementById(`center-input-${i}`);
+        input.min = -100;
+        input.max = 100;
         input.oninput = function() {
           let v = Math.max(-100, Math.min(100, parseInt(input.value)||0));
           document.getElementById(`center-val-${i}`).textContent = v;
           document.getElementById(`center-dot-${i}`).style.left = `calc(${((v+100)/2)}% - 7px)`;
+          // 节流发送
+          if (centerSendTimer) clearTimeout(centerSendTimer);
+          centerSendTimer = setTimeout(()=>sendCenterData(true), 500);
+          sendCenterData(false);
         };
+        // 松手/失焦/变更时强制发送
+        ['change','mouseup','blur'].forEach(evt=>{
+          input.addEventListener(evt, ()=>sendCenterData(true));
+        });
+      }
+      // Center区1500高亮
+      for (let i = 0; i < centerNum; i++) {
+        const valSpan = document.getElementById(`center-val-${i}`);
+        if (parseInt(valSpan.textContent) === 1500) {
+          valSpan.style.background = '#ffe066';
+          valSpan.style.borderRadius = '6px';
+          valSpan.style.padding = '2px 8px';
+          valSpan.style.fontWeight = 'bold';
+        }
       }
       // 画十字指示
       function drawCross(canvas, modeMap, isLeft) {
         const ctx = canvas.getContext('2d');
-        ctx.clearRect(0,0,canvas.width,canvas.height);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         const center = canvas.width / 2;
-        const crossLen = canvas.width / 2 - 40;
-        // 美化参数
-        const arrowLen = crossLen - 40;
-        const arrowWidth = 18;
-        const fontSize = 32;
-        const labelBg = '#fff';
-        const labelColor = '#3358e0';
-        const labelShadow = 'rgba(79,140,255,0.13)';
-        // 只画两个方向的箭头和字母
-        function drawArrowWithLabel(x0, y0, dx, dy, label, labelAlign) {
-          // 箭头
-          ctx.save();
-          ctx.beginPath();
-          ctx.moveTo(x0, y0);
-          ctx.lineTo(x0 + dx * (arrowLen - 24), y0 + dy * (arrowLen - 24));
-          ctx.strokeStyle = ctx.createLinearGradient(x0, y0, x0 + dx * arrowLen, y0 + dy * arrowLen);
-          ctx.strokeStyle.addColorStop(0, '#4f8cff');
-          ctx.strokeStyle.addColorStop(1, '#3358e0');
-          ctx.lineWidth = 10;
-          ctx.lineCap = 'round';
-          ctx.stroke();
-          // 箭头头部
-          const endX = x0 + dx * arrowLen;
-          const endY = y0 + dy * arrowLen;
-          ctx.beginPath();
-          ctx.moveTo(endX, endY);
-          ctx.lineTo(endX - dy * arrowWidth / 2 - dx * arrowWidth, endY + dx * arrowWidth / 2 - dy * arrowWidth);
-          ctx.lineTo(endX + dy * arrowWidth / 2 - dx * arrowWidth, endY - dx * arrowWidth / 2 - dy * arrowWidth);
-          ctx.closePath();
-          ctx.fillStyle = '#3358e0';
-          ctx.shadowColor = '#b3cfff';
-          ctx.shadowBlur = 6;
-          ctx.fill();
-          ctx.shadowBlur = 0;
-          ctx.restore();
-          // 字母
-          ctx.save();
-          ctx.font = `bold ${fontSize}px Roboto`;
-          ctx.textAlign = labelAlign;
-          ctx.textBaseline = 'middle';
-          // 字母位置：箭头外侧
-          const labelOffset = 48;
-          const labelX = x0 + dx * (arrowLen + labelOffset);
-          const labelY = y0 + dy * (arrowLen + labelOffset);
-          // 圆角背景
-          const text = label;
-          const textW = ctx.measureText(text).width + 28;
-          ctx.beginPath();
-          ctx.moveTo(labelX - textW/2, labelY - 24);
-          ctx.lineTo(labelX + textW/2, labelY - 24);
-          ctx.arcTo(labelX + textW/2 + 12, labelY - 24, labelX + textW/2 + 12, labelY + 24, 16);
-          ctx.lineTo(labelX + textW/2 + 12, labelY + 24);
-          ctx.arcTo(labelX + textW/2 + 12, labelY + 40, labelX + textW/2, labelY + 40, 16);
-          ctx.lineTo(labelX - textW/2, labelY + 40);
-          ctx.arcTo(labelX - textW/2 - 12, labelY + 40, labelX - textW/2 - 12, labelY + 24, 16);
-          ctx.lineTo(labelX - textW/2 - 12, labelY - 24);
-          ctx.arcTo(labelX - textW/2 - 12, labelY - 40, labelX - textW/2, labelY - 40, 16);
-          ctx.closePath();
-          ctx.fillStyle = labelBg;
-          ctx.shadowColor = labelShadow;
-          ctx.shadowBlur = 8;
-          ctx.fill();
-          ctx.shadowBlur = 0;
-          ctx.fillStyle = labelColor;
-          ctx.fillText(text, labelX, labelY);
-          ctx.restore();
-        }
-        if (isLeft) {
-          // 左摇杆：modeMap[0]上下，modeMap[1]左右
-          drawArrowWithLabel(center, center, 0, -1, modeMap[0], 'center'); // 上
-          drawArrowWithLabel(center, center, 0, 1, modeMap[0], 'center');  // 下
-          drawArrowWithLabel(center, center, -1, 0, modeMap[1], 'right');  // 左
-          drawArrowWithLabel(center, center, 1, 0, modeMap[1], 'left');    // 右
-        } else {
-          // 右摇杆：modeMap[2]上下，modeMap[3]左右
-          drawArrowWithLabel(center, center, 0, -1, modeMap[2], 'center'); // 上
-          drawArrowWithLabel(center, center, 0, 1, modeMap[2], 'center');  // 下
-          drawArrowWithLabel(center, center, -1, 0, modeMap[3], 'right');  // 左
-          drawArrowWithLabel(center, center, 1, 0, modeMap[3], 'left');    // 右
-        }
-        // 中心点
+        const axisLen = canvas.width / 2 - 40;
+        const arrowSize = 16;
+        ctx.save();
+        ctx.lineWidth = 2.2;
+        ctx.strokeStyle = 'blue';
+        // 画十字线
         ctx.beginPath();
-        ctx.arc(center, center, 22, 0, 2*Math.PI);
-        ctx.fillStyle = '#3358e0';
-        ctx.fill();
+        ctx.moveTo(center, center - axisLen); // 上
+        ctx.lineTo(center, center + axisLen); // 下
+        ctx.moveTo(center - axisLen, center); // 左
+        ctx.lineTo(center + axisLen, center); // 右
+        ctx.stroke();
+        // 画箭头函数（更精致）
+        function drawArrow(x, y, dx, dy) {
+          ctx.save();
+          ctx.strokeStyle = 'red';
+          ctx.lineWidth = 2.2;
+          ctx.beginPath();
+          if (dx === 0 && dy === -1) { // 上
+            ctx.moveTo(x, y - arrowSize);
+            ctx.lineTo(x - arrowSize * 0.6, y + arrowSize * 0.7);
+            ctx.lineTo(x + arrowSize * 0.6, y + arrowSize * 0.7);
+            ctx.closePath();
+          } else if (dx === 0 && dy === 1) { // 下
+            ctx.moveTo(x, y + arrowSize);
+            ctx.lineTo(x - arrowSize * 0.6, y - arrowSize * 0.7);
+            ctx.lineTo(x + arrowSize * 0.6, y - arrowSize * 0.7);
+            ctx.closePath();
+          } else if (dx === -1 && dy === 0) { // 左
+            ctx.moveTo(x - arrowSize, y);
+            ctx.lineTo(x + arrowSize * 0.7, y - arrowSize * 0.6);
+            ctx.lineTo(x + arrowSize * 0.7, y + arrowSize * 0.6);
+            ctx.closePath();
+          } else if (dx === 1 && dy === 0) { // 右
+            ctx.moveTo(x + arrowSize, y);
+            ctx.lineTo(x - arrowSize * 0.7, y - arrowSize * 0.6);
+            ctx.lineTo(x - arrowSize * 0.7, y + arrowSize * 0.6);
+            ctx.closePath();
+          }
+          ctx.stroke();
+          ctx.restore();
+        }
+        // 画四个箭头
+        drawArrow(center, center - axisLen, 0, -1); // 上
+        drawArrow(center, center + axisLen, 0, 1);  // 下
+        drawArrow(center - axisLen, center, -1, 0); // 左
+        drawArrow(center + axisLen, center, 1, 0);  // 右
+        // 画标签（位置优化+美化）
+        ctx.save();
+        ctx.font = 'bold 22px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = 4;
+        // 阴影提升可读性
+        ctx.shadowColor = 'rgba(255,255,255,0.8)';
+        ctx.shadowBlur = 4;
+        // 纵向标签（上下）向左偏移20px
+        // 横向标签（左右）向上偏移20px
+        if (isLeft) {
+          // modeMap[0]上下，modeMap[1]左右
+          ctx.fillStyle = 'black';
+          ctx.fillText(modeMap[0], center - 20, center - axisLen / 2); // 上
+          ctx.fillText(modeMap[0], center - 20, center + axisLen / 2); // 下
+          ctx.fillText(modeMap[1], center - axisLen / 2, center - 20); // 左
+          ctx.fillText(modeMap[1], center + axisLen / 2, center - 20); // 右
+        } else {
+          // modeMap[2]上下，modeMap[3]左右
+          ctx.fillStyle = 'black';
+          ctx.fillText(modeMap[2], center - 20, center - axisLen / 2); // 上
+          ctx.fillText(modeMap[2], center - 20, center + axisLen / 2); // 下
+          ctx.fillText(modeMap[3], center - axisLen / 2, center - 20); // 左
+          ctx.fillText(modeMap[3], center + axisLen / 2, center - 20); // 右
+        }
+        ctx.restore();
       }
       // 初始绘制
       setTimeout(() => {
@@ -3124,6 +3303,136 @@
               drawCross(right, getModeMap(window._currentModeIdx), 0);
             }
           };
+        }
+      }, 0);
+      // 默认操作模式为M2
+      window._currentModeIdx = 1;
+      // 渲染后绑定正反按钮和行程显示
+      setTimeout(() => {
+        for (let i = 0; i < channelNum; i++) {
+          const btn = document.getElementById(`ch-dir-btn-${i}`);
+          if (btn) {
+            btn.onclick = function() {
+              if (!window.channelMap) return;
+              window.channelMap.channelDirSend[i] = window.channelMap.channelDirSend[i] ? 0 : 1;
+              btn.textContent = window.channelMap.channelDirSend[i] ? 'REV' : 'NOR';
+              btn.style.background = window.channelMap.channelDirSend[i] ? '#ffe066' : '#fff';
+              btn.style.color = window.channelMap.channelDirSend[i] ? '#e74c3c' : '#3358e0';
+            };
+            // 初始化按钮状态
+            if (window.channelMap && window.channelMap.channelDirSend[i]) {
+              btn.textContent = 'REV';
+              btn.style.background = '#ffe066';
+              btn.style.color = '#e74c3c';
+            } else {
+              btn.textContent = 'NOR';
+              btn.style.background = '#fff';
+              btn.style.color = '#3358e0';
+            }
+          }
+          // 行程显示
+          const leftSpan = document.getElementById(`ch-left-${i}`);
+          const rightSpan = document.getElementById(`ch-right-${i}`);
+          if (window.channelMap) {
+            if (leftSpan) leftSpan.textContent = window.channelMap.channelLeftSend[i] || 0;
+            if (rightSpan) rightSpan.textContent = window.channelMap.channelRightSend[i] || 0;
+          }
+        }
+      }, 0);
+      // 串口通信页面接收缓冲区最大10KB
+      setTimeout(() => {
+        const outputBox = document.getElementById('output');
+        if (outputBox) {
+          const origAppend = outputBox.appendChild;
+          outputBox.appendChild = function(node) {
+            if (outputBox.textContent.length > (1048576/100)) outputBox.textContent = '';
+            return origAppend.call(this, node);
+          };
+        }
+      }, 0);
+      // Center区渲染修正
+      html += '<div style="font-weight:bold;color:#3358e0;margin:24px 0 8px 0;">中心点行程</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;">';
+      for (let i = 0; i < centerNum; i++) {
+        const min = -100, max = 100, val = centers[i];
+        const percent = ((val - min) / (max - min)) * 100;
+        html += `<div style="background:#f4f8ff;border-radius:8px;padding:18px 12px;display:flex;flex-direction:column;align-items:center;position:relative;">
+          <span style="color:#3358e0;font-weight:500;margin-bottom:8px;">Center${i+1}</span>
+          <div style="width:120px;height:12px;position:relative;margin:12px 0 8px 0;">
+            <div style="position:absolute;top:5px;left:0;width:100%;height:2px;background:#b3cfff;border-radius:2px;"></div>
+            <div id="center-dot-${i}" style="position:absolute;top:0;left:calc(${percent}% - 7px);width:14px;height:14px;background:#2ecc71;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 8px #b3cfff;"></div>
+            <div style="position:absolute;top:0;left:50%;width:2px;height:14px;background:#e74c3c;border-radius:2px;z-index:2;"></div>
+          </div>
+          <span id="center-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.08em;${val===0?'background:#ffe066;border-radius:6px;padding:2px 8px;font-weight:bold;':''}">${val}</span>
+          <input type="number" id="center-input-${i}" value="${val}" min="-100" max="100" style="width:70px;margin-top:8px;text-align:center;border:1.5px solid #d0d7e6;border-radius:6px;font-size:1em;" />
+        </div>`;
+      }
+      html += '</div>';
+      // Trim区0点标记
+      html += '<div style="font-weight:bold;color:#3358e0;margin:24px 0 8px 0;">Trim 行程</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;">';
+      for (let i = 0; i < trimNum; i++) {
+        const min = -130, max = 130, val = trims[i];
+        const percent = ((val - min) / (max - min)) * 100;
+        html += `<div style="background:#eaf1ff;border-radius:8px;padding:18px 12px;display:flex;flex-direction:column;align-items:center;position:relative;">
+          <span style="color:#3358e0;font-weight:500;margin-bottom:8px;">Trim${i+1}</span>
+          <div style="width:120px;height:12px;position:relative;margin:12px 0 8px 0;">
+            <div style="position:absolute;top:5px;left:0;width:100%;height:2px;background:#b3cfff;border-radius:2px;"></div>
+            <div id="trim-dot-${i}" style="position:absolute;top:0;left:calc(${percent}% - 7px);width:14px;height:14px;background:#4f8cff;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 8px #b3cfff;"></div>
+            <div style="position:absolute;top:0;left:50%;width:2px;height:14px;background:#e74c3c;border-radius:2px;z-index:2;"></div>
+          </div>
+          <span id="trim-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.08em;${val===0?'background:#ffe066;border-radius:6px;padding:2px 8px;font-weight:bold;':''}">${val}</span>
+          <input type="number" id="trim-input-${i}" value="${val}" min="-130" max="130" style="width:70px;margin-top:8px;text-align:center;border:1.5px solid #d0d7e6;border-radius:6px;font-size:1em;" />
+        </div>`;
+      }
+      html += '</div>';
+      // 左右行程输入框
+      html += '<div style="font-weight:bold;color:#3358e0;margin:24px 0 8px 0;">左右行程</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;">';
+      for (let i = 0; i < channelNum; i++) {
+        // 下位机数据x，显示和输入都是100-x
+        let leftRaw = (window.channelMap && window.channelMap.channelLeftSend) ? window.channelMap.channelLeftSend[i]||0 : 0;
+        let leftDisplay = 100 - leftRaw;
+        let rightRaw = (window.channelMap && window.channelMap.channelRightSend) ? window.channelMap.channelRightSend[i]||0 : 0;
+        let rightDisplay = 100 - rightRaw;
+        html += `<div style="background:#f4f8ff;border-radius:8px;padding:10px 8px;display:flex;flex-direction:column;align-items:center;">
+          <span style="color:#3358e0;font-weight:500;">CH${i+1}</span>
+          <div style='display:flex;align-items:center;gap:8px;margin-top:8px;'>
+            <span style='font-size:0.98em;color:#888;'>左</span>
+            <input type="number" id="ch-left-input-${i}" value="${leftDisplay}" min="0" max="100" style="width:54px;text-align:center;border:1.5px solid #b3cfff;border-radius:6px;font-size:1em;" />
+            <span style='font-size:0.98em;color:#888;'>右</span>
+            <input type="number" id="ch-right-input-${i}" value="${rightDisplay}" min="0" max="100" style="width:54px;text-align:center;border:1.5px solid #b3cfff;border-radius:6px;font-size:1em;" />
+          </div>
+        </div>`;
+      }
+      html += '</div>';
+      // 左右行程输入框事件绑定
+      setTimeout(() => {
+        for (let i = 0; i < channelNum; i++) {
+          // 左
+          const leftInput = document.getElementById(`ch-left-input-${i}`);
+          if (leftInput) {
+            leftInput.onchange = function() {
+              let v = Math.max(0, Math.min(100, parseInt(leftInput.value)||0));
+              leftInput.value = v;
+              // 存储时反向转换：x = 100-v
+              if (window.channelMap && window.channelMap.channelLeftSend) {
+                window.channelMap.channelLeftSend[i] = 100 - v;
+              }
+            };
+          }
+          // 右
+          const rightInput = document.getElementById(`ch-right-input-${i}`);
+          if (rightInput) {
+            rightInput.onchange = function() {
+              let v = Math.max(0, Math.min(100, parseInt(rightInput.value)||0));
+              rightInput.value = v;
+              // 存储时反向转换：x = 100-v
+              if (window.channelMap && window.channelMap.channelRightSend) {
+                window.channelMap.channelRightSend[i] = 100 - v;
+              }
+            };
+          }
         }
       }, 0);
     }
@@ -3155,6 +3464,299 @@
       window._deviceInfo = undefined;
       autoSendDevAttr();
     }
+
+    // ========== 设备配置页面通道映射自动请求与刷新 ========== //
+    let _channelMapTries = 0;
+    let _channelMapMaxTries = 3;
+    let _channelMapTimer = null;
+    let _channelMapSuccess = false;
+    let _channelMapRefreshBtn = null;
+    let _hasRequestedTrimAndMid = false;
+    let _hasTrimAndMid = false;
+    let _origChannelTimer = null;
+    function showChannelMapRefreshBtn() {
+      if (!_channelMapRefreshBtn) {
+        _channelMapRefreshBtn = document.createElement('button');
+        _channelMapRefreshBtn.textContent = '重新刷新通道映射';
+        _channelMapRefreshBtn.style.background = 'linear-gradient(90deg,#4f8cff 0%,#3358e0 100%)';
+        _channelMapRefreshBtn.style.color = '#fff';
+        _channelMapRefreshBtn.style.border = 'none';
+        _channelMapRefreshBtn.style.borderRadius = '8px';
+        _channelMapRefreshBtn.style.padding = '10px 32px';
+        _channelMapRefreshBtn.style.fontSize = '1.08em';
+        _channelMapRefreshBtn.style.fontWeight = 'bold';
+        _channelMapRefreshBtn.style.cursor = 'pointer';
+        _channelMapRefreshBtn.style.margin = '18px auto';
+        _channelMapRefreshBtn.onclick = () => {
+          _channelMapTries = 0;
+          _channelMapSuccess = false;
+          _hasRequestedTrimAndMid = false;
+          _hasTrimAndMid = false;
+          _channelMapRefreshBtn.style.display = 'none';
+          requestChannelMap();
+        };
+        const configPage = document.getElementById('page-config');
+        if (configPage) configPage.appendChild(_channelMapRefreshBtn);
+      }
+      _channelMapRefreshBtn.style.display = '';
+    }
+    function hideChannelMapRefreshBtn() {
+      if (_channelMapRefreshBtn) _channelMapRefreshBtn.style.display = 'none';
+    }
+    async function requestChannelMap() {
+      if (!writer) return;
+      if (_channelMapSuccess) return;
+      if (_channelMapTries >= _channelMapMaxTries) {
+        showChannelMapRefreshBtn();
+        return;
+      }
+      _channelMapTries++;
+      // 发送请求
+      const buf = new Uint8Array([0xA5,0x55,0x0D,0,0,0x0D,0x0A]);
+      await writer.write(buf);
+      // 2秒后检查是否成功
+      _channelMapTimer = setTimeout(() => {
+        if (!_channelMapSuccess) requestChannelMap();
+      }, 2000);
+    }
+    // 进入设备配置页面时自动请求
+    const _orig_showMainPage2 = showMainPage;
+    showMainPage = function(page) {
+      _orig_showMainPage2.apply(this, arguments);
+      if (page === 'config') {
+        _channelMapTries = 0;
+        _channelMapSuccess = false;
+        _hasRequestedTrimAndMid = false;
+        _hasTrimAndMid = false;
+        hideChannelMapRefreshBtn();
+        requestChannelMap();
+        // 停止原始通道定时器
+        if (_origChannelTimer) { clearInterval(_origChannelTimer); _origChannelTimer = null; }
+      } else {
+        // 离开页面时停止原始通道定时器
+        if (_origChannelTimer) { clearInterval(_origChannelTimer); _origChannelTimer = null; }
+      }
+    };
+    // ========== 0x44包解析，自动切换操作模式 ========== //
+    function tryParseChannelMapPacket(buf) {
+      //console.log('tryParseChannelMapPacket Running', buf);
+      if (!buf || buf.length < 3) return false;
+      if (buf[0] !== 0x44) return false;
+      const len = buf[1];
+      if (buf.length < len + 2) return false;
+      const crc = buf[len+1];
+      // CRC8校验
+      const calcCrc = crc8tab_js(buf.slice(2,2+len-1), len-1);
+      if (crc !== calcCrc) return false;
+      // 构造channelMap对象
+      let channelMap = {
+        channelMapNum: buf[52],
+        ctlModeRecv: buf[53],
+        channelMapRecv: Array.from(buf.slice(2,18)),
+        channelMapSend: Array.from(buf.slice(2,18)),
+        channelLeftRecv: Array.from(buf.slice(18,34)),
+        channelLeftSend: Array.from(buf.slice(18,34)),
+        channelRightRecv: Array.from(buf.slice(34,50)),
+        channelRightSend: Array.from(buf.slice(34,50)),
+        channelDirRecv: [],
+        channelDirSend: [],
+        channelMidRecv: [0,0,0,0],
+        channelMidSend: [0,0,0,0],
+        channelHanderRecv: [0,0,0,0],
+        channelTrimSend: [0,0,0,0]
+      };
+      // channelDirRecv: 16位bit
+      let dirWord = buf[50] | (buf[51]<<8);
+      for(let i=0;i<16;i++){
+        channelMap.channelDirRecv[i] = (dirWord & (1<<i)) ? 1 : 0;
+        channelMap.channelDirSend[i] = channelMap.channelDirRecv[i];
+      }
+      // 页面center/trim全设为0
+      for(let i=0;i<4;i++){
+        let centerInput = document.getElementById(`center-input-${i}`);
+        let centerValSpan = document.getElementById(`center-val-${i}`);
+        if(centerInput) centerInput.value = 0;
+        if(centerValSpan) centerValSpan.textContent = 0;
+        let centerDot = document.getElementById(`center-dot-${i}`);
+        if(centerDot) centerDot.style.left = `calc(${((0+130)/2.6)}% - 7px)`;
+        let trimInput = document.getElementById(`trim-input-${i}`);
+        let trimValSpan = document.getElementById(`trim-val-${i}`);
+        if(trimInput) trimInput.value = 0;
+        if(trimValSpan) trimValSpan.textContent = 0;
+        let trimDot = document.getElementById(`trim-dot-${i}`);
+        if(trimDot) trimDot.style.left = `calc(${((0+130)/2.6)}% - 7px)`;
+      }
+      window.channelMap = channelMap;
+      console.log('channelMap:', channelMap);
+      console.log('tryParseChannelMapPacket Running over');
+      // 自动切换操作模式
+      if (typeof channelMap.ctlModeRecv === 'number') {
+        let modeIdx = 1; // 默认M2
+        if (channelMap.ctlModeRecv === 1) modeIdx = 0;
+        else if (channelMap.ctlModeRecv === 2) modeIdx = 1;
+        else if (channelMap.ctlModeRecv === 3) modeIdx = 2;
+        else if (channelMap.ctlModeRecv === 4) modeIdx = 3;
+        window._currentModeIdx = modeIdx;
+        // 切换下拉框
+        setTimeout(() => {
+          const sel = document.getElementById('mode-select');
+          if (sel) sel.value = modeIdx;
+          // 触发一次change以刷新UI
+          if (sel) sel.dispatchEvent(new Event('change'));
+        }, 0);
+      }
+      // 自动发送获取trim和中心点的指令（每次都发）
+      if (typeof writer !== 'undefined' && writer) {
+        const cmd = new Uint8Array([0xA5,0x55,0x1F,0x0D,0x0A]);
+        writer.write(cmd);
+        console.log('已发送获取trim和中心点指令: [0xA5,0x55,0x1F,0x0D,0x0A]');
+      }
+      return channelMap;
+    }
+    // 解析0x12包，处理trim和center
+    function tryParseTrimAndMidPacket(buf) {
+      //console.log('tryParseTrimAndMidPacket Running', buf);
+      if (!buf || buf.length < 3) return false;
+      if (buf[0] !== 0x12) return false;
+      const len = buf[1];
+      if (buf.length < len + 2) return false;
+      const crc = buf[len+1];
+      const calcCrc = crc8tab_js(buf.slice(2,2+len-1), len-1);
+      if (crc !== calcCrc) return false;
+      // 解析中心点
+      let channelMidRecv = [], channelMidSend = [], channelHanderRecv = [], channelTrimSend = [];
+      for(let i=0;i<4;i++){
+        let off = 2 + i*2;
+        let val = buf[off] | (buf[off+1]<<8);
+        if(val & 0x8000) val = val - 0x10000;
+        channelMidRecv[i] = val;
+        channelMidSend[i] = val;
+        let centerVal = Math.round(val * 100 / 512);
+        let centerInput = document.getElementById(`center-input-${i}`);
+        let centerValSpan = document.getElementById(`center-val-${i}`);
+        if(centerInput) centerInput.value = centerVal;
+        if(centerValSpan) centerValSpan.textContent = centerVal;
+        let centerDot = document.getElementById(`center-dot-${i}`);
+        if(centerDot) centerDot.style.left = `calc(${((centerVal+130)/2.6)}% - 7px)`;
+      }
+      // 解析trim
+      for(let i=0;i<4;i++){
+        let off = 2 + 8 + i*2;
+        let val = buf[off] | (buf[off+1]<<8);
+        if(val & 0x8000) val = val - 0x10000;
+        channelHanderRecv[i] = val;
+        channelTrimSend[i] = val;
+        let trimInput = document.getElementById(`trim-input-${i}`);
+        let trimValSpan = document.getElementById(`trim-val-${i}`);
+        if(trimInput) trimInput.value = val;
+        if(trimValSpan) trimValSpan.textContent = val;
+        let trimDot = document.getElementById(`trim-dot-${i}`);
+        if(trimDot) trimDot.style.left = `calc(${((val+130)/2.6)}% - 7px)`;
+      }
+      let trimMidObj = { channelMidRecv, channelMidSend, channelHanderRecv, channelTrimSend };
+      window.trimMidObj = trimMidObj;
+      console.log('trimMidObj:', trimMidObj);
+      _hasTrimAndMid = true;
+      // 启动原始通道数据定时器（只启动一次）
+      if (!_origChannelTimer && typeof writer !== 'undefined' && writer) {
+        _origChannelTimer = setInterval(() => {
+          writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A]));
+        }, 20);
+        console.log('已启动原始通道数据定时器，每20ms发送一次[0xA5,0x55,0x02,0x0D,0x0A]');
+      }
+      return trimMidObj;
+    }
+    // 解析0x22包，显示原始通道数据
+    function tryParseOrigChannelPacket(buf) {
+      if (!buf || buf.length < 3) return false;
+      if (buf[0] !== 0x22) return false;
+      const len = buf[1];
+      if (buf.length < len + 2) return false;
+      const crc = buf[len+1];
+      const calcCrc = crc8tab_js(buf.slice(2,2+len-1), len-1);
+      if (crc !== calcCrc) return false;
+      // 解析原始通道数据
+      let recvChannel = [];
+      for(let i=0;i<10;i++){
+        let off = 8 + i*2;
+        let val = buf[off] | (buf[off+1]<<8);
+        recvChannel[i] = val;
+      }
+      // 只有recvChannel[0]非0才显示
+      if (recvChannel[0] !== 0) {
+        for(let i=0;i<10;i++){
+          let chVal = document.getElementById(`ch-val-${i}`);
+          let chInput = document.getElementById(`ch-input-${i}`);
+          if(chVal) chVal.textContent = recvChannel[i];
+          if(chInput) chInput.value = recvChannel[i];
+          let bar = document.getElementById(`ch-bar-${i}`)?.children[0];
+          if(bar) bar.style.width = ((recvChannel[i]-988)/(2012-988)*100) + '%';
+        }
+      }
+      window.origChannelData = recvChannel;
+      //console.log('原始通道数据:', recvChannel);
+      return true;
+    }
+    // 在serialBuffer推入数据后，尝试判定0x44/0x12/0x22包并移除数据
+    const _orig_serialBufferPush = Array.prototype.push;
+    Array.prototype.push = function(...args) {
+      //console.log('serialBuffer.push called', args, this);
+      const ret = _orig_serialBufferPush.apply(this, args);
+      let found;
+      do {
+        found = false;
+        for (let i = 0; i < this.length - 2; i++) {
+          // 检查0x44包
+          if (this[i] === 0x44) {
+            const len = this[i+1];
+            if (this.length >= i + len + 2) {
+              const buf = this.slice(i, i+len+2);
+              if (tryParseChannelMapPacket(buf)) {
+                _channelMapSuccess = true;
+                hideChannelMapRefreshBtn();
+                if (_channelMapTimer) clearTimeout(_channelMapTimer);
+                this.splice(i, len+2);
+                found = true;
+                break;
+              }
+            }
+          }
+          // 检查0x12包
+          if (this[i] === 0x12) {
+            const len = this[i+1];
+            if (this.length >= i + len + 2) {
+              const buf = this.slice(i, i+len+2);
+              if (tryParseTrimAndMidPacket(buf)) {
+                this.splice(i, len+2);
+                found = true;
+                break;
+              }
+            }
+          }
+          // 检查0x22包
+          if (this[i] === 0x22) {
+            const len = this[i+1];
+            if (this.length >= i + len + 2) {
+              const buf = this.slice(i, i+len+2);
+              if (tryParseOrigChannelPacket(buf)) {
+                this.splice(i, len+2);
+                found = true;
+                break;
+              }
+            }
+          }
+        }
+      } while(found);
+      return ret;
+    };
+
+    // ========== 进入页面时自动管理原始通道数据定时器 ==========
+    const _orig_showMainPage3 = showMainPage;
+    showMainPage = function(page) {
+      _orig_showMainPage3.apply(this, arguments);
+      // 设备配置、设备校准页面如需持续获取，由各自页面逻辑重新开启
+      // 串口通信页面不自动开启定时器
+    };
   </script>
 </body>
 </html> 
