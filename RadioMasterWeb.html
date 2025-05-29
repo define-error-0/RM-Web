@@ -477,10 +477,12 @@
     /* --- UI美化 --- */
     /* 优化comm-container和param-container宽度、padding、控件尺寸 */
     .comm-container {
-      max-width: 1100px !important;
-      min-width: 600px !important;
-      padding: 18px 18px 12px 18px !important;
-      margin-bottom: 12px !important;
+      max-width: 1400px !important;
+      min-width: 900px !important;
+      padding: 32px 32px 24px 32px !important;
+      margin-bottom: 24px !important;
+      min-height: 900px !important;
+      height: auto !important;
     }
     .param-container {
       gap: 10px !important;
@@ -640,6 +642,35 @@
       position: relative;
       z-index: 1;
     }
+    .progress-bar {
+      position: relative;
+      height: 26px; /* 与圆点高度一致 */
+      box-sizing: border-box;
+      background: none;
+    }
+    .progress-bar .bar-line {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      width: 100%;
+      height: 3px;
+      background: #b3cfff;
+      border-radius: 2px;
+      transform: translateY(-50%);
+      z-index: 1;
+    }
+    .progress-dot {
+      position: absolute;
+      top: 0;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      box-shadow: 0 2px 12px #b3cfff;
+      border: 3px solid #fff;
+      transition: left 0.3s;
+      z-index: 2;
+      background: #2ecc71; /* 或 #4f8cff */
+    }
   </style>
 </head>
 <body style="margin:0;">
@@ -790,6 +821,25 @@
     </div>
   </div>
   <script>
+    // ========== 全局任务管理器 ==========
+    window._pageTasks = {
+      timers: [],
+      intervals: [],
+      listeners: [],
+      custom: [],
+    };
+    function stopAllTasks() {
+      window._pageTasks.timers.forEach(id => clearTimeout(id));
+      window._pageTasks.timers = [];
+      window._pageTasks.intervals.forEach(id => clearInterval(id));
+      window._pageTasks.intervals = [];
+      window._pageTasks.listeners.forEach(({target, type, fn}) => {
+        target.removeEventListener(type, fn);
+      });
+      window._pageTasks.listeners = [];
+      window._pageTasks.custom.forEach(fn => { try { fn(); } catch(e) {} });
+      window._pageTasks.custom = [];
+    }
     // 新结构页面元素
     document.getElementById('recv-hex').checked = true;
     const connectPage = document.getElementById('connect-page');
@@ -816,10 +866,29 @@
     // 页面切换逻辑
     const menuBtns = document.querySelectorAll('.menu-btn');
     const mainPages = document.querySelectorAll('.main-page');
+    // 页面初始化注册表
+    const pageInits = {
+      comm: initCommPage,
+      attr: initAttrPage,
+      config: initConfigPage,
+      net: initNetPage,
+      calib: initCalibPage,
+      fw: initFwPage,
+    };
+
+    // 记录当前页面，防止重复初始化
+    window._currentPage = null;
+
+    // 重写showMainPage，只有切换页面时才初始化
     function showMainPage(page) {
+      if (window._currentPage === page) return; // 已经在当前页面，不重复初始化
+      window._currentPage = page;
+      stopAllTasks(); // 先清理所有任务
       mainPages.forEach(p => p.style.display = 'none');
       document.getElementById('page-' + page).style.display = '';
       menuBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.page === page));
+      // 页面初始化
+      if (pageInits[page]) pageInits[page]();
     }
     menuBtns.forEach(btn => {
       btn.onclick = () => showMainPage(btn.dataset.page);
@@ -981,7 +1050,7 @@
     let globalBuffer = new Uint8Array(4096);
     let globalBufferLen = 0;
     let globalBufferTimeout = null;
-    let devAttrBufferTimeout = null;
+    //let devAttrBufferTimeout = null;
     const DEV_ATTR_BUFFER_MAX = 4000;
 
     function tryParseDevAttrBuffer() {
@@ -1057,7 +1126,7 @@
             // }, 500);
             //tryParseDevAttrBuffer();
 
-            console.log('[设备属性] serialBuffer:', serialBuffer.map(x=>x.toString(16).padStart(2,'0')).join(' '), '长度:', serialBuffer.length);
+            //console.log('[缓冲区数据] serialBuffer:', serialBuffer.map(x=>x.toString(16).padStart(2,'0')).join(' '), '长度:', serialBuffer.length);
             const len = serialBuffer[1]  
             if (value[0] === 0xFF && value.length > 60 && len <= value.length) {
               console.log('[设备属性] 收到原始包:', Array.from(serialBuffer).map(x=>x.toString(16).padStart(2,'0')).join(' '), '长度:', value.length);
@@ -1732,10 +1801,10 @@
       drawJoystick(joy2Canvas, 0, 0);
 
       // 校准状态管理
-      let calibState = 'idle'; // idle, calibrating
-      let origChannelTimer = null;
-      let lastChannelData = [];
-      let centerMeans = [0,0,0,0];
+      window.calibState = 'idle'; // idle, calibrating
+      //let origChannelTimer = null;
+      window.lastChannelData = [];
+      window.centerMeans = [0,0,0,0];
 
       // 进入页面时先发map指令
       async function requestChannelMapForCalib() {
@@ -1752,16 +1821,38 @@
         const calcCrc = crc8tab_js(buf.slice(2,2+len-1), len-1);
         if (crc !== calcCrc) return false;
         // 收到map后开始请求原始通道数据
-        if (origChannelTimer) clearInterval(origChannelTimer);
-        origChannelTimer = setInterval(() => {
-          if (calibState === 'idle') {
-            writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A]));
-          }
-        }, 20);
+        // if (origChannelTimer) clearInterval(origChannelTimer);
+        // origChannelTimer = setInterval(() => {
+        //   if (calibState === 'idle') {
+        //     writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A]));
+        //   }
+        // }, 20);
         return true;
       }
       // 解析0x22包
       function tryParseOrigChannelPacketCalib(buf) {
+        // 只在校准页面可见时刷新控件
+        var pageCalib = document.getElementById('page-calib');
+        if (!pageCalib || pageCalib.style.display === 'none') return;
+
+        // 实时获取控件
+        const btnGroup = document.getElementById('calib-btn-group');
+        const slider = document.getElementById('calib-slider');
+        const sliderValue = document.getElementById('calib-slider-value');
+        const joy1Canvas = document.getElementById('joystick1');
+        const joy2Canvas = document.getElementById('joystick2');
+        const stateNames = ['low', 'mid', 'high'];
+        const stateSvgs = [
+          // 低：倒三角
+          '<svg width="28" height="28" viewBox="0 0 28 28"><polygon points="14,22 4,8 24,8" fill="#e74c3c" stroke="#b71c1c" stroke-width="2"/></svg>',
+          // 中：菱形
+          '<svg width="28" height="28" viewBox="0 0 28 28"><polygon points="14,5 25,14 14,23 3,14" fill="#f1c40f" stroke="#b7950b" stroke-width="2"/></svg>',
+          // 高：正三角
+          '<svg width="28" height="28" viewBox="0 0 28 28"><polygon points="14,6 24,20 4,20" fill="#2ecc71" stroke="#145a32" stroke-width="2"/></svg>'
+        ];
+
+        if (!btnGroup || !slider || !sliderValue || !joy1Canvas || !joy2Canvas) return;
+
         if (!buf || buf.length < 3) return false;
         if (buf[0] !== 0x22) return false;
         const len = buf[1];
@@ -1775,15 +1866,15 @@
           let val = buf[off] | (buf[off+1]<<8);
           recvChannel[i] = val;
         }
-        lastChannelData = recvChannel;
         // 前4个通道映射到摇杆
-        // 左摇杆: CH1/CH2, 右摇杆: CH3/CH4
         let joy1x = Math.round((recvChannel[0]-1500)/5);
         let joy1y = Math.round((recvChannel[1]-1500)/5);
-        let joy2x = Math.round((recvChannel[2]-1500)/5);
-        let joy2y = Math.round((recvChannel[3]-1500)/5);
-        drawJoystick(joy1Canvas, joy1x, joy1y);
-        drawJoystick(joy2Canvas, joy2x, joy2y);
+        let joy2x = Math.round((recvChannel[3]-1500)/5);
+        let joy2y = Math.round((recvChannel[2]-1500)/5);
+        if (typeof drawJoystick === 'function') {
+          drawJoystick(joy1Canvas, joy2x, joy2y);
+          drawJoystick(joy2Canvas, joy1x, joy1y);
+        }
         // 三态开关
         for(let i=0;i<5;i++){
           let btn = btnGroup.children[i];
@@ -1793,7 +1884,6 @@
           else if (v > 1700) stateIdx = 2;
           btn.dataset.state = stateNames[stateIdx];
           btn.querySelector('.calib-btn-svg').innerHTML = stateSvgs[stateIdx];
-          switchStates[i] = stateIdx;
         }
         // 进度条（第10通道）
         let s1val = recvChannel[9];
@@ -1802,75 +1892,77 @@
         sliderValue.textContent = percent;
         slider.style.background = `linear-gradient(90deg, #4f8cff ${percent}%, #e0e7ff ${percent}%)`;
       }
-      // 监听串口数据
-      if (!window._calibSerialBuffer) window._calibSerialBuffer = [];
-      // 只在校准页面时处理
-      window._calibSerialBuffer.length = 0;
-      // 代理push
-      if (!window._calibPushProxy) {
-        window._calibPushProxy = true;
-        const origPush = Array.prototype.push;
-        Array.prototype.push = function(...args) {
-          const ret = origPush.apply(this, args);
-          // 检查0x44
-          for (let i = 0; i < this.length - 2; i++) {
-            if (this[i] === 0x44) {
-              const len = this[i+1];
-              if (this.length >= i + len + 2) {
-                const buf = this.slice(i, i+len+2);
-                if (tryParseChannelMapPacketCalib(buf)) {
-                  this.splice(i, len+2);
-                  break;
-                }
-              }
-            }
-            if (this[i] === 0x22) {
-              const len = this[i+1];
-              if (this.length >= i + len + 2) {
-                const buf = this.slice(i, i+len+2);
-                if (tryParseOrigChannelPacketCalib(buf)) {
-                  this.splice(i, len+2);
-                  break;
-                }
-              }
-            }
-          }
-          return ret;
-        }
-      }
+      window.tryParseOrigChannelPacketCalib = tryParseOrigChannelPacketCalib;
+      // // 监听串口数据
+      // if (!window._calibSerialBuffer) window._calibSerialBuffer = [];
+      // // 只在校准页面时处理
+      // window._calibSerialBuffer.length = 0;
+      // // 代理push
+      // if (!window._calibPushProxy) {
+      //   window._calibPushProxy = true;
+      //   const origPush = Array.prototype.push;
+      //   Array.prototype.push = function(...args) {
+      //     const ret = origPush.apply(this, args);
+      //     // 检查0x44
+      //     for (let i = 0; i < this.length - 2; i++) {
+      //       if (this[i] === 0x44) {
+      //         const len = this[i+1];
+      //         if (this.length >= i + len + 2) {
+      //           const buf = this.slice(i, i+len+2);
+      //           if (tryParseChannelMapPacketCalib(buf)) {
+      //             this.splice(i, len+2);
+      //             break;
+      //           }
+      //         }
+      //       }
+      //       if (this[i] === 0x22) {
+      //         const len = this[i+1];
+      //         if (this.length >= i + len + 2) {
+      //           const buf = this.slice(i, i+len+2);
+      //           if (tryParseOrigChannelPacketCalib(buf)) {
+      //             this.splice(i, len+2);
+      //             break;
+      //           }
+      //         }
+      //       }
+      //     }
+      //     return ret;
+      //   }
+      // }
       // 进入页面时发map
       requestChannelMapForCalib();
 
       // 校准按钮逻辑
       const calibBtn = document.getElementById('calib-action-btn');
       calibBtn.onclick = async function() {
-        if (calibState === 'idle') {
-          calibState = 'calibrating';
+        if (window.calibState === 'idle') {
+          window.calibState = 'calibrating';
           calibBtn.textContent = '确认中心点';
-          if (origChannelTimer) { clearInterval(origChannelTimer); origChannelTimer = null; }
-        } else if (calibState === 'calibrating') {
+          // if (origChannelTimer) { clearInterval(origChannelTimer); origChannelTimer = null; }
+        } else if (window.calibState === 'calibrating') {
           // 计算中心点均值
           let means = [0,0,0,0];
           for(let i=0;i<4;i++){
-            means[i] = lastChannelData[i] || 1500;
+            means[i] = window.lastChannelData[i] || 1500;
           }
-          centerMeans = means;
+          window.centerMeans = means;
           // 打印到控制台
-          console.log('中心点均值:', centerMeans);
+          console.log('中心点均值:', window.centerMeans);
           // 发送指令
           if (writer) {
             await writer.write(new Uint8Array([0xA5,0x55,0x22,4,0x0D,0x0A]));
+            console.log('发送获取中点数据指令');
           }
-          calibState = 'idle';
+          window.calibState = 'idle';
           calibBtn.textContent = '校准';
           // 恢复原始通道数据请求
-          if (!origChannelTimer) {
-            origChannelTimer = setInterval(() => {
-              if (calibState === 'idle') {
-                writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A]));
-              }
-            }, 20);
-          }
+          // if (!origChannelTimer) {
+          //   origChannelTimer = setInterval(() => {
+          //     if (window.calibState === 'idle') {
+          //       writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A]));
+          //     }
+          //   }, 20);
+          // }
         }
       };
     }
@@ -2023,6 +2115,82 @@
       };
       reader.readAsArrayBuffer(file);
     };
+    // ========== PATCH: 固件更新页面增强 ==========
+    // 1. 进度条字体颜色增强
+    fwProgressText.style.color = '#fff';
+    fwProgressText.style.textShadow = '0 1px 4px #3358e0, 0 0 2px #000';
+    // 2. 新增"进入固件更新状态"按钮
+    let fwEnterUpdateBtn = document.createElement('button');
+    fwEnterUpdateBtn.id = 'fw-enter-update-btn';
+    fwEnterUpdateBtn.className = 'connect-btn';
+    fwEnterUpdateBtn.style.width = '100%';
+    fwEnterUpdateBtn.style.marginTop = '8px';
+    fwEnterUpdateBtn.style.marginBottom = '8px';
+    fwEnterUpdateBtn.style.fontSize = '1.08em';
+    fwEnterUpdateBtn.textContent = '进入固件更新状态';
+    fwEnterUpdateBtn.onclick = async function() {
+      if (!writer) { fwStatus.textContent = '请先连接串口！'; return; }
+      try {
+        await writer.write(new Uint8Array([0xA5, 0x66, 0x01, 0x0D, 0x0A]));
+        fwStatus.textContent = '已发送进入固件更新状态指令';
+      } catch (e) {
+        fwStatus.textContent = '发送失败：' + e.message;
+      }
+    };
+    const fwCard = document.getElementById('fw-card');
+    if (fwCard && !document.getElementById('fw-enter-update-btn')) {
+      fwCard.insertBefore(fwEnterUpdateBtn, fwUpdateBtn);
+    }
+    // 3. 进入页面时自动检测下位机数据，自动发送0x31直到收到3个0x43
+    let fwReadyCheckActive = false;
+    let fwCCount = 0;
+    let fwReadyCheckTimer = null;
+    let fwLastSerialLen = 0;
+    function startFwReadyCheck() {
+      fwReadyCheckActive = true;
+      fwCCount = 0;
+      if (fwUpdateBtn) fwUpdateBtn.disabled = true; // 再加一层保险
+      fwStatus.textContent = '等待下位机进入固件更新状态...';
+      if (fwReadyCheckTimer) clearInterval(fwReadyCheckTimer);
+      let onlyCReady = false;
+      fwReadyCheckTimer = setInterval(async () => {
+        if (!fwReadyCheckActive) return;
+        if (fwUpdateBtn) fwUpdateBtn.disabled = true; // 定时器每次都禁用
+        // 检查serialBuffer是否有数据
+        if (serialBuffer.length > 0) {
+          let cNum = 0;
+          let otherNum = 0;
+          for (let i = 0; i < serialBuffer.length; i++) {
+            if (serialBuffer[i] === 0x43) cNum++;
+            else otherNum++;
+          }
+          // 只要还没到全0x43的就绪状态，始终禁用按钮
+          if (fwUpdateBtn) fwUpdateBtn.disabled = true;
+          if (cNum >= 3 && otherNum === 0) {
+            fwReadyCheckActive = false;
+            if (fwUpdateBtn) fwUpdateBtn.disabled = false;
+            fwStatus.textContent = '下位机已就绪，可以开始固件更新';
+            serialBuffer = [];
+            clearInterval(fwReadyCheckTimer);
+            return;
+          } else {
+            if (writer) await writer.write(new Uint8Array([0x31]));
+          }
+        } else {
+          if (fwUpdateBtn) fwUpdateBtn.disabled = true;
+        }
+      }, 500);
+    }
+    // 进入固件更新页面时自动启动检测
+    const _orig_initFwPage = typeof initFwPage === 'function' ? initFwPage : null;
+    function initFwPage() {
+      if (_orig_initFwPage) _orig_initFwPage();
+      if (fwUpdateBtn) fwUpdateBtn.disabled = true; // 进入页面时立即禁用
+      setTimeout(() => { if (fwUpdateBtn) fwUpdateBtn.disabled = true; }, 0); // 再加一层保险
+      startFwReadyCheck();
+    }
+    // 覆盖页面初始化注册表
+    if (typeof pageInits === 'object') pageInits.fw = initFwPage;
     fwUpdateBtn.onclick = async function() {
       if (!fwFileData) { fwStatus.textContent = '请先选择固件文件！'; return; }
       if (!writer) { fwStatus.textContent = '请先连接串口！'; return; }
@@ -2342,12 +2510,9 @@
           input.type = 'text';
           input.value = param.value;
           input.maxLength = param.strMaxLen || 32;
-          input.style.width = '180px';
-          input.style.minWidth = '180px';
-          input.style.maxWidth = '180px';
-          input.style.textAlign = 'right';
           input.onchange = () => {
             console.log('字符串控件变更:', param.paramNum, '新值:', input.value);
+            // sendParameterSet(param, input.value);
           };
           control.appendChild(input);
         } else if (param.baseType === 13) {
@@ -2422,6 +2587,7 @@
                 if (poller) clearInterval(poller);
                 const arrStop = [0xA5, 0x33, modeByte, param.paramNum, 5, 0x0D, 0x0A];
                 if (writer) writer.write(new Uint8Array(arrStop));
+                console.log('持续类点击结束发送STOP:', arrStop.map(x=>x.toString(16).padStart(2,'0')).join(' '));
                 document.body.removeChild(dialog);
               };
               inner.appendChild(closeBtn);
@@ -2443,10 +2609,12 @@
             control.appendChild(infoSpan);
           }
         } else if (param.baseType === 12) {
+          // INFO
           const span = document.createElement('span');
           span.textContent = param.value;
           control.appendChild(span);
         } else {
+          // 其他类型只读
           const span = document.createElement('span');
           span.textContent = param.value;
           control.appendChild(span);
@@ -2998,442 +3166,344 @@
     function renderConfigPage() {
       const configPage = document.getElementById('page-config');
       if (!configPage) return;
-      // 操作模式定义（标准飞控手法）
-      // M1: 左油门右副翼, M2: 左副翼右油门, M3: 左油门右方向, M4: 左方向右油门
+      // 操作模式定义
       const modeList = [
-        { name: 'M1', map: ['ELE', 'RUD', 'THR', 'AIL'] }, // 左油门右副翼
-        { name: 'M2', map: ['THR', 'RUD', 'ELE', 'AIL'] }, // 左副翼右油门
-        { name: 'M3', map: ['ELE', 'AIL', 'THR', 'RUD'] }, // 左油门右方向
-        { name: 'M4', map: ['THR', 'AIL', 'ELE', 'RUD'] }, // 左方向右油门
+        { name: 'M1', map: ['ELE', 'RUD', 'THR', 'AIL'] },
+        { name: 'M2', map: ['THR', 'RUD', 'ELE', 'AIL'] },
+        { name: 'M3', map: ['ELE', 'AIL', 'THR', 'RUD'] },
+        { name: 'M4', map: ['THR', 'AIL', 'ELE', 'RUD'] },
       ];
       let currentModeIdx = window._currentModeIdx || 0;
       function getModeMap(idx) { return modeList[idx].map; }
-      let html = '<div class="comm-container"><div class="comm-title">设备配置</div>';
-      html += '<div style="margin:18px 0 24px 0;display:flex;align-items:center;gap:24px;">';
-      html += '<label style="font-weight:bold;color:#3358e0;font-size:1.13em;">操作模式：</label>';
-      html += '<select id="mode-select" style="font-size:1.13em;padding:8px 18px;border-radius:8px;border:1.5px solid #d0d7e6;">';
-      modeList.forEach((m, i) => {
-        html += `<option value="${i}"${i===currentModeIdx?' selected':''}>${m.name}</option>`;
-      });
-      html += '</select>';
-      html += '</div>';
-      // ...原有通道/trim/中心点渲染...
-      const channelNum = 10;
-      const trimNum = 4;
-      const centerNum = 4;
-      // CH默认值全部为1500
-      let channels = [];
-      for (let i = 0; i < channelNum; i++) {
-        channels.push(1500);
-      }
-      let trims = [];
-      for (let i = 0; i < trimNum; i++) {
-        trims.push(Math.round(Math.random() * 200 - 100));
-      }
-      let centers = [];
-      for (let i = 0; i < centerNum; i++) {
-        centers.push(Math.round(Math.random() * 200 - 100));
-      }
-      html += '<div style="font-weight:bold;color:#3358e0;margin-bottom:8px;">通道数据</div>';
-      html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;">';
-      for (let i = 0; i < channelNum; i++) {
-        html += `<div style="background:#f4f8ff;border-radius:8px;padding:10px 8px;display:flex;flex-direction:column;align-items:center;">
-          <span style="color:#3358e0;font-weight:500;">CH${i+1}</span>
-          <span id="ch-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.18em;margin-top:6px;">${channels[i]}</span>
-          <div id="ch-bar-${i}" style="width:100px;height:8px;background:#e0e7ff;border-radius:4px;margin-top:8px;overflow:hidden;position:relative;">
-            <div style="height:8px;background:linear-gradient(90deg,#4f8cff 0%,#3358e0 100%);width:${((channels[i]-988)/(2012-988)*100)}%"></div>
-            <div style="position:absolute;left:${((1500-988)/(2012-988)*100)}%;top:0;bottom:0;width:2px;background:#bbb;opacity:0.7;"></div>
+      // 结构：左侧菜单+右侧栈式页面
+      let html = `<div class="comm-container"><div class="comm-title">设备配置</div>
+        <div style="display:flex;gap:0;align-items:flex-start;">
+          <div id="config-menu" style="display:flex;flex-direction:column;gap:0;width:180px;min-width:120px;background:#f4f8ff;border-radius:12px 0 0 12px;box-shadow:0 2px 8px #e0e7ff;overflow:hidden;">
+            <button class="config-menu-btn active" data-page="channel" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;">通道数据</button>
+            <button class="config-menu-btn" data-page="channel-attr" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;">通道属性</button>
+            <button class="config-menu-btn" data-page="channel-map" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;">通道映射</button>
+            <button class="config-menu-btn" data-page="trim-center" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;">Trim和中立点</button>
+            <button class="config-menu-btn" data-page="mode" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;">操作模式</button>
           </div>
-          <div style='display:flex;align-items:center;gap:6px;margin-top:8px;'>
-            <button id="ch-dir-btn-${i}" style="min-width:38px;padding:2px 8px;border-radius:6px;border:1.5px solid #b3cfff;background:#fff;color:#3358e0;font-weight:bold;cursor:pointer;">NOR</button>
-            <span style='font-size:0.98em;color:#888;'>左</span><span id="ch-left-${i}" style='min-width:32px;text-align:center;'>0</span>
-            <span style='font-size:0.98em;color:#888;'>右</span><span id="ch-right-${i}" style='min-width:32px;text-align:center;'>0</span>
+          <div id="config-stack" style="flex:1 1 0;background:#fff;border-radius:0 12px 12px 0;box-shadow:0 2px 8px #e0e7ff;padding:32px 36px;min-height:900px;position:relative;">
+            <div class="config-stack-page" data-page="channel-map" style="display:none;">
+              <div style="font-weight:bold;color:#3358e0;font-size:1.13em;margin-bottom:12px;">通道映射关系</div>
+              <div style="overflow-x:auto;">
+                <table style="border-collapse:separate;border-spacing:0 10px;width:100%;background:none;">
+                  <thead>
+                    <tr style="background:#f4f8ff;">
+                      <th style="padding:10px 18px;color:#3358e0;font-weight:bold;font-size:1.08em;border-radius:10px 0 0 10px;">Channel</th>
+                      <th style="padding:10px 18px;color:#3358e0;font-weight:bold;font-size:1.08em;">通道输出</th>
+                      <th style="padding:10px 18px;color:#3358e0;font-weight:bold;font-size:1.08em;border-radius:0 10px 10px 0;">通道输入</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${(() => {
+                      let html = '';
+                      const inputOptions = ['SA','SB','SC','SD','SE','S1'];
+                      for (let i = 0; i < 10; i++) {
+                        let chName = `Channel_${i+1}`;
+                        let outName = '';
+                        let inSelect = '';
+                        if (i < 4) {
+                          outName = ['AIL','ELE','THR','RUD'][i];
+                          inSelect = '';
+                        } else {
+                          outName = inputOptions[i-4];
+                          inSelect = `<select id="ch-map-in2-${i}" style="font-size:1em;padding:4px 12px;border-radius:6px;border:1.5px solid #d0d7e6;">
+                            ${inputOptions.map(opt => `<option value='${opt}'${opt===outName?' selected':''}>${opt}</option>`).join('')}
+                          </select>`;
+                        }
+                        html += `<tr style="background:#fff;box-shadow:0 1px 8px #e0e7ff;border-radius:10px;">
+                          <td style="padding:10px 18px;font-weight:bold;color:#3358e0;font-size:1.08em;">${chName}</td>
+                          <td style="padding:10px 18px;font-family:'Roboto Mono',monospace;font-size:1.08em;">${outName}</td>
+                          <td style="padding:10px 18px;">${inSelect}</td>
+                        </tr>`;
+                      }
+                      return html;
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="config-stack-page" data-page="channel" style="display:block;">
+              <div style="font-weight:bold;color:#3358e0;margin-bottom:8px;">通道数据</div>
+              <div style="display:flex;flex-direction:column;gap:18px;">
+                ${(() => {
+                  let html = '';
+                  for (let i = 0; i < 10; i++) {
+        html += `<div style="display:flex;align-items:center;gap:32px;background:linear-gradient(90deg,#f4f8ff 60%,#eaf1ff 100%);border-radius:16px;padding:22px 32px;box-shadow:0 2px 16px #e0e7ff;min-height:54px;">
+          <span style="color:#3358e0;font-weight:bold;font-size:1.25em;min-width:70px;letter-spacing:2px;">CH${i+1}</span>
+          <div style="flex:1;display:flex;align-items:center;gap:18px;">
+            <div id="ch-bar-${i}" style="flex:1;height:22px;background:#e0e7ff;border-radius:12px;overflow:hidden;position:relative;box-shadow:0 1px 8px #b3cfff;">
+              <div style="height:100%;background:linear-gradient(90deg,#4f8cff 0%,#3358e0 100%);width:${((1500-988)/(2012-988)*100)}%;transition:width 0.3s;"></div>
+              <div style="position:absolute;left:${((1500-988)/(2012-988)*100)}%;top:0;bottom:0;width:3px;background:#e74c3c;opacity:0.7;"></div>
+            </div>
+            <span id="ch-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.35em;color:#222;background:#fff;border-radius:8px;padding:4px 18px;margin-left:8px;box-shadow:0 1px 4px #e0e7ff;">1500</span>
           </div>
-          <input type="number" id="ch-input-${i}" value="${channels[i]}" style="width:70px;margin-top:8px;text-align:center;border:1.5px solid #d0d7e6;border-radius:6px;font-size:1em;display:none;" />
         </div>`;
       }
-      html += '</div>';
-      // Trim横杆
-      html += '<div style="font-weight:bold;color:#3358e0;margin:24px 0 8px 0;">Trim 行程</div>';
-      html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;">';
-      for (let i = 0; i < trimNum; i++) {
-        const min = -130, max = 130, val = trims[i];
-        const percent = ((val - min) / (max - min)) * 100;
-        html += `<div style="background:#eaf1ff;border-radius:8px;padding:18px 12px;display:flex;flex-direction:column;align-items:center;position:relative;">
-          <span style="color:#3358e0;font-weight:500;margin-bottom:8px;">Trim${i+1}</span>
-          <div style="width:120px;height:12px;position:relative;margin:12px 0 8px 0;">
-            <div style="position:absolute;top:5px;left:0;width:100%;height:2px;background:#b3cfff;border-radius:2px;"></div>
-            <div id="trim-dot-${i}" style="position:absolute;top:0;left:calc(${percent}% - 7px);width:14px;height:14px;background:#4f8cff;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 8px #b3cfff;"></div>
-            <div style="position:absolute;top:0;left:50%;width:2px;height:14px;background:#e74c3c;border-radius:2px;z-index:2;"></div>
+                  return html;
+                })()}
+              </div>
+            </div>
+            <div class="config-stack-page" data-page="channel-attr" style="display:none;">
+              <div style="font-weight:bold;color:#3358e0;margin-bottom:8px;">通道属性</div>
+              <div style="display:flex;flex-direction:column;gap:18px;">
+                ${(() => {
+                  let html = '';
+                  for (let i = 0; i < 10; i++) {
+        html += `<div style="display:flex;align-items:center;gap:32px;background:linear-gradient(90deg,#eaf1ff 60%,#f4f8ff 100%);border-radius:16px;padding:22px 32px;box-shadow:0 2px 16px #e0e7ff;min-height:54px;">
+          <span style="color:#3358e0;font-weight:bold;font-size:1.25em;min-width:70px;letter-spacing:2px;">CH${i+1}</span>
+          <div style='display:flex;align-items:center;gap:24px;flex:1;'>
+            <button id="ch-dir-btn-${i}" style="min-width:54px;padding:8px 18px;border-radius:10px;border:2px solid #b3cfff;background:#fff;color:#3358e0;font-weight:bold;cursor:pointer;font-size:1.08em;box-shadow:0 1px 6px #e0e7ff;transition:all 0.2s;">NOR</button>
+            <span style='font-size:1.08em;color:#888;'>左</span><input type="number" id="ch-left-input-${i}" value="0" min="0" max="100" style="width:90px;text-align:center;border:2px solid #b3cfff;border-radius:8px;font-size:1.08em;padding:6px 0;box-shadow:0 1px 6px #e0e7ff;" />
+            <span style='font-size:1.08em;color:#888;'>右</span><input type="number" id="ch-right-input-${i}" value="0" min="0" max="100" style="width:90px;text-align:center;border:2px solid #b3cfff;border-radius:8px;font-size:1.08em;padding:6px 0;box-shadow:0 1px 6px #e0e7ff;" />
           </div>
-          <span id="trim-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.08em;${val===0?'background:#ffe066;border-radius:6px;padding:2px 8px;font-weight:bold;':''}">${val}</span>
-          <input type="number" id="trim-input-${i}" value="${val}" min="-130" max="130" style="width:70px;margin-top:8px;text-align:center;border:1.5px solid #d0d7e6;border-radius:6px;font-size:1em;" />
         </div>`;
       }
-      html += '</div>';
-      // 中心点横杆
-      html += '<div style="font-weight:bold;color:#3358e0;margin:24px 0 8px 0;">中心点行程</div>';
-      html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;">';
-      for (let i = 0; i < centerNum; i++) {
-        const min = -100, max = 100, val = centers[i];
-        const percent = ((val - min) / (max - min)) * 100;
-        html += `<div style="background:#f4f8ff;border-radius:8px;padding:18px 12px;display:flex;flex-direction:column;align-items:center;position:relative;">
-          <span style="color:#3358e0;font-weight:500;margin-bottom:8px;">Center${i+1}</span>
-          <div style="width:120px;height:12px;position:relative;margin:12px 0 8px 0;">
-            <div style="position:absolute;top:5px;left:0;width:100%;height:2px;background:#b3cfff;border-radius:2px;"></div>
-            <div id="center-dot-${i}" style="position:absolute;top:0;left:calc(${percent}% - 7px);width:14px;height:14px;background:#2ecc71;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 8px #b3cfff;"></div>
-            <div style="position:absolute;top:0;left:50%;width:2px;height:14px;background:#e74c3c;border-radius:2px;z-index:2;"></div>
+                  return html;
+                })()}
+              </div>
+            </div>
+            <div class="config-stack-page" data-page="trim-center" style="display:none;">
+              <div style="font-weight:bold;color:#3358e0;margin-bottom:8px;">Trim 行程</div>
+              <div style="display:flex;flex-direction:column;gap:18px;">
+                ${(() => {
+                  let html = '';
+                  for (let i = 0; i < 4; i++) {
+                    const min = -130, max = 130, val = 0, percent = ((val - min) / (max - min)) * 100;
+        html += `<div style="display:flex;align-items:center;gap:32px;background:linear-gradient(90deg,#eaf1ff 60%,#f4f8ff 100%);border-radius:16px;padding:22px 32px;box-shadow:0 2px 16px #e0e7ff;min-height:54px;flex-wrap:wrap;">
+          <span style="color:#3358e0;font-weight:bold;font-size:1.18em;min-width:90px;">Trim${i+1}</span>
+          <div style="flex:1;display:flex;align-items:center;gap:24px;min-width:320px;position:relative;">
+            <div id="trim-bar-${i}" class="progress-bar" style="width:260px;">
+              <div class="bar-line"></div>
+              <div id="trim-dot-${i}" class="progress-dot" style="background:#4f8cff;"></div>
+              <div style="position:absolute;top:50%;left:50%;width:3px;height:26px;background:#e74c3c;border-radius:2px;z-index:3;transform:translate(-50%,-50%);"></div>
+            </div>
+            <span id="trim-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.18em;background:#fff;border-radius:8px;padding:4px 18px;box-shadow:0 1px 4px #e0e7ff;">0</span>
+            <!-- Trim输入框已彻底隐藏，不渲染 -->
           </div>
-          <span id="center-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.08em;${val===0?'background:#ffe066;border-radius:6px;padding:2px 8px;font-weight:bold;':''}">${val}</span>
-          <input type="number" id="center-input-${i}" value="${val}" min="-100" max="100" style="width:70px;margin-top:8px;text-align:center;border:1.5px solid #d0d7e6;border-radius:6px;font-size:1em;" />
+          <button class="trim-clear-btn" data-type="trim" data-idx="${i}" style="margin-top:12px;background:linear-gradient(90deg,#e0e7ff 0%,#b3cfff 100%);color:#3358e0;border:none;border-radius:8px;padding:6px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;">清空</button>
         </div>`;
       }
-      html += '</div>';
-      // 十字指示区（更大）
-      html += '<div style="margin-top:48px;display:flex;gap:80px;justify-content:center;">';
-      // 左手
-      html += '<div style="display:flex;flex-direction:column;align-items:center;">';
-      html += '<div style="font-weight:bold;color:#3358e0;margin-bottom:16px;font-size:1.22em;">左手摇杆</div>';
-      html += '<canvas id="cross-left" width="426" height="426" style="background:#f4f8ff;border-radius:22px;box-shadow:0 2px 16px #e0e7ff;"></canvas>';
-      html += '</div>';
-      // 右手
-      html += '<div style="display:flex;flex-direction:column;align-items:center;">';
-      html += '<div style="font-weight:bold;color:#3358e0;margin-bottom:16px;font-size:1.22em;">右手摇杆</div>';
-      html += '<canvas id="cross-right" width="426" height="426" style="background:#f4f8ff;border-radius:22px;box-shadow:0 2px 16px #e0e7ff;"></canvas>';
-      html += '</div>';
-      html += '</div>';
-      html += '</div>';
+                  return html;
+                })()}
+              </div>
+              <div style="font-weight:bold;color:#3358e0;margin:24px 0 8px 0;">中立点行程</div>
+              <div style="display:flex;flex-direction:column;gap:18px;">
+                ${(() => {
+                  let html = '';
+                  for (let i = 0; i < 4; i++) {
+                    const min = -100, max = 100, val = 0, percent = ((val - min) / (max - min)) * 100;
+        html += `<div style="display:flex;align-items:center;gap:32px;background:linear-gradient(90deg,#f4f8ff 60%,#eaf1ff 100%);border-radius:16px;padding:22px 32px;box-shadow:0 2px 16px #e0e7ff;min-height:54px;flex-wrap:wrap;">
+          <span style="color:#3358e0;font-weight:bold;font-size:1.18em;min-width:90px;">Center${i+1}</span>
+          <div style="flex:1;display:flex;align-items:center;gap:24px;min-width:320px;position:relative;">
+            <div id="center-bar-${i}" class="progress-bar" style="width:260px;">
+              <div class="bar-line"></div>
+              <div id="center-dot-${i}" class="progress-dot" style="background:#2ecc71;"></div>
+              <div style="position:absolute;top:50%;left:50%;width:3px;height:26px;background:#e74c3c;border-radius:2px;z-index:3;transform:translate(-50%,-50%);"></div>
+            </div>
+            <span id="center-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.18em;background:#fff;border-radius:8px;padding:4px 18px;box-shadow:0 1px 4px #e0e7ff;">0</span>
+            <input type="number" id="center-input-${i}" value="0" min="-100" max="100" style="width:90px;text-align:center;border:2px solid #b3cfff;border-radius:8px;font-size:1.08em;padding:6px 0;box-shadow:0 1px 6px #e0e7ff;" />
+          </div>
+          <button class="trim-clear-btn" data-type="center" data-idx="${i}" style="margin-top:12px;background:linear-gradient(90deg,#e0e7ff 0%,#b3cfff 100%);color:#3358e0;border:none;border-radius:8px;padding:6px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;">清空</button>
+        </div>`;
+      }
+                  return html;
+                })()}
+              </div>
+            </div>
+            <div class="config-stack-page" data-page="mode" style="display:none;">
+              <div style="margin:18px 0 24px 0;display:flex;align-items:center;gap:24px;">
+                <label style="font-weight:bold;color:#3358e0;font-size:1.13em;">操作模式：</label>
+                <select id="mode-select" style="font-size:1.13em;padding:8px 18px;border-radius:8px;border:1.5px solid #d0d7e6;">
+                  ${modeList.map((m, i) => `<option value="${i}"${i===currentModeIdx?' selected':''}>${m.name}</option>`).join('')}
+                </select>
+              </div>
+              <div style="margin-top:48px;display:flex;gap:80px;justify-content:center;">
+                <div style="display:flex;flex-direction:column;align-items:center;">
+                  <div style="font-weight:bold;color:#3358e0;margin-bottom:16px;font-size:1.22em;">左手摇杆</div>
+                  <canvas id="cross-left" width="426" height="426" style="background:#f4f8ff;border-radius:22px;box-shadow:0 2px 16px #e0e7ff;"></canvas>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;">
+                  <div style="font-weight:bold;color:#3358e0;margin-bottom:16px;font-size:1.22em;">右手摇杆</div>
+                  <canvas id="cross-right" width="426" height="426" style="background:#f4f8ff;border-radius:22px;box-shadow:0 2px 16px #e0e7ff;"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>`;
       configPage.innerHTML = html;
-      // 交互：输入框动态修改控件
-      for (let i = 0; i < channelNum; i++) {
-        const input = document.getElementById(`ch-input-${i}`);
-        input.min = 988;
-        input.max = 2012;
-        input.oninput = function() {
-          let v = Math.max(988, Math.min(2012, parseInt(input.value)||1500));
-          document.getElementById(`ch-val-${i}`).textContent = v;
-          const bar = document.getElementById(`ch-bar-${i}`).children[0];
-          bar.style.width = ((v-988)/(2012-988)*100) + '%';
-        };
-      }
-      // Trim节流发送逻辑
-      let trimSendTimer = null, trimLastSend = 0;
-      async function sendTrimData(force=false) {
-        let now = Date.now();
-        if (!force && now - trimLastSend < 500) return;
-        trimLastSend = now;
-        let trims = [];
-        for(let j=0;j<4;j++){
-          let val = Math.max(-130, Math.min(130, parseInt(document.getElementById(`trim-input-${j}`).value)||0));
-          trims.push(val);
-        }
-        let buf = [0xA5,0x55,0x0F];
-        for(let t of trims){
-          let t16 = (t<0)?(t+0x10000):t;
-          buf.push(t16&0xFF, (t16>>8)&0xFF);
-        }
-        buf.push(0x0D,0x0A);
-        if(typeof writer!=="undefined"&&writer) await writer.write(new Uint8Array(buf));
-      }
-      for (let i = 0; i < trimNum; i++) {
-        const input = document.getElementById(`trim-input-${i}`);
-        input.min = -130;
-        input.max = 130;
-        input.oninput = function() {
-          let v = Math.max(-130, Math.min(130, parseInt(input.value)||0));
-          document.getElementById(`trim-val-${i}`).textContent = v;
-          document.getElementById(`trim-dot-${i}`).style.left = `calc(${((v+130)/2.6)}% - 7px)`;
-          // 节流发送
-          if (trimSendTimer) clearTimeout(trimSendTimer);
-          trimSendTimer = setTimeout(()=>sendTrimData(true), 500);
-          sendTrimData(false);
-        };
-        // 松手/失焦/变更时强制发送
-        ['change','mouseup','blur'].forEach(evt=>{
-          input.addEventListener(evt, ()=>sendTrimData(true));
+      // 菜单切换逻辑
+      setTimeout(() => {
+        const btns = document.querySelectorAll('.config-menu-btn');
+        const pages = document.querySelectorAll('.config-stack-page');
+        btns.forEach(btn => {
+          btn.onclick = function() {
+            btns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const page = btn.dataset.page;
+            pages.forEach(p => {
+              p.style.display = (p.dataset.page === page) ? 'block' : 'none';
+            });
+          };
         });
-      }
-      // Center节流发送逻辑
-      let centerSendTimer = null, centerLastSend = 0;
-      async function sendCenterData(force=false) {
-        let now = Date.now();
-        if (!force && now - centerLastSend < 500) return;
-        centerLastSend = now;
-        let centers = [];
-        for(let j=0;j<4;j++){
-          let val = Math.max(-100, Math.min(100, parseInt(document.getElementById(`center-input-${j}`).value)||0));
-          let sendVal = Math.round(val*512/100);
-          centers.push(sendVal);
-        }
-        let buf = [0xA5,0x55,0x1A];
-        for(let c of centers){
-          let c16 = (c<0)?(c+0x10000):c;
-          buf.push(c16&0xFF, (c16>>8)&0xFF);
-        }
-        buf.push(0x0D,0x0A);
-        if(typeof writer!=="undefined"&&writer) await writer.write(new Uint8Array(buf));
-      }
-      for (let i = 0; i < centerNum; i++) {
-        const input = document.getElementById(`center-input-${i}`);
-        input.min = -100;
-        input.max = 100;
-        input.oninput = function() {
-          let v = Math.max(-100, Math.min(100, parseInt(input.value)||0));
-          document.getElementById(`center-val-${i}`).textContent = v;
-          document.getElementById(`center-dot-${i}`).style.left = `calc(${((v+100)/2)}% - 7px)`;
-          // 节流发送
-          if (centerSendTimer) clearTimeout(centerSendTimer);
-          centerSendTimer = setTimeout(()=>sendCenterData(true), 500);
-          sendCenterData(false);
-        };
-        // 松手/失焦/变更时强制发送
-        ['change','mouseup','blur'].forEach(evt=>{
-          input.addEventListener(evt, ()=>sendCenterData(true));
+        // 初始显示第一个
+        pages.forEach(p => {
+          p.style.display = (p.dataset.page === 'channel') ? 'block' : 'none';
         });
-      }
-      // Center区1500高亮
-      for (let i = 0; i < centerNum; i++) {
-        const valSpan = document.getElementById(`center-val-${i}`);
-        if (parseInt(valSpan.textContent) === 1500) {
-          valSpan.style.background = '#ffe066';
-          valSpan.style.borderRadius = '6px';
-          valSpan.style.padding = '2px 8px';
-          valSpan.style.fontWeight = 'bold';
-        }
-      }
-      // 画十字指示
-      function drawCross(canvas, modeMap, isLeft) {
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const center = canvas.width / 2;
-        const axisLen = canvas.width / 2 - 40;
-        const arrowSize = 16;
-        ctx.save();
-        ctx.lineWidth = 2.2;
-        ctx.strokeStyle = 'blue';
-        // 画十字线
-        ctx.beginPath();
-        ctx.moveTo(center, center - axisLen); // 上
-        ctx.lineTo(center, center + axisLen); // 下
-        ctx.moveTo(center - axisLen, center); // 左
-        ctx.lineTo(center + axisLen, center); // 右
-        ctx.stroke();
-        // 画箭头函数（更精致）
-        function drawArrow(x, y, dx, dy) {
-          ctx.save();
-          ctx.strokeStyle = 'red';
-          ctx.lineWidth = 2.2;
-          ctx.beginPath();
-          if (dx === 0 && dy === -1) { // 上
-            ctx.moveTo(x, y - arrowSize);
-            ctx.lineTo(x - arrowSize * 0.6, y + arrowSize * 0.7);
-            ctx.lineTo(x + arrowSize * 0.6, y + arrowSize * 0.7);
-            ctx.closePath();
-          } else if (dx === 0 && dy === 1) { // 下
-            ctx.moveTo(x, y + arrowSize);
-            ctx.lineTo(x - arrowSize * 0.6, y - arrowSize * 0.7);
-            ctx.lineTo(x + arrowSize * 0.6, y - arrowSize * 0.7);
-            ctx.closePath();
-          } else if (dx === -1 && dy === 0) { // 左
-            ctx.moveTo(x - arrowSize, y);
-            ctx.lineTo(x + arrowSize * 0.7, y - arrowSize * 0.6);
-            ctx.lineTo(x + arrowSize * 0.7, y + arrowSize * 0.6);
-            ctx.closePath();
-          } else if (dx === 1 && dy === 0) { // 右
-            ctx.moveTo(x + arrowSize, y);
-            ctx.lineTo(x - arrowSize * 0.7, y - arrowSize * 0.6);
-            ctx.lineTo(x - arrowSize * 0.7, y + arrowSize * 0.6);
-            ctx.closePath();
+        // 操作模式页面的摇杆绘制和下拉事件
+        const drawModePage = () => {
+          const left = document.getElementById('cross-left');
+          const right = document.getElementById('cross-right');
+          if (left && right) {
+            drawCross(left, getModeMap(window._currentModeIdx), 1);
+            drawCross(right, getModeMap(window._currentModeIdx), 0);
           }
-          ctx.stroke();
-          ctx.restore();
-        }
-        // 画四个箭头
-        drawArrow(center, center - axisLen, 0, -1); // 上
-        drawArrow(center, center + axisLen, 0, 1);  // 下
-        drawArrow(center - axisLen, center, -1, 0); // 左
-        drawArrow(center + axisLen, center, 1, 0);  // 右
-        // 画标签（位置优化+美化）
-        ctx.save();
-        ctx.font = 'bold 22px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.lineWidth = 4;
-        // 阴影提升可读性
-        ctx.shadowColor = 'rgba(255,255,255,0.8)';
-        ctx.shadowBlur = 4;
-        // 纵向标签（上下）向左偏移20px
-        // 横向标签（左右）向上偏移20px
-        if (isLeft) {
-          // modeMap[0]上下，modeMap[1]左右
-          ctx.fillStyle = 'black';
-          ctx.fillText(modeMap[0], center - 20, center - axisLen / 2); // 上
-          ctx.fillText(modeMap[0], center - 20, center + axisLen / 2); // 下
-          ctx.fillText(modeMap[1], center - axisLen / 2, center - 20); // 左
-          ctx.fillText(modeMap[1], center + axisLen / 2, center - 20); // 右
-        } else {
-          // modeMap[2]上下，modeMap[3]左右
-          ctx.fillStyle = 'black';
-          ctx.fillText(modeMap[2], center - 20, center - axisLen / 2); // 上
-          ctx.fillText(modeMap[2], center - 20, center + axisLen / 2); // 下
-          ctx.fillText(modeMap[3], center - axisLen / 2, center - 20); // 左
-          ctx.fillText(modeMap[3], center + axisLen / 2, center - 20); // 右
-        }
-        ctx.restore();
-      }
-      // 初始绘制
-      setTimeout(() => {
-        const left = document.getElementById('cross-left');
-        const right = document.getElementById('cross-right');
-        if (left && right) {
-          drawCross(left, getModeMap(currentModeIdx), 1);
-          drawCross(right, getModeMap(currentModeIdx), 0);
-        }
-      }, 0);
-      // 监听模式切换
-      setTimeout(() => {
-        const sel = document.getElementById('mode-select');
-        if (sel) {
-          sel.onchange = function() {
-            window._currentModeIdx = parseInt(sel.value);
-            const left = document.getElementById('cross-left');
-            const right = document.getElementById('cross-right');
-            if (left && right) {
+          const sel = document.getElementById('mode-select');
+          if (sel) {
+            sel.onchange = function() {
+              window._currentModeIdx = parseInt(sel.value);
               drawCross(left, getModeMap(window._currentModeIdx), 1);
               drawCross(right, getModeMap(window._currentModeIdx), 0);
-            }
-          };
-        }
-      }, 0);
-      // 默认操作模式为M2
-      window._currentModeIdx = 1;
-      // 渲染后绑定正反按钮和行程显示
-      setTimeout(() => {
-        for (let i = 0; i < channelNum; i++) {
-          const btn = document.getElementById(`ch-dir-btn-${i}`);
-          if (btn) {
-            btn.onclick = function() {
-              if (!window.channelMap) return;
-              window.channelMap.channelDirSend[i] = window.channelMap.channelDirSend[i] ? 0 : 1;
-              btn.textContent = window.channelMap.channelDirSend[i] ? 'REV' : 'NOR';
-              btn.style.background = window.channelMap.channelDirSend[i] ? '#ffe066' : '#fff';
-              btn.style.color = window.channelMap.channelDirSend[i] ? '#e74c3c' : '#3358e0';
             };
-            // 初始化按钮状态
-            if (window.channelMap && window.channelMap.channelDirSend[i]) {
-              btn.textContent = 'REV';
-              btn.style.background = '#ffe066';
-              btn.style.color = '#e74c3c';
-            } else {
-              btn.textContent = 'NOR';
-              btn.style.background = '#fff';
-              btn.style.color = '#3358e0';
+          }
+        };
+        // 监听菜单切换到操作模式时绘制摇杆
+        btns.forEach(btn => {
+          btn.addEventListener('click', function() {
+            if (btn.dataset.page === 'mode') setTimeout(drawModePage, 0);
+          });
+        });
+        // 初始绘制
+        setTimeout(drawModePage, 0);
+        // --- 通道属性页面事件绑定 ---
+        setTimeout(() => {
+          for (let i = 0; i < 10; i++) {
+            const btn = document.getElementById(`ch-dir-btn-${i}`);
+            if (btn) {
+              btn.onclick = function() {
+                if (!window.channelMap) return;
+                window.channelMap.channelDirSend[i] = window.channelMap.channelDirSend[i] ? 0 : 1;
+                btn.textContent = window.channelMap.channelDirSend[i] ? 'REV' : 'NOR';
+                btn.style.background = window.channelMap.channelDirSend[i] ? '#ffe066' : '#fff';
+                btn.style.color = window.channelMap.channelDirSend[i] ? '#e74c3c' : '#3358e0';
+              };
+              // 初始化按钮状态
+              if (window.channelMap && window.channelMap.channelDirSend[i]) {
+                btn.textContent = 'REV';
+                btn.style.background = '#ffe066';
+                btn.style.color = '#e74c3c';
+              } else {
+                btn.textContent = 'NOR';
+                btn.style.background = '#fff';
+                btn.style.color = '#3358e0';
+              }
             }
-          }
-          // 行程显示
-          const leftSpan = document.getElementById(`ch-left-${i}`);
-          const rightSpan = document.getElementById(`ch-right-${i}`);
-          if (window.channelMap) {
-            if (leftSpan) leftSpan.textContent = window.channelMap.channelLeftSend[i] || 0;
-            if (rightSpan) rightSpan.textContent = window.channelMap.channelRightSend[i] || 0;
-          }
-        }
-      }, 0);
-      // 串口通信页面接收缓冲区最大10KB
-      setTimeout(() => {
-        const outputBox = document.getElementById('output');
-        if (outputBox) {
-          const origAppend = outputBox.appendChild;
-          outputBox.appendChild = function(node) {
-            if (outputBox.textContent.length > (1048576/100)) outputBox.textContent = '';
-            return origAppend.call(this, node);
-          };
-        }
-      }, 0);
-      // Center区渲染修正
-      html += '<div style="font-weight:bold;color:#3358e0;margin:24px 0 8px 0;">中心点行程</div>';
-      html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;">';
-      for (let i = 0; i < centerNum; i++) {
-        const min = -100, max = 100, val = centers[i];
-        const percent = ((val - min) / (max - min)) * 100;
-        html += `<div style="background:#f4f8ff;border-radius:8px;padding:18px 12px;display:flex;flex-direction:column;align-items:center;position:relative;">
-          <span style="color:#3358e0;font-weight:500;margin-bottom:8px;">Center${i+1}</span>
-          <div style="width:120px;height:12px;position:relative;margin:12px 0 8px 0;">
-            <div style="position:absolute;top:5px;left:0;width:100%;height:2px;background:#b3cfff;border-radius:2px;"></div>
-            <div id="center-dot-${i}" style="position:absolute;top:0;left:calc(${percent}% - 7px);width:14px;height:14px;background:#2ecc71;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 8px #b3cfff;"></div>
-            <div style="position:absolute;top:0;left:50%;width:2px;height:14px;background:#e74c3c;border-radius:2px;z-index:2;"></div>
-          </div>
-          <span id="center-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.08em;${val===0?'background:#ffe066;border-radius:6px;padding:2px 8px;font-weight:bold;':''}">${val}</span>
-          <input type="number" id="center-input-${i}" value="${val}" min="-100" max="100" style="width:70px;margin-top:8px;text-align:center;border:1.5px solid #d0d7e6;border-radius:6px;font-size:1em;" />
-        </div>`;
-      }
-      html += '</div>';
-      // Trim区0点标记
-      html += '<div style="font-weight:bold;color:#3358e0;margin:24px 0 8px 0;">Trim 行程</div>';
-      html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;">';
-      for (let i = 0; i < trimNum; i++) {
-        const min = -130, max = 130, val = trims[i];
-        const percent = ((val - min) / (max - min)) * 100;
-        html += `<div style="background:#eaf1ff;border-radius:8px;padding:18px 12px;display:flex;flex-direction:column;align-items:center;position:relative;">
-          <span style="color:#3358e0;font-weight:500;margin-bottom:8px;">Trim${i+1}</span>
-          <div style="width:120px;height:12px;position:relative;margin:12px 0 8px 0;">
-            <div style="position:absolute;top:5px;left:0;width:100%;height:2px;background:#b3cfff;border-radius:2px;"></div>
-            <div id="trim-dot-${i}" style="position:absolute;top:0;left:calc(${percent}% - 7px);width:14px;height:14px;background:#4f8cff;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 8px #b3cfff;"></div>
-            <div style="position:absolute;top:0;left:50%;width:2px;height:14px;background:#e74c3c;border-radius:2px;z-index:2;"></div>
-          </div>
-          <span id="trim-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.08em;${val===0?'background:#ffe066;border-radius:6px;padding:2px 8px;font-weight:bold;':''}">${val}</span>
-          <input type="number" id="trim-input-${i}" value="${val}" min="-130" max="130" style="width:70px;margin-top:8px;text-align:center;border:1.5px solid #d0d7e6;border-radius:6px;font-size:1em;" />
-        </div>`;
-      }
-      html += '</div>';
-      // 左右行程输入框
-      html += '<div style="font-weight:bold;color:#3358e0;margin:24px 0 8px 0;">左右行程</div>';
-      html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;">';
-      for (let i = 0; i < channelNum; i++) {
-        // 下位机数据x，显示和输入都是100-x
-        let leftRaw = (window.channelMap && window.channelMap.channelLeftSend) ? window.channelMap.channelLeftSend[i]||0 : 0;
-        let leftDisplay = 100 - leftRaw;
-        let rightRaw = (window.channelMap && window.channelMap.channelRightSend) ? window.channelMap.channelRightSend[i]||0 : 0;
-        let rightDisplay = 100 - rightRaw;
-        html += `<div style="background:#f4f8ff;border-radius:8px;padding:10px 8px;display:flex;flex-direction:column;align-items:center;">
-          <span style="color:#3358e0;font-weight:500;">CH${i+1}</span>
-          <div style='display:flex;align-items:center;gap:8px;margin-top:8px;'>
-            <span style='font-size:0.98em;color:#888;'>左</span>
-            <input type="number" id="ch-left-input-${i}" value="${leftDisplay}" min="0" max="100" style="width:54px;text-align:center;border:1.5px solid #b3cfff;border-radius:6px;font-size:1em;" />
-            <span style='font-size:0.98em;color:#888;'>右</span>
-            <input type="number" id="ch-right-input-${i}" value="${rightDisplay}" min="0" max="100" style="width:54px;text-align:center;border:1.5px solid #b3cfff;border-radius:6px;font-size:1em;" />
-          </div>
-        </div>`;
-      }
-      html += '</div>';
-      // 左右行程输入框事件绑定
-      setTimeout(() => {
-        for (let i = 0; i < channelNum; i++) {
-          // 左
-          const leftInput = document.getElementById(`ch-left-input-${i}`);
-          if (leftInput) {
-            leftInput.onchange = function() {
-              let v = Math.max(0, Math.min(100, parseInt(leftInput.value)||0));
-              leftInput.value = v;
-              // 存储时反向转换：x = 100-v
+            // 左右行程输入框
+            const leftInput = document.getElementById(`ch-left-input-${i}`);
+            const rightInput = document.getElementById(`ch-right-input-${i}`);
+            if (leftInput) {
+              leftInput.onchange = function() {
+                let v = Math.max(0, Math.min(100, parseInt(leftInput.value)||0));
+                leftInput.value = v;
+                if (window.channelMap && window.channelMap.channelLeftSend) {
+                  window.channelMap.channelLeftSend[i] = 100 - v;
+                }
+              };
+              // 初始化
               if (window.channelMap && window.channelMap.channelLeftSend) {
-                window.channelMap.channelLeftSend[i] = 100 - v;
+                leftInput.value = 100 - (window.channelMap.channelLeftSend[i]||0);
               }
-            };
-          }
-          // 右
-          const rightInput = document.getElementById(`ch-right-input-${i}`);
-          if (rightInput) {
-            rightInput.onchange = function() {
-              let v = Math.max(0, Math.min(100, parseInt(rightInput.value)||0));
-              rightInput.value = v;
-              // 存储时反向转换：x = 100-v
+            }
+            if (rightInput) {
+              rightInput.onchange = function() {
+                let v = Math.max(0, Math.min(100, parseInt(rightInput.value)||0));
+                rightInput.value = v;
+                if (window.channelMap && window.channelMap.channelRightSend) {
+                  window.channelMap.channelRightSend[i] = 100 - v;
+                }
+              };
+              // 初始化
               if (window.channelMap && window.channelMap.channelRightSend) {
-                window.channelMap.channelRightSend[i] = 100 - v;
+                rightInput.value = 100 - (window.channelMap.channelRightSend[i]||0);
               }
+            }
+          }
+        }, 0);
+      }, 0);
+      // 在renderConfigPage渲染后添加如下JS逻辑，确保圆点始终居中在线段上
+      setTimeout(() => {
+        for (let i = 0; i < 4; i++) {
+          // Trim
+          const trimBar = document.getElementById(`trim-bar-${i}`);
+          const trimDot = document.getElementById(`trim-dot-${i}`);
+          const trimValSpan = document.getElementById(`trim-val-${i}`);
+          let trimVal = 0;
+          if (trimValSpan) trimVal = parseInt(trimValSpan.textContent) || 0;
+          if (trimBar && trimDot) {
+            let percent = (trimVal + 130) / 260; // 0~1
+            let left = percent * (trimBar.offsetWidth - trimDot.offsetWidth) + 1; // 1px微调
+            trimDot.style.left = left + 'px';
+          }
+          // Center
+          const centerBar = document.getElementById(`center-bar-${i}`);
+          const centerDot = document.getElementById(`center-dot-${i}`);
+          const centerInput = document.getElementById(`center-input-${i}`);
+          const centerValSpan = document.getElementById(`center-val-${i}`);
+          let centerVal = 0;
+          if (centerInput) centerVal = parseInt(centerInput.value) || 0;
+          if (centerBar && centerDot) {
+            let percent = (centerVal + 100) / 200; // 0~1
+            let left = percent * (centerBar.offsetWidth - centerDot.offsetWidth) + 1; // 1px微调
+            centerDot.style.left = left + 'px';
+          }
+          if (centerInput && centerValSpan && centerBar && centerDot) {
+            centerInput.oninput = function() {
+              let v = parseInt(centerInput.value) || 0;
+              if (v < -100) v = -100;
+              if (v > 100) v = 100;
+              centerInput.value = v;
+              centerValSpan.textContent = v;
+              let percent = (v + 100) / 200;
+              let left = percent * (centerBar.offsetWidth - centerDot.offsetWidth) + 1;
+              centerDot.style.left = left + 'px';
             };
           }
         }
+        // 清空按钮联动
+        document.querySelectorAll('.trim-clear-btn').forEach(btn => {
+          btn.onclick = function() {
+            const type = btn.getAttribute('data-type');
+            const idx = btn.getAttribute('data-idx');
+            if (type === 'trim') {
+              // 归零
+              const valSpan = document.getElementById(`trim-val-${idx}`);
+              const dot = document.getElementById(`trim-dot-${idx}`);
+              const bar = document.getElementById(`trim-bar-${idx}`);
+              if (valSpan) valSpan.textContent = 0;
+              if (bar && dot) {
+                let percent = (0 + 130) / 260;
+                let left = percent * (bar.offsetWidth - dot.offsetWidth) + 1;
+                dot.style.left = left + 'px';
+              }
+            } else if (type === 'center') {
+              const valSpan = document.getElementById(`center-val-${idx}`);
+              const dot = document.getElementById(`center-dot-${idx}`);
+              const input = document.getElementById(`center-input-${idx}`);
+              const bar = document.getElementById(`center-bar-${idx}`);
+              if (valSpan) valSpan.textContent = 0;
+              if (input) input.value = 0;
+              if (bar && dot) {
+                let percent = (0 + 100) / 200;
+                let left = percent * (bar.offsetWidth - dot.offsetWidth) + 1;
+                dot.style.left = left + 'px';
+              }
+            }
+          };
+        });
       }, 0);
     }
 
@@ -3538,6 +3608,8 @@
       }
     };
     // ========== 0x44包解析，自动切换操作模式 ========== //
+    // 新增全局标志，控制trim/center指令发送
+    let _waitingForTrimAndMid = false;
     function tryParseChannelMapPacket(buf) {
       //console.log('tryParseChannelMapPacket Running', buf);
       if (!buf || buf.length < 3) return false;
@@ -3588,7 +3660,7 @@
       }
       window.channelMap = channelMap;
       console.log('channelMap:', channelMap);
-      console.log('tryParseChannelMapPacket Running over');
+      //console.log('tryParseChannelMapPacket Running over');
       // 自动切换操作模式
       if (typeof channelMap.ctlModeRecv === 'number') {
         let modeIdx = 1; // 默认M2
@@ -3605,15 +3677,25 @@
           if (sel) sel.dispatchEvent(new Event('change'));
         }, 0);
       }
-      // 自动发送获取trim和中心点的指令（每次都发）
-      if (typeof writer !== 'undefined' && writer) {
+      // 只在收到0x44包后再发0x12包（避免并发/粘包问题）
+      if (typeof writer !== 'undefined' && writer && !_waitingForTrimAndMid) {
+        _waitingForTrimAndMid = true;
         const cmd = new Uint8Array([0xA5,0x55,0x1F,0x0D,0x0A]);
         writer.write(cmd);
         console.log('已发送获取trim和中心点指令: [0xA5,0x55,0x1F,0x0D,0x0A]');
       }
+      // 设备配置页面流程切换
+      if (typeof window._onConfigMapReceived === 'function') {
+        window._onConfigMapReceived();
+        window._onConfigMapReceived = null;
+      }
+      if (typeof window._onCalibMapReceived === 'function') {
+        window._onCalibMapReceived();
+        window._onCalibMapReceived = null;
+      }
       return channelMap;
     }
-    // 解析0x12包，处理trim和center
+    // 在tryParseTrimAndMidPacket里收到包后，重置标志
     function tryParseTrimAndMidPacket(buf) {
       //console.log('tryParseTrimAndMidPacket Running', buf);
       if (!buf || buf.length < 3) return false;
@@ -3657,17 +3739,29 @@
       window.trimMidObj = trimMidObj;
       console.log('trimMidObj:', trimMidObj);
       _hasTrimAndMid = true;
+      // 收到trim/center包后，允许下次0x44包再发0x12
+      _waitingForTrimAndMid = false;
       // 启动原始通道数据定时器（只启动一次）
-      if (!_origChannelTimer && typeof writer !== 'undefined' && writer) {
-        _origChannelTimer = setInterval(() => {
-          writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A]));
-        }, 20);
-        console.log('已启动原始通道数据定时器，每20ms发送一次[0xA5,0x55,0x02,0x0D,0x0A]');
+      // if (!_origChannelTimer && typeof writer !== 'undefined' && writer &&
+      //   document.getElementById('page-config') &&
+      //   document.getElementById('page-config').style.display !== 'none'
+      // ) {
+      //   _origChannelTimer = setInterval(() => {
+      //     writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A]));
+      //   }, 20);
+      //   window._pageTasks.intervals.push(_origChannelTimer); // 统一管理
+      //   console.log('已启动原始通道数据定时器，每20ms发送一次[0xA5,0x55,0x02,0x0D,0x0A]');
+      // }
+      // 设备配置页面流程切换
+      if (typeof window._onConfigTrimReceived === 'function') {
+        window._onConfigTrimReceived();
+        window._onConfigTrimReceived = null;
       }
       return trimMidObj;
     }
     // 解析0x22包，显示原始通道数据
     function tryParseOrigChannelPacket(buf) {
+      //console.log('tryParseOrigChannelPacket Running', buf);
       if (!buf || buf.length < 3) return false;
       if (buf[0] !== 0x22) return false;
       const len = buf[1];
@@ -3734,11 +3828,29 @@
             }
           }
           // 检查0x22包
+          // if (this[i] === 0x22) {
+          //   const len = this[i+1];
+          //   if (this.length >= i + len + 2) {
+          //     const buf = this.slice(i, i+len+2);
+          //     if (tryParseOrigChannelPacket(buf)) {
+          //       this.splice(i, len+2);
+          //       found = true;
+          //       break;
+          //     }
+          //   }
+          // }
           if (this[i] === 0x22) {
             const len = this[i+1];
             if (this.length >= i + len + 2) {
               const buf = this.slice(i, i+len+2);
-              if (tryParseOrigChannelPacket(buf)) {
+              let parsed = tryParseOrigChannelPacket(buf);
+              // 新增：校准页面同步解析
+              //console.log('window._currentPage1:', window._currentPage);
+              if (window._currentPage === 'calib' && typeof tryParseOrigChannelPacketCalib === 'function') {
+                //console.log('window._currentPage2:', window._currentPage);
+                tryParseOrigChannelPacketCalib(buf);
+              }
+              if (parsed) {
                 this.splice(i, len+2);
                 found = true;
                 break;
@@ -3757,7 +3869,293 @@
       // 设备配置、设备校准页面如需持续获取，由各自页面逻辑重新开启
       // 串口通信页面不自动开启定时器
     };
+
+    // ========== 各页面初始化函数 ==========
+    function initCommPage() {
+      // 通信页面无需持续任务
+      serialBuffer= [];
+      window._globalChannelTask = null;
+      stopGlobalChannelTimer();
+    }
+    function initAttrPage() {
+      // 设备属性页面：自动渲染
+      serialBuffer= [];
+      renderDeviceInfoPage();
+      window._globalChannelTask = null;
+      stopGlobalChannelTimer();
+    }
+    function initConfigPage() {
+      serialBuffer= [];
+      renderConfigPage();
+      let state = { step: 0, gotMap: false, gotTrim: false };
+      // step: 0=等待map, 1=等待trim/center, 2=通道数据
+      function sendMapLoop() {
+        if (window._currentPage !== 'config' || state.gotMap) return;
+        console.log('[配置] 发送map包');
+        writer.write(new Uint8Array([0xA5,0x55,0x0D,0,0,0x0D,0x0A]));
+        setTimeout(sendMapLoop, 500);
+      }
+      function sendTrimLoop() {
+        if (window._currentPage !== 'config' || !state.gotMap || state.gotTrim) return;
+        console.log('[配置] 发送trim/center包');
+        writer.write(new Uint8Array([0xA5,0x55,0x1F,0x0D,0x0A]));
+        setTimeout(sendTrimLoop, 500);
+      }
+      // 只要没收到包就无线循环
+      sendMapLoop();
+      // 解析到map包时切换到trim/center
+      window._onConfigMapReceived = function() {
+        if (window._currentPage === 'config' && !state.gotMap) {
+          state.gotMap = true;
+          console.log('[配置] 收到map包，切换到trim/center');
+          sendTrimLoop();
+        }
+      };
+      // 解析到trim/center包时切换到通道数据
+      window._onConfigTrimReceived = function() {
+        if (window._currentPage === 'config' && state.gotMap && !state.gotTrim) {
+          state.gotTrim = true;
+          console.log('[配置] 收到trim/center包，开始连续通道数据');
+        }
+      };
+      window._globalChannelTask = {
+        channelRequest: () => {
+          if (state.gotMap && state.gotTrim) {
+            writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A])); // 通道数据
+          }
+        },
+        commandRequest: () => {}
+      };
+      startTimers(window._globalChannelTask);
+    }
+    function initNetPage() {
+      serialBuffer= [];
+      if (typeof refreshSettings === 'function') {
+        refreshSettings();
+      }
+      window._globalChannelTask = null;
+      stopGlobalChannelTimer();
+    }
+    function initCalibPage() {
+      serialBuffer= [];
+      let state = { step: 0, gotMap: false, calibState: 'idle' };
+      function sendMapLoop() {
+        if (window._currentPage !== 'calib' || state.gotMap) return;
+        console.log('[校准] 发送map包');
+        writer.write(new Uint8Array([0xA5,0x55,0x0D,0,0,0x0D,0x0A]));
+        setTimeout(sendMapLoop, 500);
+      }
+      sendMapLoop();
+      window._onCalibMapReceived = function() {
+        if (window._currentPage === 'calib' && !state.gotMap) {
+          state.gotMap = true;
+          console.log('[校准] 收到map包，切换到通道数据');
+        }
+      };
+      // 校准按钮逻辑里同步calibState
+      const calibBtn = document.getElementById('calib-action-btn');
+      if (calibBtn) {
+        calibBtn.onclick = async function() {
+          if (state.calibState === 'idle') {
+            state.calibState = 'calibrating';
+            calibBtn.textContent = '确认中心点';
+          } else if (state.calibState === 'calibrating') {
+            state.calibState = 'idle';
+            calibBtn.textContent = '校准';
+          }
+        };
+      }
+      window._globalChannelTask = {
+        channelRequest: () => {
+          if (state.gotMap && state.calibState === 'idle') {
+            writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A])); // 通道数据
+          }
+        },
+        commandRequest: () => {}
+      };
+      startTimers(window._globalChannelTask);
+    }
+    function initFwPage() {
+      serialBuffer= [];
+      window._globalChannelTask = null;
+      stopGlobalChannelTimer();
+    }
+
+    // ========== 全局唯一定时器+函数指针式任务注册 ==========
+    window._globalChannelTimer = null;
+    window._globalChannelTask = null;
+    function startGlobalChannelTimer() {
+      if (!window._globalChannelTimer) {
+        window._globalChannelTimer = setInterval(() => {
+          if (typeof window._globalChannelTask === 'function') {
+            window._globalChannelTask();
+          }
+        }, 20);
+      }
+    }
+    function stopGlobalChannelTimer() {
+      if (window._globalChannelTimer) {
+        clearInterval(window._globalChannelTimer);
+        window._globalChannelTimer = null;
+      }
+    }
+
+    // 全局定时器和任务管理
+    window._globalChannelTimer = null;  // 用于通道数据请求 (20ms)
+    window._globalCommandTimer = null;  // 用于其他指令请求 (1000ms)
+    window._globalChannelTask = null;
+
+    // 清理所有定时器
+    function clearAllTimers() {
+      if (window._globalChannelTimer) {
+        clearInterval(window._globalChannelTimer);
+        window._globalChannelTimer = null;
+      }
+      if (window._globalCommandTimer) {
+        clearInterval(window._globalCommandTimer);
+        window._globalCommandTimer = null;
+      }
+      window._globalChannelTask = null;
+    }
+
+    // 启动定时器
+    function startTimers(task) {
+      clearAllTimers();
+      window._globalChannelTask = task;
+      
+      // 通道数据请求定时器 - 20ms
+      if (task && task.channelRequest) {
+        window._globalChannelTimer = setInterval(() => {
+          if (window._globalChannelTask && window._globalChannelTask.channelRequest) {
+            window._globalChannelTask.channelRequest();
+          }
+        }, 20);
+      }
+      
+      // 其他指令请求定时器 - 1000ms
+      if (task && task.commandRequest) {
+        window._globalCommandTimer = setInterval(() => {
+          if (window._globalChannelTask && window._globalChannelTask.commandRequest) {
+            window._globalChannelTask.commandRequest();
+          }
+        }, 1000);
+      }
+    }
+
+    // 配置页面任务
+    function createConfigTask(configStepRef) {
+      return {
+        channelRequest: () => {
+          if (configStepRef.value === 2) {
+            writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A])); // 通道数据
+          }
+        },
+        commandRequest: () => {
+          if (configStepRef.value === 0) {
+            writer.write(new Uint8Array([0xA5,0x55,0x0D,0,0,0x0D,0x0A])); // map
+          } else if (configStepRef.value === 1) {
+            writer.write(new Uint8Array([0xA5,0x55,0x1F,0x0D,0x0A])); // trim/center
+          }
+        }
+      };
+    }
+
+    // 校准页面任务
+    function createCalibTask(calibStepRef, calibStateRef) {
+      return {
+        channelRequest: () => {
+          if (calibStepRef.value === 1 && calibStateRef.value === 'idle') {
+            writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A])); // 通道数据
+          }
+        },
+        commandRequest: () => {
+          if (calibStepRef.value === 0) {
+            writer.write(new Uint8Array([0xA5,0x55,0x0D,0,0,0x0D,0x0A])); // map
+          }
+        }
+      };
+    }
+
+    // ========== 操作模式十字摇杆绘制函数 ==========
+    function drawCross(canvas, modeMap, isLeft) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const center = canvas.width / 2;
+      const axisLen = canvas.width / 2 - 40;
+      const arrowSize = 16;
+      ctx.save();
+      ctx.lineWidth = 2.2;
+      ctx.strokeStyle = 'blue';
+      // 画十字线
+      ctx.beginPath();
+      ctx.moveTo(center, center - axisLen); // 上
+      ctx.lineTo(center, center + axisLen); // 下
+      ctx.moveTo(center - axisLen, center); // 左
+      ctx.lineTo(center + axisLen, center); // 右
+      ctx.stroke();
+      // 画箭头函数（更精致）
+      function drawArrow(x, y, dx, dy) {
+        ctx.save();
+        ctx.strokeStyle = 'red';
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        if (dx === 0 && dy === -1) { // 上
+          ctx.moveTo(x, y - arrowSize);
+          ctx.lineTo(x - arrowSize * 0.6, y + arrowSize * 0.7);
+          ctx.lineTo(x + arrowSize * 0.6, y + arrowSize * 0.7);
+          ctx.closePath();
+        } else if (dx === 0 && dy === 1) { // 下
+          ctx.moveTo(x, y + arrowSize);
+          ctx.lineTo(x - arrowSize * 0.6, y - arrowSize * 0.7);
+          ctx.lineTo(x + arrowSize * 0.6, y - arrowSize * 0.7);
+          ctx.closePath();
+        } else if (dx === -1 && dy === 0) { // 左
+          ctx.moveTo(x - arrowSize, y);
+          ctx.lineTo(x + arrowSize * 0.7, y - arrowSize * 0.6);
+          ctx.lineTo(x + arrowSize * 0.7, y + arrowSize * 0.6);
+          ctx.closePath();
+        } else if (dx === 1 && dy === 0) { // 右
+          ctx.moveTo(x + arrowSize, y);
+          ctx.lineTo(x - arrowSize * 0.7, y - arrowSize * 0.6);
+          ctx.lineTo(x - arrowSize * 0.7, y + arrowSize * 0.6);
+          ctx.closePath();
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+      // 画四个箭头
+      drawArrow(center, center - axisLen, 0, -1); // 上
+      drawArrow(center, center + axisLen, 0, 1);  // 下
+      drawArrow(center - axisLen, center, -1, 0); // 左
+      drawArrow(center + axisLen, center, 1, 0);  // 右
+      // 画标签（位置优化+美化）
+      ctx.save();
+      ctx.font = 'bold 22px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 4;
+      // 阴影提升可读性
+      ctx.shadowColor = 'rgba(255,255,255,0.8)';
+      ctx.shadowBlur = 4;
+      // 纵向标签（上下）向左偏移20px
+      // 横向标签（左右）向上偏移20px
+      if (isLeft) {
+        // modeMap[0]上下，modeMap[1]左右
+        ctx.fillStyle = 'black';
+        ctx.fillText(modeMap[0], center - 20, center - axisLen / 2); // 上
+        ctx.fillText(modeMap[0], center - 20, center + axisLen / 2); // 下
+        ctx.fillText(modeMap[1], center - axisLen / 2, center - 20); // 左
+        ctx.fillText(modeMap[1], center + axisLen / 2, center - 20); // 右
+      } else {
+        // modeMap[2]上下，modeMap[3]左右
+        ctx.fillStyle = 'black';
+        ctx.fillText(modeMap[2], center - 20, center - axisLen / 2); // 上
+        ctx.fillText(modeMap[2], center - 20, center + axisLen / 2); // 下
+        ctx.fillText(modeMap[3], center - axisLen / 2, center - 20); // 左
+        ctx.fillText(modeMap[3], center + axisLen / 2, center - 20); // 右
+      }
+      ctx.restore();
+    }
   </script>
 </body>
-</html> 
 </html> 
