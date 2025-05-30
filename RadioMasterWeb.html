@@ -3776,15 +3776,75 @@
         let val = buf[off] | (buf[off+1]<<8);
         recvChannel[i] = val;
       }
-      // 只有recvChannel[0]非0才显示
-      if (recvChannel[0] !== 0) {
+      // ========== 新增：通道数据处理算法 ==========
+      let channlMinRoute = 988;
+      let channlMaxRoute = 2012;
+      let channlMidRoute = 1500;
+      let processedCH = new Array(10);
+      // 获取映射、反向、行程、中心点、Trim参数
+      let channelMapSend = (window.channelMap && window.channelMap.channelMapSend) ? window.channelMap.channelMapSend : Array.from({length:10}, (_,i)=>i+1);
+      let channelDirSend = (window.channelMap && window.channelMap.channelDirSend) ? window.channelMap.channelDirSend : Array(10).fill(0);
+      let routeLeft = (window.channelMap && window.channelMap.channelLeftSend) ? window.channelMap.channelLeftSend : Array(10).fill(0);
+      let routeRight = (window.channelMap && window.channelMap.channelRightSend) ? window.channelMap.channelRightSend : Array(10).fill(0);
+      let centerVal = (window.trimMidObj && window.trimMidObj.channelMidSend) ? window.trimMidObj.channelMidSend : Array(4).fill(0);
+      let trimVal = (window.trimMidObj && window.trimMidObj.channelTrimSend) ? window.trimMidObj.channelTrimSend : Array(4).fill(0);
+      // 1. 先中心点+行程，再Trim，再映射，最后反向
+      let tmpRouteData = new Array(10);
+      for (let i = 0; i < 10; i++) {
+        // 先中心点+行程
+        let raw = recvChannel[i];
+        let midOffset = (i < 4) ? (centerVal[i] || 0) : 0;
+        let leftPercent = routeLeft[i] || 0;
+        let rightPercent = routeRight[i] || 0;
+        if (raw >= channlMidRoute) {
+          tmpRouteData[i] = ((raw - channlMidRoute) * (channlMaxRoute - channlMidRoute - midOffset) / (channlMaxRoute - channlMidRoute)) * (100 - rightPercent) / 100 + channlMidRoute + midOffset;
+        } else {
+          tmpRouteData[i] = (-1 * (channlMidRoute - raw) * (channlMidRoute + midOffset - channlMinRoute) / (channlMidRoute - channlMinRoute)) * (100 - leftPercent) / 100 + channlMidRoute + midOffset;
+        }
+        // 再Trim（仅前4个）
+        if (i < 4) {
+          let handOffset = trimVal[i] || 0;
+          if (handOffset > 0) {
+            if (tmpRouteData[i] + handOffset > channlMaxRoute) {
+              tmpRouteData[i] = channlMaxRoute;
+            } else {
+              tmpRouteData[i] = tmpRouteData[i] + handOffset;
+            }
+          } else if (handOffset < 0) {
+            if (tmpRouteData[i] + handOffset < channlMinRoute) {
+              tmpRouteData[i] = channlMinRoute;
+            } else {
+              tmpRouteData[i] = tmpRouteData[i] + handOffset;
+            }
+          }
+        }
+      }
+      // 再映射
+      let mappedCH = new Array(10);
+      for (let i = 0; i < 10; i++) {
+        let srcIdx = (channelMapSend[i] || (i+1)) - 1;
+        mappedCH[i] = tmpRouteData[srcIdx];
+      }
+      // 最后反向
+      for (let i = 0; i < 10; i++) {
+        if (channelDirSend[i]) {
+          processedCH[i] = 2 * channlMidRoute - mappedCH[i];
+        } else {
+          processedCH[i] = mappedCH[i];
+        }
+        // 边界保护
+        if (processedCH[i] > channlMaxRoute) processedCH[i] = channlMaxRoute;
+        if (processedCH[i] < channlMinRoute) processedCH[i] = channlMinRoute;
+      }
+      // ========== 用处理后的数据显示到页面 ==========
+      if (processedCH[0] !== 0) {
         for(let i=0;i<10;i++){
           let chVal = document.getElementById(`ch-val-${i}`);
           let chInput = document.getElementById(`ch-input-${i}`);
-          if(chVal) chVal.textContent = recvChannel[i];
-          if(chInput) chInput.value = recvChannel[i];
+          if(chVal) chVal.textContent = Math.round(processedCH[i]);
+          if(chInput) chInput.value = Math.round(processedCH[i]);
           let bar = document.getElementById(`ch-bar-${i}`)?.children[0];
-          if(bar) bar.style.width = ((recvChannel[i]-988)/(2012-988)*100) + '%';
+          if(bar) bar.style.width = ((processedCH[i]-988)/(2012-988)*100) + '%';
         }
       }
       window.origChannelData = recvChannel;
