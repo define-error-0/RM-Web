@@ -769,7 +769,7 @@
         <div id="page-calib" class="main-page" style="display:none;">
           <div class="comm-container">
             <div class="calib-title">设备校准</div>
-            <div style="display:flex;align-items:center;gap:22px;margin-bottom:18px;">
+            <!-- <div style="display:flex;align-items:center;gap:22px;margin-bottom:18px;">
               <button id="calib-action-btn" class="connect-btn" style="min-width:140px;">校准</button>
               <div class="calib-btn-slider-row" style="display:flex;align-items:center;gap:32px;">
                 <div class="calib-btn-group" id="calib-btn-group" style="display:flex;gap:18px;"></div>
@@ -779,8 +779,8 @@
                   <span class="calib-slider-value" id="calib-slider-value">50</span>
                 </div>
               </div>
-            </div>
-            <div class="calib-joystick-row">
+            </div> -->
+            <!-- <div class="calib-joystick-row">
               <div class="calib-joystick-wrap">
                 <div class="calib-joystick-label">左摇杆</div>
                 <canvas class="calib-joystick" id="joystick1" width="1050" height="1050"></canvas>
@@ -789,7 +789,7 @@
                 <div class="calib-joystick-label">右摇杆</div>
                 <canvas class="calib-joystick" id="joystick2" width="1050" height="1050"></canvas>
               </div>
-            </div>
+            </div> -->
           </div>
         </div>
         <div id="page-fw" class="main-page" style="display:none;">
@@ -862,6 +862,8 @@
     let netConfBuffer = [];
     let isReading = false;
     let ymodem =[];
+    let recvMidAdc = [];
+
 
     // 页面切换逻辑
     const menuBtns = document.querySelectorAll('.menu-btn');
@@ -1126,7 +1128,7 @@
             // }, 500);
             //tryParseDevAttrBuffer();
 
-            //console.log('[缓冲区数据] serialBuffer:', serialBuffer.map(x=>x.toString(16).padStart(2,'0')).join(' '), '长度:', serialBuffer.length);
+           //console.log('[缓冲区数据] serialBuffer:', serialBuffer.map(x=>x.toString(16).padStart(2,'0')).join(' '), '长度:', serialBuffer.length);
             const len = serialBuffer[1]  
             if (value[0] === 0xFF && value.length > 60 && len <= value.length) {
               console.log('[设备属性] 收到原始包:', Array.from(serialBuffer).map(x=>x.toString(16).padStart(2,'0')).join(' '), '长度:', value.length);
@@ -1753,49 +1755,49 @@
       // 摇杆显示（无动画，默认中点）
       const joy1Canvas = document.getElementById('joystick1');
       const joy2Canvas = document.getElementById('joystick2');
-      function drawJoystick(canvas, x, y) {
-        const ctx = canvas.getContext('2d');
-        const w = canvas.width;
-        const h = canvas.height;
-        ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = '#f4f6fb';
-        ctx.fillRect(0, 0, w, h);
-        ctx.save();
-        ctx.setLineDash([12, 10]);
-        ctx.strokeStyle = '#bbb';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(w/2, 0); ctx.lineTo(w/2, h);
-        ctx.moveTo(0, h/2); ctx.lineTo(w, h/2);
-        ctx.stroke();
-        ctx.restore();
-        ctx.beginPath();
-        ctx.arc(w/2, h/2, 12, 0, 2 * Math.PI);
-        ctx.fillStyle = '#e74c3c';
-        ctx.shadowColor = '#e74c3c';
-        ctx.shadowBlur = 8;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        // 黑点
-        let bx = w/2 + (x||0) * (w/2-40) / 100;
-        let by = h/2 - (y||0) * (h/2-40) / 100;
-        // 指针线段
-        ctx.save();
-        ctx.strokeStyle = '#3358e0';
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.moveTo(w/2, h/2);
-        ctx.lineTo(bx, by);
-        ctx.stroke();
-        ctx.restore();
-        ctx.beginPath();
-        ctx.arc(bx, by, 14, 0, 2 * Math.PI);
-        ctx.fillStyle = '#111';
-        ctx.shadowColor = '#111';
-        ctx.shadowBlur = 8;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      }
+      // function drawJoystick(canvas, x, y) {
+      //   const ctx = canvas.getContext('2d');
+      //   const w = canvas.width;
+      //   const h = canvas.height;
+      //   ctx.clearRect(0, 0, w, h);
+      //   ctx.fillStyle = '#f4f6fb';
+      //   ctx.fillRect(0, 0, w, h);
+      //   ctx.save();
+      //   ctx.setLineDash([12, 10]);
+      //   ctx.strokeStyle = '#bbb';
+      //   ctx.lineWidth = 2;
+      //   ctx.beginPath();
+      //   ctx.moveTo(w/2, 0); ctx.lineTo(w/2, h);
+      //   ctx.moveTo(0, h/2); ctx.lineTo(w, h/2);
+      //   ctx.stroke();
+      //   ctx.restore();
+      //   ctx.beginPath();
+      //   ctx.arc(w/2, h/2, 12, 0, 2 * Math.PI);
+      //   ctx.fillStyle = '#e74c3c';
+      //   ctx.shadowColor = '#e74c3c';
+      //   ctx.shadowBlur = 8;
+      //   ctx.fill();
+      //   ctx.shadowBlur = 0;
+      //   // 黑点
+      //   let bx = w/2 + (x||0) * (w/2-40) / 100;
+      //   let by = h/2 - (y||0) * (h/2-40) / 100;
+      //   // 指针线段
+      //   ctx.save();
+      //   ctx.strokeStyle = '#3358e0';
+      //   ctx.lineWidth = 4;
+      //   ctx.beginPath();
+      //   ctx.moveTo(w/2, h/2);
+      //   ctx.lineTo(bx, by);
+      //   ctx.stroke();
+      //   ctx.restore();
+      //   ctx.beginPath();
+      //   ctx.arc(bx, by, 14, 0, 2 * Math.PI);
+      //   ctx.fillStyle = '#111';
+      //   ctx.shadowColor = '#111';
+      //   ctx.shadowBlur = 8;
+      //   ctx.fill();
+      //   ctx.shadowBlur = 0;
+      // }
       // 默认中点
       drawJoystick(joy1Canvas, 0, 0);
       drawJoystick(joy2Canvas, 0, 0);
@@ -1812,23 +1814,24 @@
         await writer.write(new Uint8Array([0xA5,0x55,0x0D,0,0,0x0D,0x0A]));
       }
       // 解析0x44包
-      function tryParseChannelMapPacketCalib(buf) {
-        if (!buf || buf.length < 3) return false;
-        if (buf[0] !== 0x44) return false;
-        const len = buf[1];
-        if (buf.length < len + 2) return false;
-        const crc = buf[len+1];
-        const calcCrc = crc8tab_js(buf.slice(2,2+len-1), len-1);
-        if (crc !== calcCrc) return false;
-        // 收到map后开始请求原始通道数据
-        // if (origChannelTimer) clearInterval(origChannelTimer);
-        // origChannelTimer = setInterval(() => {
-        //   if (calibState === 'idle') {
-        //     writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A]));
-        //   }
-        // }, 20);
-        return true;
-      }
+      // function tryParseChannelMapPacketCalib(buf) {
+      //   if (!buf || buf.length < 3) return false;
+      //   if (buf[0] !== 0x44) return false;
+      //   const len = buf[1];
+      //   if (buf.length < len + 2) return false;
+      //   const crc = buf[len+1];
+      //   const calcCrc = crc8tab_js(buf.slice(2,2+len-1), len-1);
+      //   if (crc !== calcCrc) return false;
+      //   // 收到map后开始请求原始通道数据
+      //   // if (origChannelTimer) clearInterval(origChannelTimer);
+      //   // origChannelTimer = setInterval(() => {
+      //   //   if (calibState === 'idle') {
+      //   //     writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A]));
+      //   //   }
+      //   // }, 20);
+      //    return true;
+      // }
+
       // 解析0x22包
       function tryParseOrigChannelPacketCalib(buf) {
         // 只在校准页面可见时刷新控件
@@ -1893,76 +1896,98 @@
         slider.style.background = `linear-gradient(90deg, #4f8cff ${percent}%, #e0e7ff ${percent}%)`;
       }
       window.tryParseOrigChannelPacketCalib = tryParseOrigChannelPacketCalib;
-      // // 监听串口数据
-      // if (!window._calibSerialBuffer) window._calibSerialBuffer = [];
-      // // 只在校准页面时处理
-      // window._calibSerialBuffer.length = 0;
-      // // 代理push
-      // if (!window._calibPushProxy) {
-      //   window._calibPushProxy = true;
-      //   const origPush = Array.prototype.push;
-      //   Array.prototype.push = function(...args) {
-      //     const ret = origPush.apply(this, args);
-      //     // 检查0x44
-      //     for (let i = 0; i < this.length - 2; i++) {
-      //       if (this[i] === 0x44) {
-      //         const len = this[i+1];
-      //         if (this.length >= i + len + 2) {
-      //           const buf = this.slice(i, i+len+2);
-      //           if (tryParseChannelMapPacketCalib(buf)) {
-      //             this.splice(i, len+2);
-      //             break;
-      //           }
-      //         }
-      //       }
-      //       if (this[i] === 0x22) {
-      //         const len = this[i+1];
-      //         if (this.length >= i + len + 2) {
-      //           const buf = this.slice(i, i+len+2);
-      //           if (tryParseOrigChannelPacketCalib(buf)) {
-      //             this.splice(i, len+2);
-      //             break;
-      //           }
-      //         }
-      //       }
-      //     }
-      //     return ret;
-      //   }
-      // }
-      // 进入页面时发map
+
+      
+ 
       requestChannelMapForCalib();
 
       // 校准按钮逻辑
       const calibBtn = document.getElementById('calib-action-btn');
       calibBtn.onclick = async function() {
         if (window.calibState === 'idle') {
-          window.calibState = 'calibrating';
+          window.calibState = 'calibratMid';
           calibBtn.textContent = '确认中心点';
-          // if (origChannelTimer) { clearInterval(origChannelTimer); origChannelTimer = null; }
-        } else if (window.calibState === 'calibrating') {
+          console.log('[校准流程] 进入选择中心点，停止定时器');
+          stopGlobalChannelTimer();
+        } else if (window.calibState === 'calibratMid') {
           // 计算中心点均值
           let means = [0,0,0,0];
           for(let i=0;i<4;i++){
-            means[i] = window.lastChannelData[i] || 1500;
+            means[i] = window.lastChannelData[i] ;
+          }
+          if (window._currentPage === 'calib') {
+            console.log('[校准流程] 发送一次获取中心点指令 0xA5,0x55,0x22,0x04,0x0D,0x0A');
+            writer.write(new Uint8Array([0xA5,0x55,0X22,0x04,0x0D,0x0A]));
           }
           window.centerMeans = means;
-          // 打印到控制台
-          console.log('中心点均值:', window.centerMeans);
-          // 发送指令
-          if (writer) {
-            await writer.write(new Uint8Array([0xA5,0x55,0x22,4,0x0D,0x0A]));
-            console.log('发送获取中点数据指令');
+          // 切换为定时发送0xA5,0x55,0x04,0x0D,0x0A的任务
+          window._globalChannelTask = {
+            channelRequest: () => {
+              console.log('[定时器] 发送 0xA5,0x55,0x04,0x0D,0x0A');
+              if (writer) writer.write(new Uint8Array([0xA5,0x55,0x04,0x0D,0x0A]));
+            },
+            commandRequest: () => {}
+          };
+          console.log('[校准流程] 切换为定时发送 0xA5,0x55,0x04,0x0D,0x0A');
+          startGlobalChannelTimer();
+          window.calibState = 'calibrating';
+          calibBtn.textContent = '校准完成';
+        }
+        else if (window.calibState === 'calibrating') {
+          // 组包并发送校准指令
+          // 0xA5,0x55,0x0A + 28字节 + \r\n
+          // 确保全局最大最小和中心点存在
+          const adcMax = window._adcMax || [0,0,0,0,0];
+          const adcMin = window._adcMin || [0,0,0,0,0];
+          // 中心点
+          // 组装28字节数据
+          let data = new Uint8Array(28);
+          for (let i = 0; i < 4; i++) {
+            // max
+            data[i*6+0] = adcMax[i] & 0xFF;
+            data[i*6+1] = (adcMax[i] >> 8) & 0xFF;
+            // min
+            data[i*6+2] = adcMin[i] & 0xFF;
+            data[i*6+3] = (adcMin[i] >> 8) & 0xFF;
+            // zero
+            let zero = recvMidAdc[i];
+            data[i*6+4] = zero & 0xFF;
+            data[i*6+5] = (zero >> 8) & 0xFF;
           }
+          // 第5通道（电位器）
+          data[24] = adcMax[4] & 0xFF;
+          data[25] = (adcMax[4] >> 8) & 0xFF;
+          data[26] = adcMin[4] & 0xFF;
+          data[27] = (adcMin[4] >> 8) & 0xFF;
+          // zero 固定2048
+          // 组包
+          let buf = new Uint8Array(3+28+2);
+          buf[0] = 0xA5;
+          buf[1] = 0x55;
+          buf[2] = 0x0A;
+          buf.set(data, 3);
+          buf[31] = 0x0D;
+          buf[32] = 0x0A;
+          // 电位器 zero 固定2048
+          buf[29] = 0x00; // 2048 & 0xFF
+          buf[30] = 0x08; // (2048 >> 8) & 0xFF
+          // 发送
+          if (writer) {
+            writer.write(buf);
+            console.log('[校准] 已发送校准指令:', Array.from(buf).map(x=>x.toString(16).padStart(2,'0')).join(' '));
+          }
+
+          window._globalChannelTask = {
+            channelRequest: () => {
+              console.log('[定时器] 发送 0xA5,0x55,0x02,0x0D,0x0A');
+              if (writer) writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A]));
+            },
+            commandRequest: () => {}
+          };
+          console.log('[校准流程] 恢复为定时发送原始通道数据 0xA5,0x55,0x02,0x0D,0x0A');
+          startGlobalChannelTimer();
           window.calibState = 'idle';
           calibBtn.textContent = '校准';
-          // 恢复原始通道数据请求
-          // if (!origChannelTimer) {
-          //   origChannelTimer = setInterval(() => {
-          //     if (window.calibState === 'idle') {
-          //       writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A]));
-          //     }
-          //   }, 20);
-          // }
         }
       };
     }
@@ -3470,6 +3495,12 @@
               let percent = (v + 100) / 200;
               let left = percent * (centerBar.offsetWidth - centerDot.offsetWidth) + 1;
               centerDot.style.left = left + 'px';
+              // --- 新增：同步全局center并发送 ---
+              if (!window._center) window._center = [0,0,0,0];
+              window._center[i] = v;
+              if (typeof sendCenterCommand === 'function') {
+                sendCenterCommand(window._center);
+              }
             };
           }
         }
@@ -3500,6 +3531,12 @@
                 let percent = (0 + 100) / 200;
                 let left = percent * (bar.offsetWidth - dot.offsetWidth) + 1;
                 dot.style.left = left + 'px';
+              }
+              // --- 新增：同步全局center并发送 ---
+              if (!window._center) window._center = [0,0,0,0];
+              window._center[idx] = 0;
+              if (typeof sendCenterCommand === 'function') {
+                sendCenterCommand(window._center);
               }
             }
           };
@@ -3634,7 +3671,7 @@
         channelDirSend: [],
         channelMidRecv: [0,0,0,0],
         channelMidSend: [0,0,0,0],
-        channelHanderRecv: [0,0,0,0],
+        channelCenterSend: [0,0,0,0],
         channelTrimSend: [0,0,0,0]
       };
       // channelDirRecv: 16位bit
@@ -3705,7 +3742,7 @@
       const crc = buf[len+1];
       const calcCrc = crc8tab_js(buf.slice(2,2+len-1), len-1);
       if (crc !== calcCrc) return false;
-      // 解析中心点
+      // 解析中立点
       let channelMidRecv = [], channelMidSend = [], channelHanderRecv = [], channelTrimSend = [];
       for(let i=0;i<4;i++){
         let off = 2 + i*2;
@@ -3735,9 +3772,15 @@
         let trimDot = document.getElementById(`trim-dot-${i}`);
         if(trimDot) trimDot.style.left = `calc(${((val+130)/2.6)}% - 7px)`;
       }
-      let trimMidObj = { channelMidRecv, channelMidSend, channelHanderRecv, channelTrimSend };
-      window.trimMidObj = trimMidObj;
-      console.log('trimMidObj:', trimMidObj);
+      // 全局唯一：直接赋值到window.channelMap
+      if (window.channelMap) {
+        window.channelMap.channelMidRecv = channelMidRecv;
+        window.channelMap.channelMidSend = channelMidSend;
+        window.channelMap.channelTrimSend = channelTrimSend;
+        window.channelMap.channelHanderRecv = channelHanderRecv;
+      }
+      // 移除window.trimMidObj = trimMidObj;
+      //console.log('trimMidObj:', { channelMidRecv, channelMidSend, channelHanderRecv, channelTrimSend });
       _hasTrimAndMid = true;
       // 收到trim/center包后，允许下次0x44包再发0x12
       _waitingForTrimAndMid = false;
@@ -3757,7 +3800,7 @@
         window._onConfigTrimReceived();
         window._onConfigTrimReceived = null;
       }
-      return trimMidObj;
+      return { channelMidRecv, channelMidSend, channelHanderRecv, channelTrimSend };
     }
     // 解析0x22包，显示原始通道数据
     function tryParseOrigChannelPacket(buf) {
@@ -3786,8 +3829,8 @@
       let channelDirSend = (window.channelMap && window.channelMap.channelDirSend) ? window.channelMap.channelDirSend : Array(10).fill(0);
       let routeLeft = (window.channelMap && window.channelMap.channelLeftSend) ? window.channelMap.channelLeftSend : Array(10).fill(0);
       let routeRight = (window.channelMap && window.channelMap.channelRightSend) ? window.channelMap.channelRightSend : Array(10).fill(0);
-      let centerVal = (window.trimMidObj && window.trimMidObj.channelMidSend) ? window.trimMidObj.channelMidSend : Array(4).fill(0);
-      let trimVal = (window.trimMidObj && window.trimMidObj.channelTrimSend) ? window.trimMidObj.channelTrimSend : Array(4).fill(0);
+      let centerVal = (window.channelMap && window.channelMap.channelMidSend) ? window.channelMap.channelMidSend : Array(4).fill(0);
+      let trimVal = (window.channelMap && window.channelMap.channelTrimSend) ? window.channelMap.channelTrimSend : Array(4).fill(0);
       // 1. 先中心点+行程，再Trim，再映射，最后反向
       let tmpRouteData = new Array(10);
       for (let i = 0; i < 10; i++) {
@@ -3848,6 +3891,8 @@
         }
       }
       window.origChannelData = recvChannel;
+      // 新增：保存最新原始包
+      window._lastOrigChannelBuf = buf;
       //console.log('原始通道数据:', recvChannel);
       return true;
     }
@@ -3888,17 +3933,6 @@
             }
           }
           // 检查0x22包
-          // if (this[i] === 0x22) {
-          //   const len = this[i+1];
-          //   if (this.length >= i + len + 2) {
-          //     const buf = this.slice(i, i+len+2);
-          //     if (tryParseOrigChannelPacket(buf)) {
-          //       this.splice(i, len+2);
-          //       found = true;
-          //       break;
-          //     }
-          //   }
-          // }
           if (this[i] === 0x22) {
             const len = this[i+1];
             if (this.length >= i + len + 2) {
@@ -3910,6 +3944,11 @@
                 //console.log('window._currentPage2:', window._currentPage);
                 tryParseOrigChannelPacketCalib(buf);
               }
+              else
+              {
+
+
+              }
               if (parsed) {
                 this.splice(i, len+2);
                 found = true;
@@ -3917,7 +3956,61 @@
               }
             }
           }
-        }
+          
+          // 检查0x33包
+          if (this[i] === 0x33) {
+            const len = this[i+1];
+            if (this.length >= i + len + 2) {
+              const buf = this.slice(i, i+len+2);
+              let parsed = false;
+              if (window._currentPage === 'calib' && typeof tryParseAdcPacketCalib === 'function') {
+                parsed = tryParseAdcPacketCalib(buf);
+              }
+              if (parsed) {
+                this.splice(i, len+2);
+                found = true;
+                break;
+              }
+            }
+          }
+
+          // 检查0x34包
+          if (this[i] === 0x34) {
+            console.log('[校准] 收到0x34包');
+            const len = this[i+1];
+            if (this.length >= i + len + 2) {
+              const buf = this.slice(i, i+len+2);
+              let parsed = false;
+              if (window._currentPage === 'calib' && typeof tryParseMidAdcPacketCalib === 'function') {
+                console.log('[校准] tryParseMidAdcPacketCalib Running');
+                parsed = tryParseMidAdcPacketCalib(buf);
+              }
+              if (parsed) {
+                this.splice(i, len+2);
+                found = true;
+                break;
+              }
+            }
+          }
+
+          // 在Array.prototype.push代理中添加：
+          if (this[i] === 0x55) {
+            const len = this[i+1];
+            if (this.length >= i + len + 2) {
+              const buf = this.slice(i, i+len+2);
+              let parsed = false;
+              if (typeof tryParseTrimAndCenterPacket === 'function') {
+                parsed = tryParseTrimAndCenterPacket(buf);
+              }
+              if (parsed) {
+                this.splice(i, len+2);
+                found = true;
+                break;
+              }
+            }
+          }
+
+          }
       } while(found);
       return ret;
     };
@@ -4012,19 +4105,7 @@
           console.log('[校准] 收到map包，切换到通道数据');
         }
       };
-      // 校准按钮逻辑里同步calibState
-      const calibBtn = document.getElementById('calib-action-btn');
-      if (calibBtn) {
-        calibBtn.onclick = async function() {
-          if (state.calibState === 'idle') {
-            state.calibState = 'calibrating';
-            calibBtn.textContent = '确认中心点';
-          } else if (state.calibState === 'calibrating') {
-            state.calibState = 'idle';
-            calibBtn.textContent = '校准';
-          }
-        };
-      }
+
       window._globalChannelTask = {
         channelRequest: () => {
           if (state.gotMap && state.calibState === 'idle') {
@@ -4046,20 +4127,160 @@
     window._globalChannelTask = null;
     function startGlobalChannelTimer() {
       if (!window._globalChannelTimer) {
+        console.log('[定时器] 启动全局通道定时器');
         window._globalChannelTimer = setInterval(() => {
           if (typeof window._globalChannelTask === 'function') {
             window._globalChannelTask();
+          } else if (window._globalChannelTask && window._globalChannelTask.channelRequest) {
+            window._globalChannelTask.channelRequest();
           }
         }, 20);
+      } else {
+        console.log('[定时器] 已有定时器在运行');
       }
     }
     function stopGlobalChannelTimer() {
       if (window._globalChannelTimer) {
+        console.log('[定时器] 停止全局通道定时器');
         clearInterval(window._globalChannelTimer);
         window._globalChannelTimer = null;
       }
     }
 
+    function tryParseAdcPacketCalib(buf) {
+      var pageCalib = document.getElementById('page-calib');
+      if (!pageCalib || pageCalib.style.display === 'none') return false;
+
+      if (!buf || buf.length < 3) return false;
+      if (buf[0] !== 0x33) return false;
+      const len = buf[1];
+      if (buf.length < len + 2) return false;
+      const crc = buf[len+1];
+      const calcCrc = crc8tab_js(buf.slice(2, 2+len-1), len-1);
+      if (crc !== calcCrc) return false;
+
+      // CaliFlag
+      const CaliFlag = buf[12];
+
+      // 5个ADC
+      let recvAdc = [];
+      for (let i = 0; i < 5; i++) {
+        let off = 2 + i*2;
+        recvAdc[i] = buf[off] | (buf[off+1]<<8);
+      }
+
+      // 方向（4字节，0/1）
+      let recvAdcInputDir = [];
+      for (let i = 0; i < 4; i++) {
+        recvAdcInputDir[i] = buf[11+2+i];
+      }
+
+      // 映射（4字节）
+      let adcMap = [];
+      for (let i = 0; i < 4; i++) {
+        adcMap[i] = buf[15+2+i];
+      }
+
+      // 校准数据（5组，每组6字节，max/min/mid）
+      let recvAdcCailData = [];
+      for (let i = 0; i < 5; i++) {
+        let base = 19+2+i*6;
+        let max = buf[base] | (buf[base+1]<<8);
+        let min = buf[base+2] | (buf[base+3]<<8);
+        let mid = buf[base+4] | (buf[base+5]<<8);
+        recvAdcCailData[i] = [max, min, mid];
+      }
+
+      // 计算tmpData（摇杆归一化到-100~100）
+      let tmpData = [];
+      for (let i = 0; i < 5; i++) {
+        let adc = recvAdc[i];
+        let max = recvAdcCailData[i][0];
+        let min = recvAdcCailData[i][1];
+        let mid = recvAdcCailData[i][2];
+        if (adc >= mid) {
+          tmpData[i] = 1.0 * (adc - mid) * 100 / (max - mid);
+          if (tmpData[i] > 100) tmpData[i] = 100;
+        } else {
+          tmpData[i] = -100 + 1.0 * (adc - min) * 100 / (mid - min);
+          if (tmpData[i] < -100) tmpData[i] = -100;
+        }
+        // 方向反转，始终用映射后的通道
+        if (i < 4 && recvAdcInputDir[adcMap[i]]) tmpData[i] = -tmpData[i];
+      }
+
+      // 打印调试
+      console.log('[ADC包] CaliFlag:', CaliFlag, 'recvAdc:', recvAdc, 'adcMap:', adcMap, 'recvAdcInputDir:', recvAdcInputDir, 'recvAdcCailData:', recvAdcCailData, 'tmpData:', tmpData);
+
+      // 动态映射摇杆显示，适配所有硬件
+      const joy1Canvas = document.getElementById('joystick1');
+      const joy2Canvas = document.getElementById('joystick2');
+      // 右摇杆：X=tmpData[adcMap[1]], Y=tmpData[adcMap[0]]
+      drawJoystick(joy2Canvas, tmpData[adcMap[1]], tmpData[adcMap[0]]);
+      // 左摇杆：X=tmpData[adcMap[3]], Y=tmpData[adcMap[2]]
+      drawJoystick(joy1Canvas, tmpData[adcMap[3]], tmpData[adcMap[2]]);
+
+      // 电位器 tmpData[4] 显示到进度条
+      const slider = document.getElementById('calib-slider');
+      const sliderValue = document.getElementById('calib-slider-value');
+      // 计算电位器百分比
+      let adcNow = recvAdc[4];
+      let adcMin = recvAdcCailData[4][1];
+      let adcMax = recvAdcCailData[4][0];
+      let percent = 0;
+      if (adcMax !== adcMin) {
+        percent = Math.round((adcNow - adcMin) * 100 / (adcMax - adcMin));
+        if (percent < 0) percent = 0;
+        if (percent > 100) percent = 100;
+      }
+      if (slider) slider.value = percent;
+      if (sliderValue) sliderValue.textContent = percent;
+      if (slider) slider.style.background = `linear-gradient(90deg, #4f8cff ${percent}%, #e0e7ff ${percent}%)`;
+
+      // 实时收集最大最小值，便于校准
+      if (!window._adcMax) window._adcMax = [0,0,0,0,0];
+      if (!window._adcMin) window._adcMin = [65535,65535,65535,65535,65535];
+      for (let i = 0; i < 5; i++) {
+        if (recvAdc[i] > window._adcMax[i]) window._adcMax[i] = recvAdc[i];
+        if (recvAdc[i] < window._adcMin[i]) window._adcMin[i] = recvAdc[i];
+      }
+      // 控制台输出当前最大最小值
+      console.log('[ADC校准] 当前最大值:', window._adcMax, '最小值:', window._adcMin);
+
+      return true;
+    }
+
+
+    function tryParseMidAdcPacketCalib(buf) {
+        // 只在校准页面可见时刷新控件
+        var pageCalib = document.getElementById('page-calib');
+        if (!pageCalib || pageCalib.style.display === 'none') return false;
+
+        if (!buf || buf.length < 3) return false;
+        if (buf[0] !== 0x34) return false;
+        const len = buf[1];
+        if (buf.length < len + 2) return false;
+        const crc = buf[len+1];
+        const calcCrc = crc8tab_js(buf.slice(2, 2+len-1), len-1);
+        if (crc !== calcCrc) return false;
+
+        // 解析4个16位中立点
+        for (let i = 0; i < 4; i++) {
+          let off = 2 + i*2;
+          let val = buf[off] | (buf[off+1]<<8);
+          recvMidAdc[i] = val;
+        }
+        // 打印到控制台
+        console.log('[校准中心点] 解析到4个中立点:', recvMidAdc);
+
+        // 标志位
+        if (recvMidAdc[0] !== 0) {
+          console.log('[校准中心点] 获得了校准中心点');
+        }
+        return true;
+    }
+
+    // 校准页面任务
     // 全局定时器和任务管理
     window._globalChannelTimer = null;  // 用于通道数据请求 (20ms)
     window._globalCommandTimer = null;  // 用于其他指令请求 (1000ms)
@@ -4215,6 +4436,109 @@
         ctx.fillText(modeMap[3], center + axisLen / 2, center - 20); // 右
       }
       ctx.restore();
+    }
+
+    // ========== 摇杆绘制函数，确保全局可用 ==========
+    function drawJoystick(canvas, x, y) {
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = '#f4f6fb';
+      ctx.fillRect(0, 0, w, h);
+      ctx.save();
+      ctx.setLineDash([12, 10]);
+      ctx.strokeStyle = '#bbb';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(w/2, 0); ctx.lineTo(w/2, h);
+      ctx.moveTo(0, h/2); ctx.lineTo(w, h/2);
+      ctx.stroke();
+      ctx.restore();
+      ctx.beginPath();
+      ctx.arc(w/2, h/2, 12, 0, 2 * Math.PI);
+      ctx.fillStyle = '#e74c3c';
+      ctx.shadowColor = '#e74c3c';
+      ctx.shadowBlur = 8;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      // 黑点
+      let bx = w/2 + (x||0) * (w/2-40) / 100;
+      let by = h/2 - (y||0) * (h/2-40) / 100;
+      // 指针线段
+      ctx.save();
+      ctx.strokeStyle = '#3358e0';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(w/2, h/2);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+      ctx.restore();
+      ctx.beginPath();
+      ctx.arc(bx, by, 14, 0, 2 * Math.PI);
+      ctx.fillStyle = '#111';
+      ctx.shadowColor = '#111';
+      ctx.shadowBlur = 8;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+    window.drawJoystick = drawJoystick;
+
+    // 在全局添加解析函数：
+    function tryParseTrimAndCenterPacket(buf) {
+      if (!buf || buf.length < 3) return false;
+      if (buf[0] !== 0x55) return false;
+      const len = buf[1];
+      if (buf.length < len + 2) return false;
+      const crc = buf[len+1];
+      const calcCrc = crc8tab_js(buf.slice(2, 2+len-1), len-1);
+      if (crc !== calcCrc) return false;
+      // 解析4个通道的trim
+      let trim = [];
+      for (let i = 0; i < 4; i++) {
+        let off = 2 + i*2;
+        trim[i] = buf[off] | (buf[off+1]<<8);
+        // 处理负数（如果是有符号16位）
+        if (trim[i] & 0x8000) trim[i] = trim[i] - 0x10000;
+      }
+      // 获取当前的adcMap
+      let adcMap = window.channelMap && window.channelMap.channelMapSend ? window.channelMap.channelMapSend : [0,1,2,3];
+      // 映射到UI
+      for (let i = 0; i < 4; i++) {
+        let uiIdx = i;//adcMap[i];
+        // 更新Trim
+        const trimValSpan = document.getElementById(`trim-val-${uiIdx}`);
+        if (trimValSpan) trimValSpan.textContent = trim[i];
+        const trimDot = document.getElementById(`trim-dot-${uiIdx}`);
+        const trimBar = document.getElementById(`trim-bar-${uiIdx}`);
+        if (trimBar && trimDot) {
+          let percent = (trim[i] + 130) / 260;
+          let left = percent * (trimBar.offsetWidth - trimDot.offsetWidth) + 1;
+          trimDot.style.left = left + 'px';
+        }
+        // 不要动center
+      }
+      console.log('[TRIM包] 解析到4个trim:', trim, '映射顺序:', adcMap);
+      return true;
+    }
+    function sendCenterCommand(centerArr) {
+      // centerArr: 4个通道的center，单位-100~100
+      let data = new Uint8Array(3+8+2);
+      data[0] = 0xA5;
+      data[1] = 0x55;
+      data[2] = 0x1A;
+      for (let i = 0; i < 4; i++) {
+        let val = Math.round(centerArr[i] * 512 / 100);
+        data[3+i*2] = val & 0xFF;
+        data[3+i*2+1] = (val >> 8) & 0xFF;
+      }
+      // 后面4字节补0
+      for (let i = 11; i < 11+4; i++) data[i] = 0;
+      data[15] = 0x0D;
+      data[16] = 0x0A;
+      writer.write(data);
+      console.log('[中立点指令] 已发送:', Array.from(data).map(x=>x.toString(16).padStart(2,'0')).join(' '));
     }
   </script>
 </body>
