@@ -671,6 +671,18 @@
       z-index: 2;
       background: #2ecc71; /* 或 #4f8cff */
     }
+    #lang-switcher {
+      position: static;
+      margin-left: 18px;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 4px 12px;
+      font-size: 1em;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      user-select: none;
+    }
   </style>
 </head>
 <body style="margin:0;">
@@ -698,6 +710,7 @@
         </div>
         <span class="battery-num" id="battery-bar-num">50%</span>
       </div>
+      <div id="lang-switcher">🌐 中文</div>
     </div>
   </div>
   <!-- 主体布局 -->
@@ -921,8 +934,12 @@
     function updateDeviceInfoBar() {
       // 电量进度条
       let percent = 0;
-      // 如果已连接设备后会被覆盖
-      if (window._batteryPercent !== undefined) percent = window._batteryPercent;
+      // 优先用 deviceStats.txBattery
+      if (window.deviceStats && typeof window.deviceStats.txBattery === 'number' && !isNaN(window.deviceStats.txBattery)) {
+        percent = window.deviceStats.txBattery;
+      } else if (window._batteryPercent !== undefined) {
+        percent = window._batteryPercent;
+      }
       const batteryFill = document.getElementById('battery-bar-fill');
       const batteryHeadFill = document.querySelector('.battery-head-fill');
       // 更新电量百分比
@@ -1115,9 +1132,55 @@
         try {
           const { value, done } = await reader.read();
           if (done) break;
-          if (value) {
+          if (value) 
+          {
             // === 始终推入serialBuffer，无论YMODEM是否在进行 ===
-            serialBuffer.push(...value);
+            if(window._currentPage === 'net')   //无线配置单独缓冲区咯
+            {
+            netConfBuffer.push(...value);
+            // 检查是否收满大包
+            while (netConfBuffer.length >= 2) {
+              const bigLen = (netConfBuffer[0] << 8) | netConfBuffer[1];
+              // 健壮性校验
+              if (bigLen < 2 || bigLen > 8192) {
+                abnormalCount++;
+                // console.warn('[readLoop] 异常包头，bigLen=', bigLen, 'netConfBuffer=', netConfBuffer.slice(0, 16), 'abnormalCount=', abnormalCount); // 已关闭异常包头日志
+                const before = netConfBuffer.length;
+                netConfBuffer.shift(); // 丢弃一个字节，避免死循环
+                if (netConfBuffer.length === before) {
+                  // 极端情况下buffer未减少，强制break防止死循环
+                  // console.error('[readLoop] netConfBuffer.shift()无效，强制break'); // 已关闭异常包头日志
+                  break;
+                }
+                if (abnormalCount > 10) {
+                  // console.error('[readLoop] 异常包头连续过多，清空buffer'); // 已关闭异常包头日志
+                  netConfBuffer = [];
+                  abnormalCount = 0;
+
+                  break;
+                }
+                continue;
+              } else {
+                abnormalCount = 0;
+              }
+              
+              if (netConfBuffer.length >= bigLen) {
+                console.log('netConfBuffer:', netConfBuffer);
+                const bigPacket = new Uint8Array(netConfBuffer.slice(0, bigLen));
+                const container = document.getElementById('wireless-settings');
+                if (container) container.innerHTML = '';
+                parseCRSFPacket(bigPacket);
+                netConfBuffer = netConfBuffer.slice(bigLen);
+                document.getElementById('refresh-settings').disabled = false;
+                document.getElementById('settings-status').textContent = '刷新完成';
+              } else {
+                break;
+              }
+            }
+            }
+            else
+            {
+            serialBuffer.push(...value);    //公共缓冲区
             // --- 新增: 0.5秒内未能解析出包则清空缓冲区 ---
             // if (devAttrBufferTimeout) clearTimeout(devAttrBufferTimeout);
             // devAttrBufferTimeout = setTimeout(() => {
@@ -1143,80 +1206,34 @@
                 console.warn('[设备属性] 解析失败');
               }
             }
-            else if(value[0] === 0xFF && value.length > 60)
-            {
-              console.log('[设备属性] 收到原始包:', Array.from(serialBuffer).map(x=>x.toString(16).padStart(2,'0')).join(' '), '长度:', value.length);
-              // 只处理一次完整包
-              const devInfo = parseDeviceInfoPacket(value);
-              if (devInfo) {
-                window._deviceInfo = devInfo;
-                renderDeviceInfoPage();
-                if (window._waitingDevAttr) clearTimeout(window._waitingDevAttr);
-              }
-            }
-            else if(value[0] === 0xFF && value.length > 60)
-            {
-
-
-            }
-
-
-            if (commOutputBox) {
-              if (recvHex && recvHex.checked) {
-                const hexStr = Array.from(value).map(b => b.toString(16).padStart(2, '0')).join(' ');
-                commOutputBox.textContent += `\n[RECV] ${hexStr}`;
-              } else {
-                const textStr = decoder.decode(new Uint8Array(value));
-                commOutputBox.textContent += `\n[RECV] ${textStr}`;
-              }
-              commOutputBox.scrollTop = commOutputBox.scrollHeight;
-            }
-        
-
-            // if(window._currentPage === 'net')
+            // else if(value[0] === 0xFF && value.length > 60)
             // {
-              //console.log('netConfBuffertest');
-              netConfBuffer.push(...value);
-              // 检查是否收满大包
-              while (netConfBuffer.length >= 2) {
-                const bigLen = (netConfBuffer[0] << 8) | netConfBuffer[1];
-                // 健壮性校验
-                if (bigLen < 2 || bigLen > 8192) {
-                  abnormalCount++;
-                  // console.warn('[readLoop] 异常包头，bigLen=', bigLen, 'netConfBuffer=', netConfBuffer.slice(0, 16), 'abnormalCount=', abnormalCount); // 已关闭异常包头日志
-                  const before = netConfBuffer.length;
-                  netConfBuffer.shift(); // 丢弃一个字节，避免死循环
-                  if (netConfBuffer.length === before) {
-                    // 极端情况下buffer未减少，强制break防止死循环
-                    // console.error('[readLoop] netConfBuffer.shift()无效，强制break'); // 已关闭异常包头日志
-                    break;
-                  }
-                  if (abnormalCount > 10) {
-                    // console.error('[readLoop] 异常包头连续过多，清空buffer'); // 已关闭异常包头日志
-                    netConfBuffer = [];
-                    abnormalCount = 0;
+            //   console.log('[设备属性] 收到原始包:', Array.from(serialBuffer).map(x=>x.toString(16).padStart(2,'0')).join(' '), '长度:', value.length);
+            //   // 只处理一次完整包
+            //   const devInfo = parseDeviceInfoPacket(value);
+            //   if (devInfo) {
+            //     window._deviceInfo = devInfo;
+            //     renderDeviceInfoPage();
+            //     if (window._waitingDevAttr) clearTimeout(window._waitingDevAttr);
+            //   }
+            // }
+            // else if(value[0] === 0xFF && value.length > 60)
+            // {
 
-                    break;
-                  }
-                  continue;
-                } else {
-                  abnormalCount = 0;
-                }
-                
-                if (netConfBuffer.length >= bigLen) {
-                  console.log('netConfBuffer:', netConfBuffer);
-                  const bigPacket = new Uint8Array(netConfBuffer.slice(0, bigLen));
-                  const container = document.getElementById('wireless-settings');
-                  if (container) container.innerHTML = '';
-                  parseCRSFPacket(bigPacket);
-                  netConfBuffer = netConfBuffer.slice(bigLen);
-                  document.getElementById('refresh-settings').disabled = false;
-                  document.getElementById('settings-status').textContent = '刷新完成';
-                } else {
-                  break;
-                }
-              }
-            //}
+
+            // }
+          }
+          if (commOutputBox) {
+            if (recvHex && recvHex.checked) {
+              const hexStr = Array.from(value).map(b => b.toString(16).padStart(2, '0')).join(' ');
+              commOutputBox.textContent += `\n[RECV] ${hexStr}`;
+            } else {
+              const textStr = decoder.decode(new Uint8Array(value));
+              commOutputBox.textContent += `\n[RECV] ${textStr}`;
+            }
+            commOutputBox.scrollTop = commOutputBox.scrollHeight;
+          }
+      
           }
         } catch (error) {
            console.error('读取数据错误:', error); // 已关闭串口读取错误日志
@@ -1896,8 +1913,6 @@
         slider.style.background = `linear-gradient(90deg, #4f8cff ${percent}%, #e0e7ff ${percent}%)`;
       }
       window.tryParseOrigChannelPacketCalib = tryParseOrigChannelPacketCalib;
-
-      
  
       requestChannelMapForCalib();
 
@@ -2113,6 +2128,7 @@
     const fwFileBtn = document.getElementById('fw-file-btn');
     const fwFileName = document.getElementById('fw-file-name');
     const fwUpdateBtn = document.getElementById('fw-update-btn');
+    fwUpdateBtn.disabled = true;
     const fwProgressBar = document.getElementById('fw-progress-bar');
     const fwProgressText = document.getElementById('fw-progress-text');
     const fwStatus = document.getElementById('fw-status');
@@ -2170,6 +2186,8 @@
     let fwReadyCheckActive = false;
     let fwCCount = 0;
     let fwReadyCheckTimer = null;
+    let fwSend31Timer = null;
+    let fwSend31Count = 0;
     let fwLastSerialLen = 0;
     function startFwReadyCheck() {
       fwReadyCheckActive = true;
@@ -2177,62 +2195,43 @@
       if (fwUpdateBtn) fwUpdateBtn.disabled = true; // 再加一层保险
       fwStatus.textContent = '等待下位机进入固件更新状态...';
       if (fwReadyCheckTimer) clearInterval(fwReadyCheckTimer);
-      let onlyCReady = false;
-      fwReadyCheckTimer = setInterval(async () => {
+      // 只监听，不再定时发0x31
+      fwReadyCheckTimer = setInterval(() => {
         if (!fwReadyCheckActive) return;
-        if (fwUpdateBtn) fwUpdateBtn.disabled = true; // 定时器每次都禁用
+        if (fwUpdateBtn) fwUpdateBtn.disabled = true;
         // 检查serialBuffer是否有数据
         if (serialBuffer.length > 0) {
-          let cNum = 0;
-          let otherNum = 0;
+          // 检查是否有连续3个C
+          let cStreak = 0;
           for (let i = 0; i < serialBuffer.length; i++) {
-            if (serialBuffer[i] === 0x43) cNum++;
-            else otherNum++;
+            if (serialBuffer[i] === 0x43) {
+              cStreak++;
+              if (cStreak >= 3) break;
+            } else {
+              cStreak = 0;
+            }
           }
-          // 只要还没到全0x43的就绪状态，始终禁用按钮
-          if (fwUpdateBtn) fwUpdateBtn.disabled = true;
-          if (cNum >= 3 && otherNum === 0) {
+          if (cStreak >= 3) {
             fwReadyCheckActive = false;
-            if (fwUpdateBtn) fwUpdateBtn.disabled = false;
+            if (fwUpdateBtn) {
+              fwUpdateBtn.disabled = false;
+              console.log('[FW] 收到连续3个C，解锁确认更新按钮');
+            }
             fwStatus.textContent = '下位机已就绪，可以开始固件更新';
             serialBuffer = [];
             clearInterval(fwReadyCheckTimer);
             return;
-          } else {
-            if (writer) await writer.write(new Uint8Array([0x31]));
           }
-        } else {
-          if (fwUpdateBtn) fwUpdateBtn.disabled = true;
         }
-      }, 500);
+      }, 20); // 监听频率可适当提高
     }
     // 进入固件更新页面时自动启动检测
-    const _orig_initFwPage = typeof initFwPage === 'function' ? initFwPage : null;
-    function initFwPage() {
-      if (_orig_initFwPage) _orig_initFwPage();
-      if (fwUpdateBtn) fwUpdateBtn.disabled = true; // 进入页面时立即禁用
-      setTimeout(() => { if (fwUpdateBtn) fwUpdateBtn.disabled = true; }, 0); // 再加一层保险
-      startFwReadyCheck();
-    }
-    // 覆盖页面初始化注册表
-    if (typeof pageInits === 'object') pageInits.fw = initFwPage;
-    fwUpdateBtn.onclick = async function() {
-      if (!fwFileData) { fwStatus.textContent = '请先选择固件文件！'; return; }
-      if (!writer) { fwStatus.textContent = '请先连接串口！'; return; }
-      fwStatus.textContent = '正在准备传输...';
-      fwProgressBar.style.width = '0%';
-      fwProgressText.textContent = '0%';
-      try {
-        await ymodemSend(fwFileData, fwFileInput.files[0].name, (sent, total) => {
-          const percent = Math.floor(sent / total * 100);
-          fwProgressBar.style.width = percent + '%';
-          fwProgressText.textContent = percent + '%';
-        });
-        fwStatus.textContent = '固件传输完成！';
-      } catch (e) {
-        fwStatus.textContent = '传输失败：' + e.message;
-      }
-    };
+    //const _orig_initFwPage = typeof initFwPage === 'function' ? initFwPage : null;
+
+
+
+
+
     // YMODEM协议主入口（重写，所有ACK/NAK等通过serialBuffer消费）
     async function ymodemSend(fileData, fileName, onProgress) {
       window._isYmodemBusy = true;
@@ -2789,7 +2788,10 @@
       html += `<div style="width:100%;display:flex;flex-direction:column;gap:18px;">
         <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#f4f8ff;border-radius:12px;padding:12px 18px;">
           <span style="color:#3358e0;font-weight:500;min-width:90px;">音量</span>
-          <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.devVolume * 4}</span>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <input id='volume-range' type='range' min='0' max='25' value='${dev.devVolume}' style='width:120px;'>
+            <span id='volume-value' style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.devVolume * 4}</span>
+          </div>
         </div>
         <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#eaf1ff;border-radius:12px;padding:12px 18px;">
           <span style="color:#3358e0;font-weight:500;min-width:90px;">序列号</span>
@@ -2849,6 +2851,21 @@
         </div>
       </div></div>`;
       attrPage.innerHTML = html;
+      // 新增：音量进度条事件绑定
+      const volumeRange = document.getElementById('volume-range');
+      const volumeValue = document.getElementById('volume-value');
+      if (volumeRange && volumeValue) {
+        volumeRange.addEventListener('input', function() {
+          let v = parseInt(volumeRange.value) || 0;
+          if (v < 0) v = 0;
+          if (v > 25) v = 25;
+          volumeValue.textContent = v * 4;
+          // 发送音量指令
+          if (typeof writer !== 'undefined' && writer) {
+            writer.write(new Uint8Array([0xA5, 0x55, 0x19, v, 0x0D, 0x0A]));
+          }
+        });
+      }
     }
     // 页面切换时自动刷新
     menuBtns.forEach(btn => {
@@ -3225,19 +3242,19 @@
                   <tbody>
                     ${(() => {
                       let html = '';
-                      const inputOptions = ['SA','SB','SC','SD','SE','S1'];
+                      const inputOptions = ['AIL','ELE','THR','RUD','SA','SB','SC','SD','SE','S1'];
                       for (let i = 0; i < 10; i++) {
                         let chName = `Channel_${i+1}`;
                         let outName = '';
                         let inSelect = '';
                         if (i < 4) {
-                          outName = ['AIL','ELE','THR','RUD'][i];
+                          outName = inputOptions[i];
                           inSelect = '';
                         } else {
-                          outName = inputOptions[i-4];
+                          outName = inputOptions[i];
                           inSelect = `<select id="ch-map-in2-${i}" style="font-size:1em;padding:4px 12px;border-radius:6px;border:1.5px solid #d0d7e6;">
                             ${inputOptions.map(opt => `<option value='${opt}'${opt===outName?' selected':''}>${opt}</option>`).join('')}
-                          </select>`;
+                            </select>`;
                         }
                         html += `<tr style="background:#fff;box-shadow:0 1px 8px #e0e7ff;border-radius:10px;">
                           <td style="padding:10px 18px;font-weight:bold;color:#3358e0;font-size:1.08em;">${chName}</td>
@@ -3261,7 +3278,7 @@
           <span style="color:#3358e0;font-weight:bold;font-size:1.25em;min-width:70px;letter-spacing:2px;">CH${i+1}</span>
           <div style="flex:1;display:flex;align-items:center;gap:18px;">
             <div id="ch-bar-${i}" style="flex:1;height:22px;background:#e0e7ff;border-radius:12px;overflow:hidden;position:relative;box-shadow:0 1px 8px #b3cfff;">
-              <div style="height:100%;background:linear-gradient(90deg,#4f8cff 0%,#3358e0 100%);width:${((1500-988)/(2012-988)*100)}%;transition:width 0.3s;"></div>
+              <div style="height:100%;background:linear-gradient(90deg,#4f8cff 0%,#3358e0 100%);width:${((1500-988)/(2012-988)*100)}%;transition:width 0.1s;"></div>
               <div style="position:absolute;left:${((1500-988)/(2012-988)*100)}%;top:0;bottom:0;width:3px;background:#e74c3c;opacity:0.7;"></div>
             </div>
             <span id="ch-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.35em;color:#222;background:#fff;border-radius:8px;padding:4px 18px;margin-left:8px;box-shadow:0 1px 4px #e0e7ff;">1500</span>
@@ -3273,7 +3290,13 @@
               </div>
             </div>
             <div class="config-stack-page" data-page="channel-attr" style="display:none;">
-              <div style="font-weight:bold;color:#3358e0;margin-bottom:8px;">通道属性</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="font-weight:bold;color:#3358e0;margin-bottom:8px;">通道属性</div>
+                <div style="display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-bottom:8px;">
+                  <button id="channel-confirm-btn" style="background:linear-gradient(90deg,#3358e0 0%,#4f8cff 100%);color:#fff;border:none;border-radius:8px;padding:8px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;">通道确认</button>
+                  <button id="channel-restore-btn" style="background:linear-gradient(90deg,#aaa 0%,#e0e7ff 100%);color:#3358e0;border:none;border-radius:8px;padding:8px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;">通道还原</button>
+                </div>
+              </div>
               <div style="display:flex;flex-direction:column;gap:18px;">
                 ${(() => {
                   let html = '';
@@ -3389,10 +3412,26 @@
           }
           const sel = document.getElementById('mode-select');
           if (sel) {
+            // 记录上一次的选择值，防止初始化和重复选择时发送
+            let lastModeIdx = window._currentModeIdx;
             sel.onchange = function() {
-              window._currentModeIdx = parseInt(sel.value);
-              drawCross(left, getModeMap(window._currentModeIdx), 1);
-              drawCross(right, getModeMap(window._currentModeIdx), 0);
+              const newIdx = parseInt(sel.value);
+              if (newIdx !== lastModeIdx) {
+                window._currentModeIdx = newIdx;
+                drawCross(left, getModeMap(window._currentModeIdx), 1);
+                drawCross(right, getModeMap(window._currentModeIdx), 0);
+                // 只在用户实际更改时发送
+                let modeVal = window._currentModeIdx + 1;
+                if (typeof writer !== 'undefined' && writer) {
+                  writer.write(new Uint8Array([0xA5, 0x55, 0x10, modeVal, 0x0D, 0x0A]));
+                }
+                lastModeIdx = newIdx;
+              } else {
+                // 仅重绘，不发送
+                window._currentModeIdx = newIdx;
+                drawCross(left, getModeMap(window._currentModeIdx), 1);
+                drawCross(right, getModeMap(window._currentModeIdx), 0);
+              }
             };
           }
         };
@@ -3457,6 +3496,74 @@
               }
             }
           }
+          // 通道确认按钮事件
+          const confirmBtn = document.getElementById('channel-confirm-btn');
+          if (confirmBtn) {
+            confirmBtn.onclick = function() {
+              if (!window.channelMap) { alert('通道数据未加载'); return; }
+              // 组包
+              let tmpData = new Uint8Array(56);
+              tmpData[0] = 0xA5;
+              tmpData[1] = 0x55;
+              tmpData[2] = 0x0C;
+              tmpData[3] = 52; // 有效数据长度
+              // 映射
+              let map = window.channelMap.channelMapSend || Array.from({length:16}, (_,i)=>i+1);
+              for(let i=0;i<16;i++) tmpData[4+i] = map[i]||0;
+              // 正反
+              let dir = window.channelMap.channelDirSend || Array(16).fill(0);
+              let tmpData1 = 0;
+              for(let i=0;i<16;i++) if(dir[i]) tmpData1 |= (1<<i);
+              tmpData[20] = (tmpData1>>8)&0xFF;
+              tmpData[21] = tmpData1&0xFF;
+              // 左右行程
+              let left = window.channelMap.channelLeftSend || Array(16).fill(0);
+              let right = window.channelMap.channelRightSend || Array(16).fill(0);
+              for(let i=0;i<16;i++) tmpData[22+i] = left[i]||0;
+              for(let i=0;i<16;i++) tmpData[38+i] = right[i]||0;
+              // 模式
+              let mode = (typeof window._currentModeIdx === 'number' ? window._currentModeIdx+1 : 1);
+              if (mode < 1) mode = 1; if (mode > 4) mode = 4;
+              tmpData[54] = mode;
+              // CRC
+              tmpData[55] = crc8tab_js(tmpData.slice(3, 55), 52);
+              // 发送
+              if (typeof writer !== 'undefined' && writer) {
+                writer.write(tmpData);
+                confirmBtn.textContent = '已发送';
+                setTimeout(()=>{confirmBtn.textContent='通道确认';}, 1200);
+              } else {
+                alert('串口未连接');
+              }
+            };
+          }
+          // 通道还原按钮事件
+          const restoreBtn = document.getElementById('channel-restore-btn');
+          if (restoreBtn) {
+            restoreBtn.onclick = function() {
+              if (!window.channelMap) { alert('通道数据未加载'); return; }
+              // 还原正反
+              window.channelMap.channelDirSend = Array(16).fill(0);
+              // 还原行程
+              window.channelMap.channelLeftSend = Array(16).fill(0);
+              window.channelMap.channelRightSend = Array(16).fill(0);
+              // 刷新UI
+              for (let i = 0; i < 10; i++) {
+                // 正反按钮
+                const btn = document.getElementById(`ch-dir-btn-${i}`);
+                if (btn) {
+                  btn.textContent = 'NOR';
+                  btn.style.background = '#fff';
+                  btn.style.color = '#3358e0';
+                }
+                // 左右行程输入框
+                const leftInput = document.getElementById(`ch-left-input-${i}`);
+                const rightInput = document.getElementById(`ch-right-input-${i}`);
+                if (leftInput) leftInput.value = 100;
+                if (rightInput) rightInput.value = 100;
+              }
+            };
+          }
         }, 0);
       }, 0);
       // 在renderConfigPage渲染后添加如下JS逻辑，确保圆点始终居中在线段上
@@ -3486,6 +3593,7 @@
             centerDot.style.left = left + 'px';
           }
           if (centerInput && centerValSpan && centerBar && centerDot) {
+            // oninput只做UI和全局同步
             centerInput.oninput = function() {
               let v = parseInt(centerInput.value) || 0;
               if (v < -100) v = -100;
@@ -3495,11 +3603,32 @@
               let percent = (v + 100) / 200;
               let left = percent * (centerBar.offsetWidth - centerDot.offsetWidth) + 1;
               centerDot.style.left = left + 'px';
-              // --- 新增：同步全局center并发送 ---
+              if (!window._center) window._center = [0,0,0,0];
+              window._center[i] = v;
+            };
+            // 只有回车或失去焦点时才发送
+            centerInput.onchange = function() {
+              let v = parseInt(centerInput.value) || 0;
+              if (v < -100) v = -100;
+              if (v > 100) v = 100;
+              centerInput.value = v;
               if (!window._center) window._center = [0,0,0,0];
               window._center[i] = v;
               if (typeof sendCenterCommand === 'function') {
                 sendCenterCommand(window._center);
+              }
+            };
+            centerInput.onkeydown = function(e) {
+              if (e.key === 'Enter') {
+                let v = parseInt(centerInput.value) || 0;
+                if (v < -100) v = -100;
+                if (v > 100) v = 100;
+                centerInput.value = v;
+                if (!window._center) window._center = [0,0,0,0];
+                window._center[i] = v;
+                if (typeof sendCenterCommand === 'function') {
+                  sendCenterCommand(window._center);
+                }
               }
             };
           }
@@ -3543,6 +3672,21 @@
         });
       }, 0);
     }
+
+    // 通道映射保存时索引+1
+    setTimeout(() => {
+      for (let i = 0; i < 10; i++) {
+        const sel = document.getElementById(`ch-map-in2-${i}`);
+        if (sel) {
+          sel.onchange = function() {
+            if (window.channelMap && window.channelMap.channelMapSend) {
+              window.channelMap.channelMapSend[i] = parseInt(sel.value); // 保存时索引+1
+              if (typeof sendChannelConfirm === 'function') sendChannelConfirm();
+            }
+          };
+        }
+      }
+    }, 0);
 
     // 连接成功后自动发送设备属性指令，失败重试3次，否则显示按钮
     let _autoDevAttrTries = 0;
@@ -3671,7 +3815,7 @@
         channelDirSend: [],
         channelMidRecv: [0,0,0,0],
         channelMidSend: [0,0,0,0],
-        channelCenterSend: [0,0,0,0],
+        channelTrimRecv: [0,0,0,0],
         channelTrimSend: [0,0,0,0]
       };
       // channelDirRecv: 16位bit
@@ -3707,7 +3851,7 @@
         else if (channelMap.ctlModeRecv === 4) modeIdx = 3;
         window._currentModeIdx = modeIdx;
         // 切换下拉框
-        setTimeout(() => {
+      setTimeout(() => {
           const sel = document.getElementById('mode-select');
           if (sel) sel.value = modeIdx;
           // 触发一次change以刷新UI
@@ -3743,7 +3887,7 @@
       const calcCrc = crc8tab_js(buf.slice(2,2+len-1), len-1);
       if (crc !== calcCrc) return false;
       // 解析中立点
-      let channelMidRecv = [], channelMidSend = [], channelHanderRecv = [], channelTrimSend = [];
+      let channelMidRecv = [], channelMidSend = [], channelTrimRecv = [], channelTrimSend = [];
       for(let i=0;i<4;i++){
         let off = 2 + i*2;
         let val = buf[off] | (buf[off+1]<<8);
@@ -3763,7 +3907,7 @@
         let off = 2 + 8 + i*2;
         let val = buf[off] | (buf[off+1]<<8);
         if(val & 0x8000) val = val - 0x10000;
-        channelHanderRecv[i] = val;
+        channelTrimRecv[i] = val;
         channelTrimSend[i] = val;
         let trimInput = document.getElementById(`trim-input-${i}`);
         let trimValSpan = document.getElementById(`trim-val-${i}`);
@@ -3777,10 +3921,10 @@
         window.channelMap.channelMidRecv = channelMidRecv;
         window.channelMap.channelMidSend = channelMidSend;
         window.channelMap.channelTrimSend = channelTrimSend;
-        window.channelMap.channelHanderRecv = channelHanderRecv;
+        window.channelMap.channelTrimRecv = channelTrimRecv;
       }
       // 移除window.trimMidObj = trimMidObj;
-      //console.log('trimMidObj:', { channelMidRecv, channelMidSend, channelHanderRecv, channelTrimSend });
+      console.log('trimMidObj:', { channelMidRecv, channelMidSend, channelTrimRecv, channelTrimSend });
       _hasTrimAndMid = true;
       // 收到trim/center包后，允许下次0x44包再发0x12
       _waitingForTrimAndMid = false;
@@ -3800,7 +3944,7 @@
         window._onConfigTrimReceived();
         window._onConfigTrimReceived = null;
       }
-      return { channelMidRecv, channelMidSend, channelHanderRecv, channelTrimSend };
+      return { channelMidRecv, channelMidSend, channelTrimRecv, channelTrimSend };
     }
     // 解析0x22包，显示原始通道数据
     function tryParseOrigChannelPacket(buf) {
@@ -3833,7 +3977,7 @@
       let trimVal = (window.channelMap && window.channelMap.channelTrimSend) ? window.channelMap.channelTrimSend : Array(4).fill(0);
       // 1. 先中心点+行程，再Trim，再映射，最后反向
       let tmpRouteData = new Array(10);
-      for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 10; i++) {
         // 先中心点+行程
         let raw = recvChannel[i];
         let midOffset = (i < 4) ? (centerVal[i] || 0) : 0;
@@ -3920,6 +4064,19 @@
               }
             }
           }
+          
+          if(this[i] === 0x11){
+              const len = this[i+1];
+              if (this.length >= i + len + 2) {
+                const buf = this.slice(i, i+len+2);
+              if (parseDeviceStats(buf)) {
+                  this.splice(i, len+2);
+                  found = true;
+                  break;
+                }
+            }
+          }
+
           // 检查0x12包
           if (this[i] === 0x12) {
             const len = this[i+1];
@@ -3976,7 +4133,7 @@
 
           // 检查0x34包
           if (this[i] === 0x34) {
-            console.log('[校准] 收到0x34包');
+            //console.log('[校准] 收到0x34包');
             const len = this[i+1];
             if (this.length >= i + len + 2) {
               const buf = this.slice(i, i+len+2);
@@ -3999,8 +4156,8 @@
             if (this.length >= i + len + 2) {
               const buf = this.slice(i, i+len+2);
               let parsed = false;
-              if (typeof tryParseTrimAndCenterPacket === 'function') {
-                parsed = tryParseTrimAndCenterPacket(buf);
+              if (typeof tryParseTrimPacket === 'function') {
+                parsed = tryParseTrimPacket(buf);
               }
               if (parsed) {
                 this.splice(i, len+2);
@@ -4009,8 +4166,8 @@
               }
             }
           }
-
-          }
+        }
+        
       } while(found);
       return ret;
     };
@@ -4116,11 +4273,71 @@
       };
       startTimers(window._globalChannelTask);
     }
+    // function initFwPage() {
+    //   serialBuffer= [];
+    //   window._globalChannelTask = null;
+    //   stopGlobalChannelTimer();
+    // }
+    //const _orig_initFwPage = typeof initFwPage === 'function' ? initFwPage : null;
     function initFwPage() {
       serialBuffer= [];
       window._globalChannelTask = null;
       stopGlobalChannelTimer();
+      //if (_orig_initFwPage) _orig_initFwPage();
+      if (fwUpdateBtn) {
+        fwUpdateBtn.disabled = true; // 进入页面时立即禁用
+        console.log('[FW] 进入固件更新页面，禁用确认更新按钮');
+      }
+      setTimeout(() => { if (fwUpdateBtn) fwUpdateBtn.disabled = true; }, 0); // 再加一层保险
+      // 进入页面时定时发送两次0x31
+      if (fwSend31Timer) clearInterval(fwSend31Timer);
+      fwSend31Count = 0;
+      fwSend31Timer = setInterval(async () => {
+        if (writer && fwSend31Count < 2) {
+          try {
+            //console.log('[FW] 定时器已发送0x31，第' + fwSend31Count + '次');
+            await writer.write(new Uint8Array([0x31]));
+            fwSend31Count++;
+            console.log('[FW] 定时器已发送0x31，第' + fwSend31Count + '次');
+            if (fwSend31Count >= 2) {
+              clearInterval(fwSend31Timer);
+              fwSend31Timer = null;
+              console.log('[FW] 已发送2次0x31，停止定时器');
+            }
+          } catch (e) {
+            fwStatus.textContent = '发送0x31失败：' + e.message;
+            console.log('[FW] 发送0x31失败：' + e.message);
+            clearInterval(fwSend31Timer);
+            fwSend31Timer = null;
+          }
+        } else if (!writer) {
+          fwStatus.textContent = '请先连接串口！';
+          console.log('[FW] 未连接串口，无法发送0x31');
+          clearInterval(fwSend31Timer);
+          fwSend31Timer = null;
+        }
+      }, 1000);
+      startFwReadyCheck();
     }
+    // 覆盖页面初始化注册表
+    if (typeof pageInits === 'object') pageInits.fw = initFwPage;
+    fwUpdateBtn.onclick = async function() {
+      if (!fwFileData) { fwStatus.textContent = '请先选择固件文件！'; return; }
+      if (!writer) { fwStatus.textContent = '请先连接串口！'; return; }
+      fwStatus.textContent = '正在传输中,请等待...';
+      fwProgressBar.style.width = '0%';
+      fwProgressText.textContent = '0%';
+      try {
+        await ymodemSend(fwFileData, fwFileInput.files[0].name, (sent, total) => {
+          const percent = Math.floor(sent / total * 100);
+          fwProgressBar.style.width = percent + '%';
+          fwProgressText.textContent = percent + '%';
+        });
+        fwStatus.textContent = '固件传输完成！';
+      } catch (e) {
+        fwStatus.textContent = '传输失败：' + e.message;
+      }
+    };
 
     // ========== 全局唯一定时器+函数指针式任务注册 ==========
     window._globalChannelTimer = null;
@@ -4486,7 +4703,7 @@
     window.drawJoystick = drawJoystick;
 
     // 在全局添加解析函数：
-    function tryParseTrimAndCenterPacket(buf) {
+    function tryParseTrimPacket(buf) {
       if (!buf || buf.length < 3) return false;
       if (buf[0] !== 0x55) return false;
       const len = buf[1];
@@ -4519,6 +4736,13 @@
         }
         // 不要动center
       }
+
+      // window.channelMap.channelMidRecv = channelMidRecv;
+      // window.channelMap.channelMidSend = channelMidSend;
+      window.channelMap.channelTrimSend = trim;
+      window.channelMap.channelTrimRecv = trim;
+
+
       console.log('[TRIM包] 解析到4个trim:', trim, '映射顺序:', adcMap);
       return true;
     }
@@ -4530,6 +4754,7 @@
       data[2] = 0x1A;
       for (let i = 0; i < 4; i++) {
         let val = Math.round(centerArr[i] * 512 / 100);
+        window.channelMap.channelMidSend[i] = val;
         data[3+i*2] = val & 0xFF;
         data[3+i*2+1] = (val >> 8) & 0xFF;
       }
@@ -4540,6 +4765,168 @@
       writer.write(data);
       console.log('[中立点指令] 已发送:', Array.from(data).map(x=>x.toString(16).padStart(2,'0')).join(' '));
     }
+
+    // ===== 多语言字典框架（你只需补充LANGS对象即可） =====
+    const LANGS = {
+      zh: {
+        'update': '固件更新',
+        'confirm_update': '确认更新',
+        'enter_update': '进入固件更新状态',
+        'select_file': '请选择固件文件！',
+        'connect_serial': '请先连接串口！',
+        'transferring': '正在传输中,请等待...',
+        'transfer_done': '固件传输完成！',
+        'transfer_fail': '传输失败：',
+        // ... 你可以继续补充 ...
+      },
+      en: {
+        'update': 'Firmware Update',
+        'confirm_update': 'Confirm Update',
+        'enter_update': 'Enter Update Mode',
+        'select_file': 'Please select firmware file!',
+        'connect_serial': 'Please connect serial port first!',
+        'transferring': 'Transferring, please wait...',
+        'transfer_done': 'Firmware transfer completed!',
+        'transfer_fail': 'Transfer failed: ',
+        // ... you can continue ...
+      }
+    };
+    // ===== 语言切换核心逻辑 =====
+    let currentLang = localStorage.getItem('lang') || 'auto';
+    function getLang() {
+      if (currentLang === 'auto') {
+        const nav = navigator.language || navigator.userLanguage;
+        return nav.startsWith('zh') ? 'zh' : 'en';
+      }
+      return currentLang;
+    }
+    function setLang(lang) {
+      currentLang = lang;
+      localStorage.setItem('lang', lang);
+      updateLangUI();
+      updateAllLangText();
+    }
+    function updateLangUI() {
+      const btn = document.getElementById('lang-switcher');
+      if (!btn) return;
+      let txt = '🌐';
+      //let txt = '';
+      if (currentLang === 'auto') txt += 'Auto';
+      else if (currentLang === 'zh') txt += '中文';
+      else txt += 'EN';
+      btn.textContent = txt;
+    }
+    // ===== 典型用法：所有可切换文本都用 data-i18n="key" 属性标记 =====
+    function updateAllLangText() {
+      const lang = getLang();
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (LANGS[lang] && LANGS[lang][key]) {
+          el.textContent = LANGS[lang][key];
+        }
+      });
+    }
+    // ===== 语言切换按钮事件 =====
+    document.getElementById('lang-switcher').onclick = function() {
+      if (currentLang === 'auto') setLang('zh');
+      else if (currentLang === 'zh') setLang('en');
+      else setLang('auto');
+    };
+    // ===== 页面加载时自动刷新语言 =====
+    updateLangUI();
+    updateAllLangText();
+    // ===== 你在JS里用提示时可以这样用 =====
+    // fwStatus.textContent = LANGS[getLang()]['select_file'];
+    // ===== 你在HTML里这样用 =====
+    // <button data-i18n="confirm_update"></button>
+    // <div data-i18n="update"></div>
+    // ...
+
+    // ===== 全局设备状态结构体 =====
+    window.deviceStats = {
+      devConnectStats: 0, // 连接状态
+      bindConnect: 0,     // 是否连接接收机
+      txLinkSnr: 0,       // 下载SNR
+      rxLinkSnr: 0,       // 上传SNR
+      rxbatteryVoltage: 0, // 接收机电池电压
+      rxbatteryCurrent: 0, // 接收机电池电流
+      txbatteryVoltage: 0, // 下位机电压adc
+      txBattery: 0        // 下位机当前电量百分比
+    };
+
+    // ===== 电量显示刷新函数 =====
+    function updateBatteryIndicator() {
+      const el = document.getElementById('battery-indicator');
+      if (!el) return;
+      if (typeof window.deviceStats.txBattery === 'number') {
+        el.textContent = window.deviceStats.txBattery + '%';
+      } else {
+        el.textContent = '--%';
+      }
+    }
+
+    // ===== 全局定时器：每10秒发送指令（非ymodem页面） =====
+    let globalStatusTimer = null;
+    function startGlobalStatusTimer() {
+      if (globalStatusTimer) clearInterval(globalStatusTimer);
+      globalStatusTimer = setInterval(() => {
+        // 判断当前页面（假设window.currentPage有值，或你用其它变量）
+        if (typeof window.currentPage === 'function' ? window.currentPage() : window.currentPage) {
+          const page = typeof window.currentPage === 'function' ? window.currentPage() : window.currentPage;
+          if (page === 'fw') return; // ymodem固件更新页面不发
+        }
+        // 发送指令
+        if (window._currentPage != 'net' && window._currentPage != 'fw' && writer ) {
+          writer.write(new Uint8Array([0xA5,0x55,0x01,0x0D,0x0A]));
+          //console.log('[全局] 已发送状态查询指令');
+        }
+      }, 2000);
+    }
+    startGlobalStatusTimer();
+
+    // ===== 数据包解析：收到0x11头部时解析并存入全局结构体 =====
+    function parseDeviceStats(buf) {
+      if (!buf || buf.length < 15) return 0;
+      if (buf[0] !== 0x11) return 0;
+      const len = buf[1];
+      // CRC校验
+      let tmp = crc8(buf.slice(2, 2+len-1));
+      //console.log('parseDeviceStats Running', buf);
+      //if (buf[len+1] !== tmp) return 0;
+      // 解析数据
+      //console.log('parseDeviceStats Running', buf);
+      window.deviceStats.devConnectStats = 5;
+      window.deviceStats.bindConnect = buf[2];
+      window.deviceStats.txLinkSnr = buf[3];
+      window.deviceStats.rxLinkSnr = buf[4];
+      window.deviceStats.rxbatteryVoltage = (buf[5] | (buf[6]<<8));
+      window.deviceStats.rxbatteryCurrent = (buf[7] | (buf[8]<<8));
+      // window.deviceStats.rxBattery = buf[9]; // 你说先不用
+      window.deviceStats.txbatteryVoltage = (buf[10] | (buf[11]<<8));
+      window.deviceStats.txBattery = buf[12];
+      window._batteryPercent = buf[12];
+      // 刷新原有电量栏
+      updateDeviceInfoBar();
+    }
+
+    // ===== CRC8算法 =====
+    function crc8(arr) {
+      let crc = 0;
+      for (let i = 0; i < arr.length; i++) {
+        crc ^= arr[i];
+        for (let j = 0; j < 8; j++) {
+          if (crc & 0x80) crc = (crc << 1) ^ 0x07;
+          else crc <<= 1;
+        }
+        crc &= 0xFF;
+      }
+      return crc;
+    }
+
+    // ===== 你需要在串口数据接收处调用 parseDeviceStats(serialBuffer) =====
+    // 例如：
+    // if (serialBuffer[0] === 0x11) parseDeviceStats(serialBuffer);
+    // 或在你现有的串口数据分发/回调里加上即可
   </script>
 </body>
 </html> 
