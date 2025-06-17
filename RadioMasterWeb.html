@@ -693,6 +693,13 @@
     </div>
     <div class="menu-section">
       <div class="menu-bar">
+        <!-- 
+         隐藏特定页面
+         <button class="menu-btn" data-page="comm" style="display:none;">串口通信</button> 
+          或者
+          var commBtn = document.querySelector('.menu-btn[data-page="comm"]');
+          if (commBtn) commBtn.style.display = 'none'; 
+        -->
         <button class="menu-btn" data-page="comm">串口通信</button>
         <button class="menu-btn" data-page="attr">设备概况</button>
         <button class="menu-btn" data-page="config">通道配置</button>
@@ -766,7 +773,10 @@
         </div>
         <div id="page-net" class="main-page" style="display:none;">
           <div class="comm-container">
-            <div class="comm-title">LUA配置</div>
+            <div style="display:flex;align-items:center;gap:18px;margin-bottom:8px;">
+              <div class="comm-title">LUA配置</div>
+              <button id="wifi-toggle-btn" class="connect-btn" style="min-width:130px;max-width:130px;padding:6px 24px;font-size:1em;">TxWiFi开启</button>
+            </div>            
             <div id="wireless-settings" class="wireless-settings">
               <!-- 动态添加设置项 -->
             </div>
@@ -1005,8 +1015,14 @@
         // === 连接成功后自动跳转到设备属性页面 ===
         if(upDataFlag==1)//进入状态了
         {
-          showMainPage('fw');
-          initFwPage();
+          if(window.confirm('确定要进入固件更新状态吗？进入后将无法进行其他操作，需退出更新后恢复。')) {
+            showMainPage('fw');
+            initFwPage();
+          }
+          else
+          {
+            showMainPage('attr');
+          }
         }
         else 
         {
@@ -1249,12 +1265,13 @@
 
 
           if (commOutputBox) {
+            const now = new Date().toLocaleTimeString();
             if (recvHex && recvHex.checked) {
               const hexStr = Array.from(value).map(b => b.toString(16).padStart(2, '0')).join(' ');
-              commOutputBox.textContent += `\n[RECV] ${hexStr}`;
+              commOutputBox.textContent += `\n[${now}] [RECV] ${hexStr}`;
             } else {
               const textStr = decoder.decode(new Uint8Array(value));
-              commOutputBox.textContent += `\n[RECV] ${textStr}`;
+              commOutputBox.textContent += `\n[${now}] [RECV] ${textStr}`;
             }
             commOutputBox.scrollTop = commOutputBox.scrollHeight;
           }
@@ -1272,10 +1289,19 @@
     if (navigator.serial) {
       navigator.serial.addEventListener('disconnect', (event) => {
         if (isSerialConnected && port === event.target) {
-          isSerialConnected = false;
-          port = null; writer = null; reader = null;
-          showConnectPage();
-          hideDeviceInfoBar();
+          if(upDataFlag==2)
+          {
+            location.reload(true); 
+            //网页刷新
+          }
+          else
+          {
+            isSerialConnected = false;
+            port = null; writer = null; reader = null;
+            showConnectPage();
+            //hideDeviceInfoBar();
+            updateDeviceInfoBar();
+          }
         }
       });
     }
@@ -1697,7 +1723,7 @@
       timeout = setTimeout(() => {
         document.getElementById('refresh-settings').disabled = false;
         //statusElem.textContent = '超时';
-      }, 10000);
+      }, 3000);
       await refreshSettings(); // 发送刷新命令
       // 等待数据到来，readLoop会自动处理
       // 成功时清除超时
@@ -2343,6 +2369,7 @@
 
           // await navigator.serial.requestPort().close();
           // port = null; writer = null; reader = null;
+          location.reload(true); 
 
         }
         upDataFlag = 1;
@@ -3284,7 +3311,7 @@
                   <thead>
                     <tr style="background:#f4f8ff;">
                       <th style="padding:10px 18px;color:#3358e0;font-weight:bold;font-size:1.08em;border-radius:10px 0 0 10px;">Channel</th>
-                      <th style="padding:10px 18px;color:#3358e0;font-weight:bold;font-size:1.08em;">通道输出</th>
+                      <th style="padding:10px 18px;color:#3358e0;font-weight:bold;font-size:1.08em;">默认输出</th>
                       <th style="padding:10px 18px;color:#3358e0;font-weight:bold;font-size:1.08em;border-radius:0 10px 10px 0;">通道输入</th>
                     </tr>
                   </thead>
@@ -3293,19 +3320,21 @@
                       let html = '';
                       //let mapData = channelMap.channelMapSend;
                       const inputOptions = ['AIL','ELE','THR','RUD','SA','SB','SC','SD','SE','S1'];
+                      const nowInputOptions = ['AIL','ELE','THR','RUD','SE','SA','SB','SC','SD','S1'];  //目前默认是SE是CH5,但是下位机是SA作为CH5,下位机改代码,难度太高了,要改整个逻辑和映射表,这个只是显示,为什么啦,数据是对的,满足下位就好了
                       for (let i = 0; i < 10; i++) {
                         let chName = `Channel_${i+1}`;
                         let outName = '';
                         let inSelect = '';
                         //console.log('console.log-',i,"配置完成");
                         if (i < 4) {
-                          outName = inputOptions[i];
+                          outName = nowInputOptions[i];
                           inSelect = '';
                         } else {
-                          outName = inputOptions[i];
+                          outName = nowInputOptions[i];
                           inSelect = `<select id="ch-map-in2-${i}" style="font-size:1em;padding:4px 12px;border-radius:6px;border:1.5px solid #d0d7e6;">
-                            ${inputOptions.map((opt, idx) => `<option value='${idx+1}'${opt===outName?' selected':''}>${opt}</option>`).join('')}
+                            ${inputOptions.map((opt, idx) => `<option value='${idx+1}'${opt===inputOptions[i]?' selected':''}>${opt}</option>`).join('')}
                           </select>`;
+                          
                         }
                         html += `<tr style="background:#fff;box-shadow:0 1px 8px #e0e7ff;border-radius:10px;">
                           <td style="padding:10px 18px;text-align:center;font-weight:bold;color:#3358e0;font-size:1.08em;">${chName}</td>
@@ -3457,21 +3486,21 @@
                 let uiIdx = i;//adcMap[i];
                 // 更新Trim
                 const trimValSpan = document.getElementById(`trim-val-${uiIdx}`);
-                if (trimValSpan) trimValSpan.textContent = window.channelMap.channelTrimRecv[i];
+                if (trimValSpan) trimValSpan.textContent = window.channelMap.channelTrimSend[i];
                 const trimDot = document.getElementById(`trim-dot-${uiIdx}`);
                 const trimBar = document.getElementById(`trim-bar-${uiIdx}`);
                 if (trimBar && trimDot) {
-                  let percent = (window.channelMap.channelTrimRecv[i] + 130) / 260;
+                  let percent = (window.channelMap.channelTrimSend[i] + 130) / 260;
                   let left = percent * (trimBar.offsetWidth - trimDot.offsetWidth);
                   trimDot.style.left = left + 'px';
                 }
 
                 const centerValSpan = document.getElementById(`center-val-${uiIdx}`);
-                if (centerValSpan) centerValSpan.textContent = document.getElementById(`center-input-${uiIdx}`).value;//window.channelMap.channelMidRecv[i]*100/512;
+                if (centerValSpan) centerValSpan.textContent = document.getElementById(`center-input-${uiIdx}`).value;//window.channelMap.channelMidSend[i]*100/512;
                 const centerDot = document.getElementById(`center-dot-${uiIdx}`);
                 const centerBar = document.getElementById(`center-bar-${uiIdx}`);
                 if (centerBar && centerDot) {
-                  let percent = (window.channelMap.channelMidRecv[i]*100/512 + 100) / 200;
+                  let percent = (window.channelMap.channelMidSend[i]*100/512 + 100) / 200;
                   let left = percent * (centerBar.offsetWidth - centerDot.offsetWidth);
                   centerDot.style.left = left + 'px';
                 }
@@ -3612,7 +3641,7 @@
             confirmBtn.onclick = function() {
               if (!window.channelMap) { alert('通道数据未加载'); return; }
               // 组包
-              let tmpData = new Uint8Array(56);
+              let tmpData = new Uint8Array(56+2);
               tmpData[0] = 0xA5;
               tmpData[1] = 0x55;
               tmpData[2] = 0x0C;
@@ -3637,6 +3666,8 @@
               tmpData[54] = mode;
               // CRC
               tmpData[55] = crc8tab_js(tmpData.slice(3, 55), 52);
+              tmpData[56] = 0x0D;
+              tmpData[57] = 0x0A;
               // 发送
               if (typeof writer !== 'undefined' && writer) {
                 writer.write(tmpData);
@@ -4377,6 +4408,7 @@
       _orig_showMainPage3.apply(this, arguments);
       // 设备配置、设备校准页面如需持续获取，由各自页面逻辑重新开启
       // 串口通信页面不自动开启定时器
+      
     };
 
     // ========== 各页面初始化函数 ==========
@@ -4465,6 +4497,7 @@
       if (typeof refreshSettings === 'function') {
         refreshSettings();
       }
+      wifiToggleBtn();
       window._globalChannelTask = null;
       stopGlobalChannelTimer();
     }
@@ -4546,8 +4579,6 @@
 
     function sendChannelConfirm(){
 
-
-
     }
 
     // 设备属性页面渲染
@@ -4563,7 +4594,9 @@
       html += '</div>';
       html += `<div style="margin: 24px 0 0 0; text-align: right;">
         <button id="factory-reset-btn" style="background: linear-gradient(90deg,#e74c3c 0%,#c0392b 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer;">恢复出厂设置!</button>
+        <button id="exit-fw-update-btn" style="background: linear-gradient(90deg,#3498db 0%,#2980b9 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; margin-left: 16px;">退出固件更新</button>
       </div>`;
+
       // 查询按钮
       html += '<button id="query-device-attr-btn" class="connect-btn" style="margin-bottom:18px;">查询设备属性</button>';
       if (!dev) {
@@ -4584,6 +4617,19 @@
             }, 2000);
           };
         }
+        const exitFwUpdateBtn = document.getElementById('exit-fw-update-btn');
+        if (exitFwUpdateBtn) {
+            exitFwUpdateBtn.onclick = function() {
+              if (typeof writer !== 'undefined' && writer) {
+                writer.write(new Uint8Array([0x34]));
+                alert('已发送退出固件更新指令');
+                console.log('[ATTR] 已发送退出固件更新指令');
+              }
+            };
+        }
+        
+
+
         return;
       }
       // 序列号连续数字显示
@@ -4687,6 +4733,8 @@
           }
         };
       }
+
+
     }
 
 
@@ -5157,6 +5205,92 @@
     }
     window.drawJoystick = drawJoystick;
 
+
+    function wifiToggleBtn(){
+      setTimeout(function() {
+      const wifiBtn = document.getElementById('wifi-toggle-btn');
+      wifiBtn.style.display = 'none';//先隐藏有bug
+      if (wifiBtn) {
+        let wifiEnabled = false; // 默认关闭
+        let dialog = null;
+        let inner = null;
+        let closeBtn = null;
+        let msg = null;
+        function showWifiDialog(isEnabling) {
+          dialog = document.createElement('div');
+          dialog.style.position = 'fixed';
+          dialog.style.left = '0';
+          dialog.style.top = '0';
+          dialog.style.width = '100vw';
+          dialog.style.height = '100vh';
+          dialog.style.background = 'rgba(0,0,0,0.18)';
+          dialog.style.display = 'flex';
+          dialog.style.alignItems = 'center';
+          dialog.style.justifyContent = 'center';
+          dialog.style.zIndex = '9999';
+          inner = document.createElement('div');
+          inner.style.background = '#fff';
+          inner.style.borderRadius = '16px';
+          inner.style.boxShadow = '0 4px 24px rgba(79,140,255,0.18)';
+          inner.style.padding = '38px 48px 32px 48px';
+          inner.style.display = 'flex';
+          inner.style.flexDirection = 'column';
+          inner.style.alignItems = 'center';
+          inner.style.minWidth = '260px';
+          inner.style.maxWidth = '90vw';
+          inner.innerHTML = `<div style="font-size:1.18em;color:#3358e0;font-weight:bold;margin-bottom:18px;">WiFi${isEnabling ? '开启' : '关闭'}</div>`;
+          msg = document.createElement('div');
+          msg.style.fontSize = '1.08em';
+          msg.style.color = '#222';
+          msg.style.marginBottom = '18px';
+          msg.textContent = isEnabling ? '正在开启WiFi...' : '正在关闭WiFi...';
+          inner.appendChild(msg);
+          closeBtn = document.createElement('button');
+          closeBtn.textContent = isEnabling ? '关闭WiFi' : '关闭弹窗';
+          closeBtn.style.marginTop = '12px';
+          closeBtn.style.background = isEnabling ? 'linear-gradient(90deg,#e74c3c 0%,#c0392b 100%)' : 'linear-gradient(90deg,#4f8cff 0%,#3358e0 100%)';
+          closeBtn.style.color = '#fff';
+          closeBtn.style.border = 'none';
+          closeBtn.style.borderRadius = '8px';
+          closeBtn.style.padding = '10px 32px';
+          closeBtn.style.fontSize = '1.08em';
+          closeBtn.style.fontWeight = 'bold';
+          closeBtn.style.cursor = 'pointer';
+          closeBtn.onclick = () => {
+            if (isEnabling) {
+              // 发送关闭WiFi指令
+              if (writer) writer.write(new Uint8Array([0xA5,0x66,0x06,0x0D,0x0A]));
+              wifiEnabled = false;
+              wifiBtn.textContent = 'WiFi开启';
+              document.body.removeChild(dialog);
+            } else {
+              document.body.removeChild(dialog);
+            }
+          };
+          inner.appendChild(closeBtn);
+          document.body.appendChild(dialog);
+          dialog.appendChild(inner);
+        }
+        wifiBtn.onclick = () => {
+          if (!wifiEnabled) {
+            // 发送开启WiFi指令
+            if (writer) writer.write(new Uint8Array([0xA5,0x66,0x05,0x0D,0x0A]));
+            wifiEnabled = true;
+            wifiBtn.textContent = 'WiFi关闭';
+            showWifiDialog(true);
+          } else {
+            // 发送关闭WiFi指令
+            if (writer) writer.write(new Uint8Array([0xA5,0x66,0x06,0x0D,0x0A]));
+            wifiEnabled = false;
+            wifiBtn.textContent = 'WiFi开启';
+            showWifiDialog(false);
+          }
+        };
+      }
+    }, 0);
+    }
+
+
     // 在全局添加解析函数：
     function tryParseTrimPacket(buf) {
       if (!buf || buf.length < 3) return false;
@@ -5166,6 +5300,11 @@
       const crc = buf[len+1];
       const calcCrc = crc8tab_js(buf.slice(2, 2+len-1), len-1);
       if (crc !== calcCrc) return false;
+      if(buf[10] !== 0x01)
+      {
+        console.log('异常数据全为0');
+        return false;   //异常crc全为0 
+      } 
       // 解析4个通道的trim
       let trim = [];
       for (let i = 0; i < 4; i++) {
@@ -5214,9 +5353,9 @@
         data[3+i*2+1] = (val >> 8) & 0xFF;
       }
       // 后面4字节补0
-      for (let i = 11; i < 11+4; i++) data[i] = 0;
-      data[15] = 0x0D;
-      data[16] = 0x0A;
+      //for (let i = 11; i < 11+4; i++) data[i] = 0;
+      data[11] = 0x0D;
+      data[12] = 0x0A;
       writer.write(data);
       console.log('[中立点指令] 已发送:', Array.from(data).map(x=>x.toString(16).padStart(2,'0')).join(' '));
     }
