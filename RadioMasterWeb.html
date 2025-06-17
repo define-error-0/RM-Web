@@ -671,6 +671,34 @@
       z-index: 2;
       background: #2ecc71; /* 或 #4f8cff */
     }
+    .keymode-select {
+      appearance: none;
+      -webkit-appearance: none;
+      background: linear-gradient(90deg, #eaf1ff 0%, #c3dafe 100%);
+      border: 1.5px solid #3358e0;
+      border-radius: 8px;
+      padding: 8px 28px 8px 12px;
+      font-size: 1.08em;
+      font-family: 'Roboto Mono', monospace;
+      color: #3358e0;
+      font-weight: bold;
+      box-shadow: 0 2px 8px rgba(51,88,224,0.08);
+      transition: border 0.2s, box-shadow 0.2s;
+      cursor: pointer;
+      outline: none;
+      margin-bottom: 2px;
+      min-width: 80px;
+      text-align: center;
+      background-image: url("data:image/svg+xml,%3Csvg width='16' height='16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 6l4 4 4-4' stroke='%233358e0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      background-size: 18px 18px;
+    }
+    .keymode-select:focus, .keymode-select:hover {
+      border: 2px solid #5a7cff;
+      box-shadow: 0 4px 16px rgba(51,88,224,0.13);
+    }
+
     #lang-switcher {
       position: static;
       margin-left: 18px;
@@ -700,12 +728,12 @@
           var commBtn = document.querySelector('.menu-btn[data-page="comm"]');
           if (commBtn) commBtn.style.display = 'none'; 
         -->
-        <button class="menu-btn" data-page="comm">串口通信</button>
-        <button class="menu-btn" data-page="attr">设备概况</button>
-        <button class="menu-btn" data-page="config">通道配置</button>
-        <button class="menu-btn" data-page="net">无线配置</button>
-        <button class="menu-btn" data-page="calib">设备校准</button>
-        <button class="menu-btn" data-page="fw">固件更新</button>
+        <button data-i18n="comm-uart" class="menu-btn" data-page="comm">串口通信</button>
+        <button data-i18n='attr-dev' class="menu-btn" data-page="attr">设备概况</button>
+        <button data-i18n='config-dev' class="menu-btn" data-page="config">设备配置</button>
+        <button data-i18n='net-config' class="menu-btn" data-page="net">无线配置</button>
+        <button data-i18n='dev-cailation' class="menu-btn" data-page="calib">设备校准</button>
+        <button data-i18n='frieware-updata' class="menu-btn" data-page="fw">固件更新</button>
       </div>
     </div>
     <div class="battery-section">
@@ -725,17 +753,17 @@
     <!-- 连接页面 -->
     <div class="center-wrapper" id="connect-page">
       <div class="card">
-        <div class="card-title">串口连接</div>
+        <div class="card-title" data-i18n="connect-title">串口连接</div>
         <div class="form-group">
-          <label>串口选择</label>
-          <span style="color:#888;font-size:0.98em;">点击下方"连接"按钮，浏览器会弹出串口选择窗口</span>
+          <label data-i18n="connect-port">串口选择</label>
+          <span style="color:#888;font-size:0.98em;" data-i18n="connect-port-desc">点击下方"连接"按钮，浏览器会弹出串口选择窗口</span>
         </div>
         <div class="form-group">
-          <label for="baudrate">波特率</label>
+          <label for="baudrate" data-i18n="connect-baudrate">波特率</label>
           <input id="baudrate" type="number" min="1200" max="921600" step="1" value="115200" placeholder="波特率">
         </div>
-        <button class="connect-btn" id="connect">连接</button>
-        <div class="connect-status" id="serial-status">未连接</div>
+        <button class="connect-btn" id="connect" data-i18n="connect-btn">连接</button>
+        <div class="connect-status" id="serial-status" data-i18n="connect-status">未连接</div>
       </div>
     </div>
     <!-- 菜单栏和内容区 -->
@@ -743,26 +771,26 @@
       <div class="main-content-area">
         <div id="page-comm" class="main-page">
           <div class="comm-container">
-            <div class="comm-title">串口通信</div>
+            <!-- <div class="comm-title">串口通信</div> -->
             <div class="output-header">
-              <span>输出端</span>
-              <button class="clear-btn" id="clear-output">一键清空</button>
+              <span data-i18n="comm-output-title">输出端</span>
+              <button class="clear-btn" id="clear-output" data-i18n="comm-clear-output">一键清空</button>
             </div>
             <div class="comm-output-box" id="output"></div>
             <div class="comm-input-row">
               <select id="send-mode">
-                <option value="text">文本发送</option>
-                <option value="hex">16进制发送</option>
+                <option value="text" data-i18n="comm-send-text">文本发送</option>
+                <option value="hex" data-i18n="comm-send-hex">16进制发送</option>
               </select>
-              <input id="input" type="text" placeholder="输入要发送的数据">
-              <button id="send">发送</button>
+              <input id="input" type="text" placeholder="输入要发送的数据" data-i18n="comm-send-input">
+              <button id="send" data-i18n="comm-send-btn">发送</button>
             </div>
             <div style="margin-top:4px;align-self:flex-end;">
               <label style="font-size:0.98em;color:#3358e0;font-weight:bold;">
-                <input type="checkbox" id="recv-hex"> 16进制显示接收内容
+                <input type="checkbox" id="recv-hex" data-i18n="net-recv-hex" data-i18n-checked="recv-hex-checked"> 16进制显示接收内容
               </label>
             </div>
-            <button class="connect-btn" id="disconnect" style="margin-top:18px;background:linear-gradient(90deg,#e74c3c 0%,#c0392b 100%);">断开连接</button>
+            <button class="connect-btn" id="disconnect" style="margin-top:18px;background:linear-gradient(90deg,#e74c3c 0%,#c0392b 100%);" data-i18n="comm-disconnect-btn">断开连接</button>
           </div>
         </div>
         <div id="page-attr" class="main-page" style="display:none;">
@@ -774,7 +802,7 @@
         <div id="page-net" class="main-page" style="display:none;">
           <div class="comm-container">
             <div style="display:flex;align-items:center;gap:18px;margin-bottom:8px;">
-              <div class="comm-title">LUA配置</div>
+              <div class="comm-title" data-i18n="net-lua-config">LUA配置</div>
               <button id="wifi-toggle-btn" class="connect-btn" style="min-width:130px;max-width:130px;padding:6px 24px;font-size:1em;">TxWiFi开启</button>
             </div>            
             <div id="wireless-settings" class="wireless-settings">
@@ -782,9 +810,9 @@
             </div>
             <div id="crsf-result" style="white-space:pre-wrap;color:#3358e0;font-size:0.98em;margin:12px 0;"></div>
               <div class="wireless-controls">
-                <button id="refresh-settings" class="connect-btn">刷新TX</button>
+                <button id="refresh-settings" class="connect-btn" data-i18n="net-refresh-tx">刷新TX</button>
                 <span id="settings-status" class="settings-status"></span>
-                <button id="refresh-settings-rx" class="connect-btn" style="margin-left:12px;">刷新RX</button>
+                <button id="refresh-settings-rx" class="connect-btn" style="margin-left:12px;" data-i18n="net-refresh-rx">刷新RX</button>
                 <span id="settings-status-rx" class="settings-status"></span>
               </div>
           </div>
@@ -818,30 +846,30 @@
         <div id="page-fw" class="main-page" style="display:none;">
           <div class="comm-container" style="display:flex;justify-content:center;align-items:center;min-height:calc(100vh - 64px);background:linear-gradient(135deg,#e0e7ff 0%,#f4f6fb 100%);">
             <div id="fw-card" style="background:#fff;border-radius:22px;box-shadow:0 8px 36px rgba(79,140,255,0.15);padding:48px 60px 40px 60px;min-width:380px;max-width:520px;width:100%;display:flex;flex-direction:column;align-items:center;">
-              <div class="comm-title" style="margin-bottom:32px;">固件更新</div>
+              <div class="comm-title" style="margin-bottom:32px;" data-i18n="fw-change-title">选择固件更新</div>
               <div style="margin-bottom:18px;width:100%;display:flex;align-items:center;justify-content:flex-start;gap:12px;">
-                <label for="fw-device-type" style="color:#3358e0;font-weight:500;">设备类型：</label>
+                <label for="fw-device-type" style="color:#3358e0;font-weight:500;" data-i18n="fw-device-type">设备类型：</label>
                 <select id="fw-device-type" style="padding:4px 12px;border-radius:8px;border:1.5px solid #4f8cff;font-size:1.08em;">
-                  <option value="remote" selected>遥控器</option>
-                  <option value="transmitter">高频头</option>
+                  <option value="remote" selected data-i18n="fw-remote">遥控器</option>
+                  <option value="transmitter" data-i18n="fw-transmitter">高频头</option>
                 </select>
               </div>
               <!-- 文件拖拽上传区 -->
               <div id="fw-drop-area" style="border:2.5px dashed #4f8cff;border-radius:14px;padding:32px 18px;margin-bottom:22px;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:border-color 0.2s;position:relative;background:#f4f8ff;">
-                <div style="font-size:1.13em;color:#3358e0;font-weight:500;margin-bottom:10px;">拖拽固件文件到此处</div>
-                <div style="color:#888;font-size:0.98em;margin-bottom:12px;">或</div>
-                <input type="file" id="fw-file" accept=".bin,.hex" style="display:none;">
-                <div id="fw-file-name" style="margin-top:14px;color:#3358e0;font-weight:500;font-size:1.08em;"></div>
+                <div data-i18n="drag-fw-file" style="font-size:1.13em;color:#3358e0;font-weight:500;margin-bottom:10px;">拖拽固件文件到此处</div>
+                <div data-i18n="or" style="color:#888;font-size:0.98em;margin-bottom:12px;">或</div>
+                <input type="file" id="fw-file" accept=".bin,.hex" data-i18n="fw-file-input" style="display:none;">
+                <div id="fw-file-name" data-i18n="fw-file-name" style="margin-top:14px;color:#3358e0;font-weight:500;font-size:1.08em;"></div>
               </div>
               <!-- 进度条美化 -->
               <div style="margin-bottom:22px;width:100%;display:flex;flex-direction:column;align-items:flex-start;">
-                <label id="fw-progress-label" style="font-weight:bold;color:#3358e0;margin-bottom:8px;display:none;">更新进度</label>
+                <label id="fw-progress-label" data-i18n="update-progress" style="font-weight:bold;color:#3358e0;margin-bottom:8px;display:none;" data-i18n="update-progress">更新进度</label>
                 <div id="fw-progress-bar-wrap" style="width:100%;height:22px;background:#e0e7ff;border-radius:12px;overflow:hidden;position:relative;display:none;">
                   <div id="fw-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#4f8cff 0%,#3358e0 100%);border-radius:12px;transition:width 0.3s;"></div>
                   <span id="fw-progress-text" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-weight:bold;color:#3358e0;font-size:1.08em;">0%</span>
                 </div>
               </div>
-              <button id="fw-update-btn" class="connect-btn" style="width:100%;margin-top:8px;margin-bottom:8px;font-size:1.15em;">确认更新</button>
+              <button id="fw-update-btn" class="connect-btn" style="width:100%;margin-top:8px;margin-bottom:8px;font-size:1.15em;" data-i18n="fw-update-btn">确认更新</button>
               <div id="fw-status" style="margin-top:10px;color:#e74c3c;font-weight:bold;min-height:28px;text-align:center;width:100%;"></div>
             </div>
           </div>
@@ -896,6 +924,8 @@
     let upDataDev = "remote";
     let channelMap = {};
 
+    let currentLang = localStorage.getItem('lang') || 'zh';//|| 'auto';
+    
     // 页面切换逻辑
     const menuBtns = document.querySelectorAll('.menu-btn');
     const mainPages = document.querySelectorAll('.main-page');
@@ -922,9 +952,11 @@
       menuBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.page === page));
       // 页面初始化
       if (pageInits[page]) pageInits[page]();
+      //updateAllLangText();
     }
     menuBtns.forEach(btn => {
       btn.onclick = () => showMainPage(btn.dataset.page);
+      //updateAllLangText();
     });
     // 连接成功后显示主菜单和内容
     function showCommPage() {
@@ -932,6 +964,7 @@
       mainApp.style.display = '';
       showMainPage('comm');
       inputBox.focus();
+      //updateAllLangText();  
     }
     // 断开连接后返回连接页面
     function showConnectPage() {
@@ -943,6 +976,7 @@
       baudrateInput.disabled = false;
       inputBox.value = '';
       outputBox.textContent = '';
+      //updateAllLangText();
     }
 
     // 设备信息栏
@@ -986,7 +1020,7 @@
     connectBtn.onclick = async () => {
       if (isSerialConnected) return;
       connectBtn.disabled = true;
-      statusBox.textContent = '正在连接...';
+      statusBox.textContent = LANGS['connecting'];
       try {
         // 始终弹出串口选择
         if (navigator.userAgent.indexOf("Chrome") != -1 && !navigator.userAgent.indexOf("Edge") != -1) {
@@ -1015,7 +1049,7 @@
         // === 连接成功后自动跳转到设备属性页面 ===
         if(upDataFlag==1)//进入状态了
         {
-          if(window.confirm('确定要进入固件更新状态吗？进入后将无法进行其他操作，需退出更新后恢复。')) {
+          if(window.confirm(LANGS['confirm-update'])) {
             showMainPage('fw');
             initFwPage();
           }
@@ -1036,10 +1070,10 @@
         readLoop();}
         else
         {
-          statusBox.textContent = '浏览器不支持该功能,请选择Chrome/Edge等谷歌内核浏览器'
+          statusBox.textContent = LANGS['browser-not-support']
         }
       } catch (err) {
-        statusBox.textContent = '连接失败: ' + err;
+        statusBox.textContent = LANGS['connect-failed'] + err;
         connectBtn.disabled = false;
       }
     };
@@ -1222,9 +1256,9 @@
                 parseCRSFPacket(bigPacket);
                 netConfBuffer = netConfBuffer.slice(bigLen);
                 document.getElementById('refresh-settings').disabled = false;
-                document.getElementById('settings-status').textContent = '刷新完成';
+                document.getElementById('settings-status').textContent = "刷新完成";//LANGS['refresh-done'];
                 document.getElementById('refresh-settings-rx').disabled = false;
-                document.getElementById('settings-status-rx').textContent = '刷新完成';                
+                document.getElementById('settings-status-rx').textContent = "刷新完成";//LANGS['refresh-done'];                
               } else {
                 break;
               }
@@ -1582,7 +1616,7 @@
         } else if (param.baseType === 13) {
           // COMMAND
           const btn = document.createElement('button');
-          btn.textContent = '启动'; // 统一命名为启动
+          btn.textContent = LANGS['command-start']; // 统一命名为启动
           btn.style.minWidth = '130px';
           btn.style.maxWidth = '130px';
           btn.onclick = () => {
@@ -1719,7 +1753,7 @@
       netConfBuffer = []; // 清空buffer，防止旧数据残留
       document.getElementById('refresh-settings').disabled = true;
       const statusElem = document.getElementById('settings-status');
-      statusElem.textContent = '正在获取设置...';
+      statusElem.textContent = "正在获取设置...";//LANGS['refresh-getting'];
       timeout = setTimeout(() => {
         document.getElementById('refresh-settings').disabled = false;
         //statusElem.textContent = '超时';
@@ -1728,7 +1762,7 @@
       // 等待数据到来，readLoop会自动处理
       // 成功时清除超时
       setTimeout(() => {
-        if (statusElem.textContent === '刷新完成') clearTimeout(timeout);
+        if (statusElem.textContent === "刷新完成") clearTimeout(timeout);
       }, 1000);
     };
 
@@ -1739,7 +1773,7 @@
       const refreshCmd = new Uint8Array([0xA5, 0x22, 0x00, 0x0D, 0x0A]);
       try {
         const statusElem = document.getElementById('settings-status-rx');
-        statusElem.textContent = '正在获取设置...';
+        statusElem.textContent = "正在获取设置...";//LANGS['refresh-getting'];
         await writer.write(refreshCmd);
       } catch (err) {
         console.error('发送刷新RX命令失败:', err);
@@ -1767,7 +1801,7 @@
     function renderCalibPage() {
       const calibPage = document.getElementById('page-calib');
       calibPage.innerHTML = `<div class="calib-container">
-        <div class="calib-title">设备校准</div>
+        <div class="calib-title" data-i18n="calib-title">设备校准</div>
         <div style="display:flex;align-items:center;gap:22px;margin-bottom:18px;">
           <div class="calib-btn-slider-row" style="display:flex;align-items:center;gap:32px;">
             <div class="calib-btn-group" id="calib-btn-group" style="display:flex;gap:18px;"></div>
@@ -1780,18 +1814,18 @@
         </div>
         <div class="calib-joystick-row">
           <div class="calib-joystick-wrap">
-            <div class="calib-joystick-label">左摇杆</div>
+            <div class="calib-joystick-label" data-i18n="calib-joystick-label-left">左摇杆</div>
             <canvas class="calib-joystick" id="joystick1" width="1050" height="1050"></canvas>
           </div>
           <div class="calib-joystick-wrap">
-            <div class="calib-joystick-label">右摇杆</div>
+            <div class="calib-joystick-label" data-i18n="calib-joystick-label-right">右摇杆</div>
             <canvas class="calib-joystick" id="joystick2" width="1050" height="1050"></canvas>
           </div>
         </div>
-        <div id="calib-step-label" style="margin-bottom:20px;color:#e74c3c;font-weight:bold;font-size:1.5em;text-align:center;">点击"开始校准"按键进行校准操作</div>
-        <button id="calib-action-btn" class="connect-btn" style="min-width:80px;font-size:1em;padding:12px 0;">开始校准</button>
-        <button id="calib-save-action-btn" class="connect-btn" style="min-width:80px;font-size:1em;padding:12px 0;">校准保存</button>
-        <button id="calib-reset-action-btn" class="connect-btn" style="min-width:80px;font-size:1em;padding:12px 0;">重新校准</button>
+        <div id="calib-step-label" style="margin-bottom:20px;color:#e74c3c;font-weight:bold;font-size:1.5em;text-align:center;" >点击"开始校准"按键进行校准操作</div>
+        <button id="calib-action-btn" class="connect-btn" style="min-width:80px;font-size:1em;padding:12px 0;" >开始校准</button>
+        <button id="calib-save-action-btn" class="connect-btn" style="min-width:80px;font-size:1em;padding:12px 0;" >校准保存</button>
+        <button id="calib-reset-action-btn" class="connect-btn" style="min-width:80px;font-size:1em;padding:12px 0;" >重新校准</button>
       </div>`;
       // 三态按钮
       const btnNames = ['SA', 'SB', 'SC', 'SD', 'SE'];
@@ -2066,8 +2100,8 @@
       calibBtn.onclick = async function() {
         if (window.calibState === 'idle') {
           window.calibState = 'calibratMid';
-          calibBtn.textContent = '校准中心点';
-          calibStepLabel.textContent = '请将摇杆置于中心点处,然后点击"选择中心点"按键';
+          calibBtn.textContent = LANGS['calib-center-point'];
+          calibStepLabel.textContent = "请将摇杆置于中心点处,然后点击确认中心点按键";//LANGS['calib-step-label-center-point'];
           console.log('[校准流程] 进入选择中心点，停止定时器');
           stopGlobalChannelTimer();
         } else if (window.calibState === 'calibratMid') {
@@ -2093,8 +2127,8 @@
           startGlobalChannelTimer();
           window.calibState = 'calibrating';
           calibBtn.disabled = true;
-          calibBtn.textContent = '校准完成';
-          calibStepLabel.textContent = '请将摇杆和旋钮移动到最大最小处,角落处请多停留一段时间,然后校准完毕之后,点击"校准完成"按键';
+          calibBtn.textContent = "校准完成";//LANGS['calib-done'];
+          calibStepLabel.textContent = "校准完成";//LANGS['calib-step-label-done'];
         }
         else if (window.calibState === 'calibrating') {
           // 组包并发送校准指令
@@ -2159,8 +2193,8 @@
           console.log('[校准流程] 恢复为定时发送原始通道数据 0xA5,0x55,0x02,0x0D,0x0A');
           startGlobalChannelTimer();
           window.calibState = 'idle';
-          calibBtn.textContent = '开始校准';
-          calibStepLabel.textContent = '点击"开始校准"按键进行校准操作';
+          calibBtn.textContent = "开始校准";//LANGS['calib-start'];
+          calibStepLabel.textContent = "点击开始校准按键进行校准操作";//LANGS['calib-start-step-label'];
           //window._adcMax = [0,0,0,0,0];
           //window._adcMin = [65535,65535,65535,65535,65535];
           document.getElementById('calib-save-action-btn').disabled = true;
@@ -2345,7 +2379,7 @@
     fwEnterUpdateBtn.style.marginTop = '8px';
     fwEnterUpdateBtn.style.marginBottom = '8px';
     fwEnterUpdateBtn.style.fontSize = '1.08em';
-    fwEnterUpdateBtn.textContent = '开始固件更新';
+    fwEnterUpdateBtn.textContent = '开始固件更新';//LANGS['enter_update'];
     fwEnterUpdateBtn.onclick = async function() {
       if (!writer) { fwStatus.textContent = '请先连接串口！'; return; }
       try {
@@ -2417,7 +2451,7 @@
               fwUpdateBtn.disabled = false;
               console.log('[FW] 收到连续3个C，解锁确认更新按钮');
             }
-            fwStatus.textContent = '设备已就绪，可以开始固件更新';
+            fwStatus.textContent = LANGS['fw-ready-update'];
             upDataFlag = 2;
             //console.log('upDataFlag',upDataFlag);
             updateFwUI();
@@ -2939,14 +2973,16 @@
         const powerVal = buf[offset+6];
         const remoteCtlClass = buf[offset+7];
         const mixedCtl = buf[offset+8];
+        const keyModel = buf.slice(offset + 9, offset + 9 + 6);;
+
         // 打印所有字段
         console.log('[设备属性] 字段明细:', {
           devVolume, serialNumber, elrsFirmWare, deviceFirmWare, elrsName, companyName, devName,
-          sendPackSpeed, returnSpeed, calibrationFlag, connectProtocol, channelNum, secretKey, powerVal, remoteCtlClass, mixedCtl
+          sendPackSpeed, returnSpeed, calibrationFlag, connectProtocol, channelNum, secretKey, powerVal, remoteCtlClass, mixedCtl,keyModel
         });
         return {
           devVolume, serialNumber, elrsFirmWare, deviceFirmWare, elrsName, companyName, devName,
-          sendPackSpeed, returnSpeed, calibrationFlag, connectProtocol, channelNum, secretKey, powerVal, remoteCtlClass, mixedCtl
+          sendPackSpeed, returnSpeed, calibrationFlag, connectProtocol, channelNum, secretKey, powerVal, remoteCtlClass, mixedCtl,keyModel
         };
       }
     }
@@ -3287,23 +3323,23 @@
       
       function getModeMap(idx) { return modeList[idx].map; }
       // 结构：左侧菜单+右侧栈式页面
-      let html = `<div class="comm-container"><div class="comm-title">设备配置</div>
+      let html = `<div class="comm-container"><div class="comm-title" data-i18n="config-channel">通道配置</div>
         <div style="display:flex;gap:0;align-items:flex-start;">
           <div id="config-menu" style="display:flex;flex-direction:column;gap:0;width:180px;min-width:120px;background:#f4f8ff;border-radius:12px 0 0 12px;box-shadow:0 2px 8px #e0e7ff;overflow:hidden;">
-            <button class="config-menu-btn active" data-page="channel" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;">通道监视器</button>
-            <button class="config-menu-btn" data-page="channel-attr" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;">通道属性</button>
-            <button class="config-menu-btn" data-page="channel-map" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;">通道映射</button>
-            <button class="config-menu-btn" data-page="trim-center" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;">Trim和Center</button>
-            <button class="config-menu-btn" data-page="mode" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;">摇杆模式</button>
+            <button class="config-menu-btn active" data-page="channel" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="channel-monitor">通道监视器</button>
+            <button class="config-menu-btn" data-page="channel-attr" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="channel-attr">通道属性</button>
+            <button class="config-menu-btn" data-page="channel-map" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="channel-map">通道映射</button>
+            <button class="config-menu-btn" data-page="trim-center" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="trim-center">Trim和Center</button>
+            <button class="config-menu-btn" data-page="mode" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="mode">摇杆模式</button>
           </div>
           <div id="config-stack" style="flex:1 1 0;background:#fff;border-radius:0 12px 12px 0;box-shadow:0 2px 8px #e0e7ff;padding:32px 36px;min-height:900px;position:relative;">
             <div class="config-stack-page" data-page="channel-map" style="display:none;">
               <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div style="font-weight:bold;color:#3358e0;margin-bottom:8px;">通道映射关系</div>
+                <div style="font-weight:bold;color:#3358e0;margin-bottom:8px;" data-i18n="channel-map-relation">通道映射关系</div>
                 <div style="display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-bottom:8px;">
-                    <label id="channel-confirm-label" style="color:#3358e0;font-weight:bold;font-size:1.13em;">遥控器没有反应点击"映射保存"再次写入</label>
-                    <button id="channel-map-confirm-btn" style="background:linear-gradient(90deg,#3358e0 0%,#4f8cff 100%);color:#fff;border:none;border-radius:8px;padding:8px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;">映射保存</button>
-                    <button id="channel-map-restore-btn" style="background:linear-gradient(90deg,#aaa 0%,#e0e7ff 100%);color:#3358e0;border:none;border-radius:8px;padding:8px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;">映射还原</button>
+                    <label id="channel-confirm-label" style="color:#3358e0;font-weight:bold;font-size:1.13em;" data-i18n="channel-map-confirm-label">遥控器没有反应点击"映射保存"再次写入</label>
+                    <button id="channel-map-confirm-btn" style="background:linear-gradient(90deg,#3358e0 0%,#4f8cff 100%);color:#fff;border:none;border-radius:8px;padding:8px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;" data-i18n="channel-map-confirm-btn">映射保存</button>
+                    <button id="channel-map-restore-btn" style="background:linear-gradient(90deg,#aaa 0%,#e0e7ff 100%);color:#3358e0;border:none;border-radius:8px;padding:8px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;" data-i18n="channel-map-restore-btn">映射还原</button>
                 </div>
               </div>
               <div style="overflow-x:auto;">
@@ -3311,8 +3347,8 @@
                   <thead>
                     <tr style="background:#f4f8ff;">
                       <th style="padding:10px 18px;color:#3358e0;font-weight:bold;font-size:1.08em;border-radius:10px 0 0 10px;">Channel</th>
-                      <th style="padding:10px 18px;color:#3358e0;font-weight:bold;font-size:1.08em;">默认输出</th>
-                      <th style="padding:10px 18px;color:#3358e0;font-weight:bold;font-size:1.08em;border-radius:0 10px 10px 0;">通道输入</th>
+                      <th style="padding:10px 18px;color:#3358e0;font-weight:bold;font-size:1.08em;" data-i18n="channel-map-default-output">默认输出</th>
+                      <th style="padding:10px 18px;color:#3358e0;font-weight:bold;font-size:1.08em;border-radius:0 10px 10px 0;" data-i18n="channel-map-channel-input">通道输入</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3349,7 +3385,7 @@
               </div>
             </div>
             <div class="config-stack-page" data-page="channel" style="display:block;">
-              <div style="font-weight:bold;color:#3358e0;margin-bottom:8px;">通道监视器</div>
+              <div style="font-weight:bold;color:#3358e0;margin-bottom:8px;" data-i18n="channel-monitor">通道监视器</div>
               <div style="display:flex;flex-direction:column;gap:18px;">
                 ${(() => {
                   let html = '';
@@ -3371,11 +3407,11 @@
             </div>
             <div class="config-stack-page" data-page="channel-attr" style="display:none;">
               <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div style="font-weight:bold;color:#3358e0;margin-bottom:8px;">通道属性</div>
+                <div style="font-weight:bold;color:#3358e0;margin-bottom:8px;" data-i18n="channel-attr">通道属性</div>
                 <div style="display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-bottom:8px;">
-                  <label id="channel-confirm-label" style="color:#3358e0;font-weight:bold;font-size:1.13em;">修改后点击"通道保存"即可写入</label>
-                  <button id="channel-confirm-btn" style="background:linear-gradient(90deg,#3358e0 0%,#4f8cff 100%);color:#fff;border:none;border-radius:8px;padding:8px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;">通道保存</button>
-                  <button id="channel-restore-btn" style="background:linear-gradient(90deg,#aaa 0%,#e0e7ff 100%);color:#3358e0;border:none;border-radius:8px;padding:8px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;">通道还原</button>
+                  <label id="channel-confirm-label" style="color:#3358e0;font-weight:bold;font-size:1.13em;" data-i18n="channel-attr-confirm-label">修改后点击"通道保存"即可写入</label>
+                  <button id="channel-confirm-btn" style="background:linear-gradient(90deg,#3358e0 0%,#4f8cff 100%);color:#fff;border:none;border-radius:8px;padding:8px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;" data-i18n="channel-attr-confirm-btn">通道保存</button>
+                  <button id="channel-restore-btn" style="background:linear-gradient(90deg,#aaa 0%,#e0e7ff 100%);color:#3358e0;border:none;border-radius:8px;padding:8px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;" data-i18n="channel-attr-restore-btn">通道还原</button>
                 </div>
               </div>
               <div style="display:flex;flex-direction:column;gap:18px;">
@@ -3386,8 +3422,8 @@
           <span style="color:#3358e0;font-weight:bold;font-size:1.25em;min-width:70px;letter-spacing:2px;">CH${i+1}</span>
           <div style='display:flex;align-items:center;gap:24px;flex:1;'>
             <button id="ch-dir-btn-${i}" style="min-width:54px;padding:8px 18px;border-radius:10px;border:2px solid #b3cfff;background:#fff;color:#3358e0;font-weight:bold;cursor:pointer;font-size:1.08em;box-shadow:0 1px 6px #e0e7ff;transition:all 0.2s;">NOR</button>
-            <span style='font-size:1.08em;color:#888;'>负行程</span><input type="number" id="ch-left-input-${i}" value="0" min="0" max="100" style="width:90px;text-align:center;border:2px solid #b3cfff;border-radius:8px;font-size:1.08em;padding:6px 0;box-shadow:0 1px 6px #e0e7ff;" />
-            <span style='font-size:1.08em;color:#888;'>正行程</span><input type="number" id="ch-right-input-${i}" value="0" min="0" max="100" style="width:90px;text-align:center;border:2px solid #b3cfff;border-radius:8px;font-size:1.08em;padding:6px 0;box-shadow:0 1px 6px #e0e7ff;" />
+            <span style='font-size:1.08em;color:#888;' data-i18n="channel-attr-negative-travel">负行程</span><input type="number" id="ch-left-input-${i}" value="0" min="0" max="100" style="width:90px;text-align:center;border:2px solid #b3cfff;border-radius:8px;font-size:1.08em;padding:6px 0;box-shadow:0 1px 6px #e0e7ff;" />
+            <span style='font-size:1.08em;color:#888;' data-i18n="channel-attr-positive-travel">正行程</span><input type="number" id="ch-right-input-${i}" value="0" min="0" max="100" style="width:90px;text-align:center;border:2px solid #b3cfff;border-radius:8px;font-size:1.08em;padding:6px 0;box-shadow:0 1px 6px #e0e7ff;" />
             <div id="ch-bar-attr-${i}" style="flex:1;height:22px;background:#e0e7ff;border-radius:12px;overflow:hidden;position:relative;box-shadow:0 1px 8px #b3cfff;">
               <div style="height:100%;background:linear-gradient(90deg,#4f8cff 0%,#3358e0 100%);width:${((1500-988)/(2012-988)*100)}%;transition:width 0.05s;"></div>
               <div style="position:absolute;left:${((1500-988)/(2012-988)*100)}%;top:0;bottom:0;width:3px;background:#e74c3c;opacity:0.7;"></div>
@@ -3400,7 +3436,7 @@
               </div>
             </div>
             <div class="config-stack-page" data-page="trim-center" style="display:none;">
-              <div style="font-weight:bold;color:#3358e0;margin-bottom:8px;">Trim 行程</div>
+              <div style="font-weight:bold;color:#3358e0;margin-bottom:8px;" data-i18n="trim-center-title">Trim 行程</div>
               <div style="display:flex;flex-direction:column;gap:18px;">
                 ${(() => {
                   let html = '';
@@ -3417,13 +3453,13 @@
             <span id="trim-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.18em;background:#fff;border-radius:8px;padding:4px 18px;box-shadow:0 1px 4px #e0e7ff;">0</span>
             <!-- Trim输入框已彻底隐藏，不渲染 -->
           </div>
-          <button class="trim-clear-btn" data-type="trim" data-idx="${i}" style="margin-top:12px;background:linear-gradient(90deg,#e0e7ff 0%,#b3cfff 100%);color:#3358e0;border:none;border-radius:8px;padding:6px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;">清空</button>
+          <button class="trim-clear-btn" data-type="trim" data-idx="${i}" style="margin-top:12px;background:linear-gradient(90deg,#e0e7ff 0%,#b3cfff 100%);color:#3358e0;border:none;border-radius:8px;padding:6px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;" data-i18n="trim-center-clear">清空</button>
         </div>`;
       }
                   return html;
                 })()}
               </div>
-              <div style="font-weight:bold;color:#3358e0;margin:24px 0 8px 0;">中立点行程</div>
+              <div style="font-weight:bold;color:#3358e0;margin:24px 0 8px 0;" data-i18n="trim-center-center-title">中立点行程</div>
               <div style="display:flex;flex-direction:column;gap:18px;">
                 ${(() => {
                   let html = '';
@@ -3440,7 +3476,7 @@
             <span id="center-val-${i}" style="font-family:'Roboto Mono',monospace;font-size:1.18em;background:#fff;border-radius:8px;padding:4px 18px;box-shadow:0 1px 4px #e0e7ff;">0</span>
             <input type="number" id="center-input-${i}" value="0" min="-100" max="100" style="width:90px;text-align:center;border:2px solid #b3cfff;border-radius:8px;font-size:1.08em;padding:6px 0;box-shadow:0 1px 6px #e0e7ff;" />
           </div>
-          <button class="trim-clear-btn" data-type="center" data-idx="${i}" style="margin-top:12px;background:linear-gradient(90deg,#e0e7ff 0%,#b3cfff 100%);color:#3358e0;border:none;border-radius:8px;padding:6px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;">清空</button>
+          <button class="trim-clear-btn" data-type="center" data-idx="${i}" style="margin-top:12px;background:linear-gradient(90deg,#e0e7ff 0%,#b3cfff 100%);color:#3358e0;border:none;border-radius:8px;padding:6px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;" data-i18n="trim-center-clear">清空</button>
         </div>`;
       }
                   return html;
@@ -3449,18 +3485,18 @@
             </div>
             <div class="config-stack-page" data-page="mode" style="display:none;">
               <div style="margin:18px 0 24px 0;display:flex;align-items:center;gap:24px;">
-                <label style="font-weight:bold;color:#3358e0;font-size:1.13em;">摇杆模式：</label>
+                <label style="font-weight:bold;color:#3358e0;font-size:1.13em;" data-i18n="mode-title">摇杆模式：</label>
                 <select id="mode-select" style="font-size:1.13em;padding:8px 18px;border-radius:8px;border:1.5px solid #d0d7e6;">
                   ${modeList.map((m, i) => `<option value="${i}"${i===currentModeIdx?' selected':''}>${m.name}</option>`).join('')}
                 </select>
               </div>
               <div style="margin-top:48px;display:flex;gap:80px;justify-content:center;">
                 <div style="display:flex;flex-direction:column;align-items:center;">
-                  <div style="font-weight:bold;color:#3358e0;margin-bottom:16px;font-size:1.22em;">左手摇杆</div>
+                  <div style="font-weight:bold;color:#3358e0;margin-bottom:16px;font-size:1.22em;" data-i18n="mode-left-stick">左手摇杆</div>
                   <canvas id="cross-left" width="426" height="426" style="background:#f4f8ff;border-radius:22px;box-shadow:0 2px 16px #e0e7ff;"></canvas>
                 </div>
                 <div style="display:flex;flex-direction:column;align-items:center;">
-                  <div style="font-weight:bold;color:#3358e0;margin-bottom:16px;font-size:1.22em;">右手摇杆</div>
+                  <div style="font-weight:bold;color:#3358e0;margin-bottom:16px;font-size:1.22em;" data-i18n="mode-right-stick">右手摇杆</div>
                   <canvas id="cross-right" width="426" height="426" style="background:#f4f8ff;border-radius:22px;box-shadow:0 2px 16px #e0e7ff;"></canvas>
                 </div>
               </div>
@@ -4417,6 +4453,7 @@
       serialBuffer= [];
       window._globalChannelTask = null;
       stopGlobalChannelTimer();
+      updateAllLangText();
     }
     function initAttrPage() {
       // 设备属性页面：自动渲染
@@ -4424,6 +4461,7 @@
       renderDeviceInfoPage();
       window._globalChannelTask = null;
       stopGlobalChannelTimer();
+      updateAllLangText();
     }
     function initConfigPage() {
       serialBuffer= [];
@@ -4491,6 +4529,7 @@
       }, 0);
 
       startTimers(window._globalChannelTask);
+      updateAllLangText();
     }
     function initNetPage() {
       serialBuffer= [];
@@ -4500,6 +4539,7 @@
       wifiToggleBtn();
       window._globalChannelTask = null;
       stopGlobalChannelTimer();
+      updateAllLangText();
     }
     function initCalibPage() {
       serialBuffer= [];
@@ -4527,6 +4567,7 @@
         commandRequest: () => {}
       };
       startTimers(window._globalChannelTask);
+      updateAllLangText();
     }
     // function initFwPage() {
     //   serialBuffer= [];
@@ -4574,6 +4615,7 @@
       }, 1000);
       startFwReadyCheck();
       updateFwUI();
+      updateAllLangText();
     }
 
 
@@ -4588,32 +4630,47 @@
       if (!attrPage) return;
       let html = '<div class="comm-container" style="display:flex;justify-content:center;align-items:center;min-height:calc(100vh - 64px);background:linear-gradient(135deg,#e0e7ff 0%,#f4f6fb 100%);">';
       html += '<div style="background:#fff;border-radius:22px;box-shadow:0 8px 36px rgba(79,140,255,0.15);padding:48px 60px 40px 60px;min-width:380px;max-width:520px;width:100%;display:flex;flex-direction:column;align-items:center;">';
-      html += '<div class="comm-title" style="margin-bottom:32px;display:flex;align-items:center;gap:12px;">';
-      html += '<svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="13" fill="#eaf1ff" stroke="#3358e0" stroke-width="2"/><path d="M9 14h10M14 9v10" stroke="#3358e0" stroke-width="2.5" stroke-linecap="round"/></svg>';
+      html += '<div class="comm-title" data-i18n="attr-title" style="margin-bottom:32px;display:flex;align-items:center;gap:12px;">';
+      //html += '<svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="13" fill="#eaf1ff" stroke="#3358e0" stroke-width="2"/><path d="M9 14h10M14 9v10" stroke="#3358e0" stroke-width="2.5" stroke-linecap="round"/></svg>';
       html += '设备属性';
       html += '</div>';
       html += `<div style="margin: 24px 0 0 0; text-align: right;">
-        <button id="factory-reset-btn" style="background: linear-gradient(90deg,#e74c3c 0%,#c0392b 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer;">恢复出厂设置!</button>
-        <button id="exit-fw-update-btn" style="background: linear-gradient(90deg,#3498db 0%,#2980b9 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; margin-left: 16px;">退出固件更新</button>
+        <button id="factory-reset-btn" data-i18n="factory-reset" style="background: linear-gradient(90deg,#e74c3c 0%,#c0392b 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer;">恢复出厂设置!</button>
+        <button id="exit-fw-update-btn" data-i18n="exit-fw-update" style="background: linear-gradient(90deg,#3498db 0%,#2980b9 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; margin-left: 16px;">退出固件更新</button>
       </div>`;
-
+      html += `
+        <div style="margin-top:32px;width:100%;">
+          <div data-i18n="keymode-title" style="color:#3358e0;font-weight:bold;font-size:1.13em;margin-bottom:10px;">按键模式设置</div>
+          <div id="keymode-selectors" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:12px;">
+            ${['SA','SB','SC','SD','SE'].map((k, i) => `
+              <div style="display:flex;flex-direction:column;align-items:center;">
+                <span style="margin-bottom:6px;">${k}</span>
+                <select id="keymode-${k}"  class="keymode-select">
+                  <option value="6" data-i18n="keymode-single">单击</option>
+                  <option value="2" data-i18n="keymode-double">双击</option>
+                  <option value="4" data-i18n="keymode-triple">三态</option>
+                </select>
+              </div>
+            `).join('')}
+          </div>
+      </div>`;
       // 查询按钮
-      html += '<button id="query-device-attr-btn" class="connect-btn" style="margin-bottom:18px;">查询设备属性</button>';
+      html += '<button id="query-device-attr-btn" class="connect-btn" data-i18n="query-device-attr" style="margin-bottom:18px;">查询设备属性</button>';
       if (!dev) {
-        html += '<div>未获取到设备信息。</div></div></div>';
+        html += '<div data-i18n="no-device-info">未获取到设备信息。</div></div></div>';
         attrPage.innerHTML = html;
         // 绑定查询按钮事件
         const queryBtn = document.getElementById('query-device-attr-btn');
         if (queryBtn) {
           queryBtn.onclick = async function() {
-            if (!writer) { alert('请先连接串口！'); return; }
+            if (!writer) { alert(LANGS[currentLang]['connect-port-desc']); return; }
             const devAttrCmd = new Uint8Array([0xA5, 0x55, 0x1D, 0x0D, 0x0A]);
             await writer.write(devAttrCmd);
             queryBtn.disabled = true;
-            queryBtn.textContent = '查询中...';
+            queryBtn.textContent = LANGS[currentLang]['query-device-attr-loading'];
             setTimeout(() => {
               queryBtn.disabled = false;
-              queryBtn.textContent = '查询设备属性';
+              queryBtn.textContent = LANGS[currentLang]['query-device-attr'];
             }, 2000);
           };
         }
@@ -4622,14 +4679,11 @@
             exitFwUpdateBtn.onclick = function() {
               if (typeof writer !== 'undefined' && writer) {
                 writer.write(new Uint8Array([0x34]));
-                alert('已发送退出固件更新指令');
+                alert(LANGS[currentLang]['exit-fw-update']);
                 console.log('[ATTR] 已发送退出固件更新指令');
               }
             };
         }
-        
-
-
         return;
       }
       // 序列号连续数字显示
@@ -4642,66 +4696,66 @@
       }
       html += `<div style="width:100%;display:flex;flex-direction:column;gap:18px;">
         <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#f4f8ff;border-radius:12px;padding:12px 18px;">
-          <span style="color:#3358e0;font-weight:500;min-width:90px;">音量</span>
+          <span style="color:#3358e0;font-weight:500;min-width:90px;" data-i18n="volume">音量</span>
           <div style="display:flex;align-items:center;gap:12px;">
             <input id='volume-range' type='range' min='0' max='25' value='${dev.devVolume}' style='width:120px;'>
             <span id='volume-value' type='range' min='0' max='100' style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.devVolume * 4}</span>
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#eaf1ff;border-radius:12px;padding:12px 18px;">
-          <span style="color:#3358e0;font-weight:500;min-width:90px;">序列号</span>
+          <span style="color:#3358e0;font-weight:500;min-width:90px;" data-i18n="serial-number">序列号</span>
           <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;letter-spacing:2px;">${serialNumStr}</span>
         </div>
         <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#f4f8ff;border-radius:12px;padding:12px 18px;">
-          <span style="color:#3358e0;font-weight:500;min-width:90px;">高频头固件版本</span>
+          <span style="color:#3358e0;font-weight:500;min-width:90px;" data-i18n="elrs-firmware-version">高频头固件版本</span>
           <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.elrsFirmWare}</span>
         </div>
         <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#eaf1ff;border-radius:12px;padding:12px 18px;">
-          <span style="color:#3358e0;font-weight:500;min-width:90px;">设备固件版本</span>
+          <span style="color:#3358e0;font-weight:500;min-width:90px;" data-i18n="device-firmware-version">设备固件版本</span>
           <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.deviceFirmWare}</span>
         </div>
         <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#f4f8ff;border-radius:12px;padding:12px 18px;">
-          <span style="color:#3358e0;font-weight:500;min-width:90px;">ELRS名字</span>
+          <span style="color:#3358e0;font-weight:500;min-width:90px;" data-i18n="elrs-name">ELRS名字</span>
           <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.elrsName}</span>
         </div>
         <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#eaf1ff;border-radius:12px;padding:12px 18px;">
-          <span style="color:#3358e0;font-weight:500;min-width:90px;">公司名字</span>
+          <span style="color:#3358e0;font-weight:500;min-width:90px;" data-i18n="company-name">公司名字</span>
           <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.companyName}</span>
         </div>
         <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#f4f8ff;border-radius:12px;padding:12px 18px;">
-          <span style="color:#3358e0;font-weight:500;min-width:90px;">设备名字</span>
+          <span style="color:#3358e0;font-weight:500;min-width:90px;" data-i18n="device-name">设备名字</span>
           <span style="font-family:'Roboto Mono',monospace;font-size:1.08em;">${dev.devName}</span>
         </div>
       </div>
       <div style="margin-top:32px;width:100%;">
-        <div style="color:#3358e0;font-weight:bold;font-size:1.13em;margin-bottom:10px;">遥控参数</div>
+        <div style="color:#3358e0;font-weight:bold;font-size:1.13em;margin-bottom:10px;" data-i18n="remote-param">遥控参数</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div style="background:#f4f8ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-            <span style="color:#3358e0;">发送包速率</span><span style="font-family:'Roboto Mono',monospace;">${dev.sendPackSpeed}</span>
+            <span style="color:#3358e0;" data-i18n="send-pack-speed">发送包速率</span><span style="font-family:'Roboto Mono',monospace;">${dev.sendPackSpeed}</span>
           </div>
           <div style="background:#eaf1ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-            <span style="color:#3358e0;">返回速率</span><span style="font-family:'Roboto Mono',monospace;">${dev.returnSpeed}</span>
+            <span style="color:#3358e0;" data-i18n="return-speed">返回速率</span><span style="font-family:'Roboto Mono',monospace;">${dev.returnSpeed}</span>
           </div>
           <div style="background:#f4f8ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-            <span style="color:#3358e0;">校准标志</span><span style="font-family:'Roboto Mono',monospace;">${dev.calibrationFlag}</span>
+            <span style="color:#3358e0;" data-i18n="calibration-flag">校准标志</span><span style="font-family:'Roboto Mono',monospace;">${dev.calibrationFlag}</span>
           </div>
           <div style="background:#eaf1ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-            <span style="color:#3358e0;">连接协议</span><span style="font-family:'Roboto Mono',monospace;">${dev.connectProtocol}</span>
+            <span style="color:#3358e0;" data-i18n="connect-protocol">连接协议</span><span style="font-family:'Roboto Mono',monospace;">${dev.connectProtocol}</span>
           </div>
           <div style="background:#f4f8ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-            <span style="color:#3358e0;">通道数</span><span style="font-family:'Roboto Mono',monospace;">${dev.channelNum}</span>
+            <span style="color:#3358e0;"data-i18n="channel-num">通道数</span><span style="font-family:'Roboto Mono',monospace;">${dev.channelNum}</span>
           </div>
           <div style="background:#eaf1ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-            <span style="color:#3358e0;">密钥</span><span style="font-family:'Roboto Mono',monospace;">${dev.secretKey}</span>
+            <span style="color:#3358e0;"data-i18n="secret-key">密钥</span><span style="font-family:'Roboto Mono',monospace;">${dev.secretKey}</span>
           </div>
           <div style="background:#f4f8ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-            <span style="color:#3358e0;">功率</span><span style="font-family:'Roboto Mono',monospace;">${dev.powerVal}</span>
+            <span style="color:#3358e0;"data-i18n="power">功率</span><span style="font-family:'Roboto Mono',monospace;">${dev.powerVal}</span>
           </div>
           <div style="background:#eaf1ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-            <span style="color:#3358e0;">遥控类型</span><span style="font-family:'Roboto Mono',monospace;">${dev.remoteCtlClass}</span>
+            <span style="color:#3358e0;"data-i18n="remote-type">遥控类型</span><span style="font-family:'Roboto Mono',monospace;">${dev.remoteCtlClass}</span>
           </div>
           <div style="background:#f4f8ff;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-            <span style="color:#3358e0;">混控</span><span style="font-family:'Roboto Mono',monospace;">${dev.mixedCtl}</span>
+            <span style="color:#3358e0;"data-i18n="mixed-ctl">混控</span><span style="font-family:'Roboto Mono',monospace;">${dev.mixedCtl}</span>
           </div>
         </div>
       </div></div>`;
@@ -4726,15 +4780,34 @@
       const factoryResetBtn = document.getElementById('factory-reset-btn');
       if (factoryResetBtn) {
         factoryResetBtn.onclick = function() {
-          if (!window.confirm('确定要恢复出厂设置吗？此操作不可撤销！')) return;
+          if (!window.confirm(LANGS[currentLang]['factory-reset-confirm'])) return;
           if (typeof writer !== 'undefined' && writer) {
             writer.write(new Uint8Array([0xA5, 0x55, 0x0E, 0x0D, 0x0A]));
-            alert('已发送恢复出厂设置指令');
+            alert(LANGS[currentLang]['factory-reset-success']);
           }
         };
       }
-
-
+      const keyModeArr = dev.keyModel;// && [0xFF,0xFF,0xFF,0xFF,0xFF]; // 默认单击
+      //console.log('[ATTR] 按键模式设置:', dev.keyModel[0]);
+      ['SA','SB','SC','SD','SE'].forEach((k, i) => {
+        const sel = document.getElementById(`keymode-${k}`);
+        if (sel) {
+          sel.value = parseInt(keyModeArr[i] || 6).toString();
+          sel.onchange = function() {
+            // 获取5个下拉的当前值
+            const vals = ['SA','SB','SC','SD','SE'].map((kk, idx) => {
+              const s = document.getElementById(`keymode-${kk}`);
+              return s ? parseInt(s.value) : 6;
+            });
+            // 组装指令
+            const cmd = new Uint8Array([0xA5, 0x55, 0x21, ...vals, 7, 0x0D, 0x0A]);
+            if (typeof writer !== 'undefined' && writer) {
+              writer.write(cmd);
+              //alert('已发送按键模式设置指令: ' + vals.join(','));
+            }
+          };
+        }
+      });
     }
 
 
@@ -4771,7 +4844,7 @@
         fwUpdateBtn.style.display = 'none';
         fwProgressLabel.style.display = 'none';
         fwProgressBarWrap.style.display = 'none';
-        fwStatus.textContent = '请等待设备就绪...';
+        fwStatus.textContent = LANGS['fw-wait-ready'];
         document.getElementById('fw-device-type').disabled = true;
       } else if (upDataFlag === 2) {
         fwEnterUpdateBtn.style.display = 'none';
@@ -4783,16 +4856,16 @@
         fwProgressLabel.style.display = '';
         fwProgressBarWrap.style.display = '';
         document.getElementById('fw-device-type').disabled = true;
-        fwStatus.textContent = '设备已就绪，可以开始固件更新';
+        fwStatus.textContent = LANGS['fw-ready-update'];
       }
     }
 
     // 覆盖页面初始化注册表
     if (typeof pageInits === 'object') pageInits.fw = initFwPage;
     fwUpdateBtn.onclick = async function() {
-      if (!fwFileData) { fwStatus.textContent = '请先选择固件文件！'; return; }
-      if (!writer) { fwStatus.textContent = '请先连接串口！'; return; }
-      fwStatus.textContent = '正在传输中,请等待...';
+      if (!fwFileData) { fwStatus.textContent = LANGS['fw-file-input']; return; }
+      if (!writer) { fwStatus.textContent = LANGS['fw-connect-port']; return; }
+      fwStatus.textContent = LANGS['fw-transmitting'];
       fwProgressBar.style.width = '0%';
       fwProgressText.textContent = '0%';
       fwUpdateBtn.disabled = true;
@@ -5371,6 +5444,122 @@
         'transferring': '正在传输中,请等待...',
         'transfer_done': '固件传输完成！',
         'transfer_fail': '传输失败：',
+        'attr-title': '设备属性',
+        'connect-title': '串口连接',
+        'connect-port': '串口选择',
+        'connect-baudrate': '波特率',
+        'connect-btn': '连接',
+        'connect-status': '未连接',
+        'update-progress': '更新进度',
+        'drag-fw-file': '拖拽固件文件到此处',
+        'or': '或',
+        'fw-remote': '遥控器',
+        'fw-transmitter': '高频头',
+        'factory-reset': '恢复出厂设置!',
+        'exit-fw-update': '退出固件更新',
+        'keymode-title': '按键模式设置',
+        'keymode-single': '单击',
+        'keymode-double': '双击',
+        'keymode-triple': '三态',
+        'query-device-attr': '查询设备属性',
+        'query-device-attr-loading': '查询中...',
+        'no-device-info': '未获取到设备信息。',
+        'connect-port-desc': '请先连接串口！',
+        'factory-reset-confirm': '确定要恢复出厂设置吗？此操作不可撤销！',
+        'factory-reset-success': '已发送恢复出厂设置指令',
+        'wifi-open': 'WiFi开启',  
+        'wifi-close': 'WiFi关闭',
+        'wifi-open-desc': 'WiFi开启成功',
+        'wifi-close-desc': 'WiFi关闭成功',
+        'wifi-open-fail': 'WiFi开启失败',
+        'volume': '音量',
+        'serial-number': '序列号',
+        'elrs-firmware-version': '高频头固件版本',
+        'device-firmware-version': '设备固件版本',
+        'elrs-name': 'ELRS名字',
+        'company-name': '公司名字',
+        'device-name': '设备名字',
+        'send-pack-speed': '发送包速率',
+        'return-speed': '返回速率',
+        'calibration-flag': '校准标志',
+        'connect-protocol': '连接协议',
+        'channel-num': '通道数',
+        'secret-key': '密钥',
+        'power': '功率',
+        'remote-type': '遥控类型',
+        'mixed-ctl': '混控',
+        'remote-param': '遥控参数',
+        'comm-uart': '串口通信',
+        'attr-dev': '设备概况',
+        'config-channel': '通道配置',
+        'net-config': '无线配置',
+        'dev-cailation': '设备校准',
+        'frieware-updata': '固件更新',
+        'channel-monitor': '通道监视器',
+        'channel-attr': '通道属性',
+        'channel-map': '通道映射',
+        'trim-center': 'Trim和Center',
+        'mode': '摇杆模式',
+        'channel-map-relation': '通道映射关系',
+        'channel-map-confirm-label': '遥控器没有反应点击"映射保存"再次写入',
+        'channel-attr-negative-travel': '负行程',
+        'channel-attr-positive-travel': '正行程',
+        'trim-center-title': 'Trim 行程',
+        'trim-center-center-title': '中立点行程',
+        'mode-title': '摇杆模式',
+        'config-dev': '设备配置',
+        'channel-attr-confirm-btn': '通道保存',
+        'channel-attr-restore-btn': '通道还原',
+        'channel-map-confirm-btn': '映射保存',
+        'channel-map-restore-btn': '映射还原',
+        'net-lua-config': 'LUA配置',
+        'net-refresh-tx': '刷新TX',
+        'net-refresh-rx': '刷新RX',
+        'net-recv-hex': '16进制显示接收内容',
+        'mode-left-stick': '左手摇杆',
+        'mode-right-stick': '右手摇杆',
+        'channel-attr-confirm-label': '修改后点击"通道保存"即可写入',
+        'trim-center-clear': '清空',
+        'comm-send-text': '文本发送',
+        'comm-send-hex': '16进制发送',
+        'comm-send-input': '输入要发送的数据',
+        'comm-send-btn': '发送',
+        'comm-clear-output': '一键清空',
+        'refresh-getting': '正在获取设置...',
+        'refresh-done': '刷新完成',
+        'refresh-timeout': '超时',
+        'calib-title': '设备校准',
+        'calib-joystick-label-left': '左摇杆',
+        'calib-joystick-label-right': '右摇杆',
+        'calib-step-label': '点击"开始校准"按键进行校准操作',
+        'calib-action': '开始校准',
+        'calib-save-action': '校准保存',
+        'calib-reset-action': '重新校准',
+        'calib-center-point': '校准中心点',
+        'calib-step-label-center-point': '请将摇杆置于中心点处,然后点击"选择中心点"按键',
+        'calib-done': '校准完成',
+        'calib-step-label-done': '请将摇杆和旋钮移动到最大最小处,角落处请多停留一段时间,然后校准完毕之后,点击"校准完成"按键',
+        'fw-change-title': '选择固件更新',
+        'fw-device-type': '设备类型：',
+        'fw-start-update': '开始固件更新',
+        'fw-file-input': '请选择固件文件！',
+        'fw-file-name': '固件文件名:',
+        'fw-transmitting': '正在传输中,请等待...',
+        'fw-select-file': '请选择固件文件！',
+        'fw-connect-port': '请先连接串口！',
+        'fw-ready-update': '设备已就绪，可以开始固件更新',
+        'fw-wait-ready': '请等待设备就绪...',
+        'fw-update-btn': '确认更新',
+        'fw-update-progress': '更新进度',
+        'connecting': '正在连接...',
+        'connect-failed': '连接失败: ',
+        'browser-not-support': '浏览器不支持该功能,请选择Chrome/Edge等谷歌内核浏览器',
+        'confirm-update': '确定要进入固件更新状态吗？进入后将无法进行其他操作，需退出更新后恢复。',
+        'confirm-center-point': '确认中心点',
+        'calib-start': '开始校准',
+        'calib-start-step-label': '点击"开始校准"按键进行校准操作',
+        'comm-disconnect-btn': '断开连接',
+        'recv-hex-checked': '16进制显示接收内容',
         // ... 你可以继续补充 ...
       },
       en: {
@@ -5382,16 +5571,130 @@
         'transferring': 'Transferring, please wait...',
         'transfer_done': 'Firmware transfer completed!',
         'transfer_fail': 'Transfer failed: ',
+        'attr-title': 'Device Attributes',
+        'connect-title': 'Serial Connection',
+        'connect-port': 'Serial Port',
+        'connect-baudrate': 'Baud Rate',
+        'connect-btn': 'Connect',
+        'connect-status': 'Disconnected',
+        'update-progress': 'Update Progress',
+        'drag-fw-file': 'Drag firmware file here',
+        'or': 'Or',
+        'fw-remote': 'Remote',
+        'fw-transmitter': 'Transmitter',
+        'factory-reset': 'Factory Reset',
+        'exit-fw-update': 'Exit Firmware Update',
+        'keymode-title': 'Key Mode Setting',
+        'keymode-single': 'Single',
+        'keymode-double': 'Double',
+        'keymode-triple': 'Triple',
+        'query-device-attr': 'Query Device Attributes',
+        'query-device-attr-loading': 'Querying...',
+        'no-device-info': 'No device information.',
+        'connect-port-desc': 'Please connect serial port first!',
+        'wifi-open': 'WiFi Open',  
+        'wifi-close': 'WiFi Close',
+        'wifi-open-desc': 'WiFi Open Success',
+        'wifi-close-desc': 'WiFi Close Success',
+        'wifi-open-fail': 'WiFi Open Fail',
+        'volume': 'Volume',
+        'serial-number': 'Serial Number',
+        'elrs-firmware-version': 'ELRS Firmware Version',
+        'device-firmware-version': 'Device Firmware Version',
+        'elrs-name': 'ELRS Name',
+        'company-name': 'Company Name',
+        'device-name': 'Device Name',
+        'send-pack-speed': 'Send Pack Speed',
+        'return-speed': 'Return Speed',
+        'calibration-flag': 'Calibration Flag',
+        'connect-protocol': 'Connect Protocol',
+        'channel-num': 'Channel Number',
+        'secret-key': 'Secret Key',
+        'power': 'Power',
+        'remote-type': 'Remote Type',
+        'mixed-ctl': 'Mixed Control',
+        'remote-param': 'Remote Parameter',
+        'comm-uart': 'UART',
+        'attr-dev': 'Device',
+        'config-channel': 'Channel',
+        'net-config': 'Network',
+        'dev-cailation': 'Calibration',
+        'frieware-updata': 'Firmware Update',
+        'channel-monitor': 'Channel Monitor',
+        'channel-attr': 'Channel Attribute',
+        'channel-map': 'Channel Mapping',
+        'trim-center': 'Trim and Center',
+        'mode': 'Mode',
+        'channel-map-relation': 'Channel Mapping Relation',
+        'channel-map-confirm-label': 'If the remote control does not respond, click "Mapping Save" again to write',
+        'channel-attr-negative-travel': 'Negative Travel',
+        'channel-attr-positive-travel': 'Positive Travel',
+        'trim-center-title': 'Trim Travel',
+        'trim-center-center-title': 'Center Travel',
+        'mode-title': 'Mode',
+        'config-dev': 'Channel',
+        'channel-attr-confirm-btn': 'Save',
+        'channel-attr-restore-btn': 'Restore',
+        'channel-map-confirm-btn': 'Save',
+        'channel-map-restore-btn': 'Restore',
+        'net-lua-config': 'LUA Config',
+        'net-refresh-tx': 'Refresh TX',
+        'net-refresh-rx': 'Refresh RX',
+        'net-recv-hex': 'Hex Display',
+        'mode-left-stick': 'Left Stick',
+        'mode-right-stick': 'Right Stick',
+        'channel-attr-confirm-label': 'After modification, click "Channel Save" to write',
+        'trim-center-clear': 'Clear',
+        'comm-send-text': 'Text Send',
+        'comm-send-hex': 'Hex Send',
+        'comm-send-input': 'Input the data to send',
+        'comm-send-btn': 'Send',
+        'comm-clear-output': 'Clear',
+        'refresh-getting': 'Getting Settings...',
+        'refresh-done': 'Refresh Done',
+        'refresh-timeout': 'Timeout',
+        'calib-title': 'Calibration',
+        'calib-joystick-label-left': 'Left Stick',
+        'calib-joystick-label-right': 'Right Stick',
+        'calib-step-label': 'Click "Start Calibration" button to perform calibration operation',
+        'calib-action': 'Start Calibration',
+        'calib-save-action': 'Save Calibration',
+        'calib-reset-action': 'Reset Calibration',
+        'calib-center-point': 'Calibration Center Point',
+        'calib-step-label-center-point': 'Please place the joystick at the center point, then click the "Select Center Point" button',
+        'calib-done': 'Calibration Done',
+        'calib-step-label-done': 'Please move the joystick and knob to the maximum and minimum positions, and stay longer at the corners. After calibration, click the "Calibration Done" button',
+        'fw-change-title': 'Select Firmware Update',
+        'fw-device-type': 'Device Type:',
+        'fw-start-update': 'Start Firmware Update',
+        'fw-file-input': 'Please select firmware file!',
+        'fw-file-name': 'Firmware File Name:',
+        'fw-transmitting': 'Transmitting, please wait...',
+        'fw-select-file': 'Please select firmware file!',
+        'fw-connect-port': 'Please connect serial port first!',
+        'fw-ready-update': 'Device is ready, you can start firmware update',
+        'fw-wait-ready': 'Please wait for the device to be ready...',
+        'fw-update-btn': 'Confirm Update',
+        'fw-update-progress': 'Update Progress',
+        'connecting': 'Connecting...',
+        'connect-failed': 'Connection failed: ',
+        'browser-not-support': 'Browser not support this function, please select Chrome/Edge etc. Google core browser',
+        'confirm-update': 'Are you sure to enter the firmware update state? After entering, you cannot perform other operations, and you need to exit the update to restore.',
+        'confirm-center-point': 'Confirm Center Point',
+        'comm-disconnect-btn': 'Disconnect',
+        'recv-hex-checked': 'Hex Display',
+        // ... 你可以继续补充 ...        
         // ... you can continue ...
       }
     };
     // ===== 语言切换核心逻辑 =====
-    let currentLang = localStorage.getItem('lang') || 'auto';
+
     function getLang() {
-      if (currentLang === 'auto') {
-        const nav = navigator.language || navigator.userLanguage;
-        return nav.startsWith('zh') ? 'zh' : 'en';
-      }
+      console.log('[ATTR] 获取语言:', currentLang);
+        // if (currentLang === 'auto') {
+        //   const nav = navigator.language || navigator.userLanguage;
+        //   return nav.startsWith('zh') ? 'zh' : 'en';
+        // }
       return currentLang;
     }
     function setLang(lang) {
@@ -5405,27 +5708,40 @@
       if (!btn) return;
       let txt = '🌐';
       //let txt = '';
-      if (currentLang === 'auto') txt += 'Auto';
-      else if (currentLang === 'zh') txt += '中文';
-      else txt += 'EN';
+      //if (currentLang === 'auto') txt += 'Auto';
+      //else 
+      if (currentLang === 'en') txt += 'EN';
+      else txt += '中文';
       btn.textContent = txt;
     }
+
+    // ===== 语言切换按钮事件 =====
+    document.getElementById('lang-switcher').onclick = function() {
+      //if (currentLang === 'auto') setLang('zh');
+      //else if (currentLang === 'zh') setLang('en');
+      //else setLang('auto');
+      if (currentLang === 'zh') setLang('en');
+      else setLang('zh');
+      //console.log('[ATTR] 语言切换:', currentLang);
+      updateAllLangText();
+      //autoTranslateAllText();
+      //showMainPage("attr");
+      //renderDeviceInfoPage();
+    };
+
     // ===== 典型用法：所有可切换文本都用 data-i18n="key" 属性标记 =====
     function updateAllLangText() {
       const lang = getLang();
       document.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.getAttribute('data-i18n');
+        console.log('[ATTR] 更新语言:', key, lang, LANGS[lang][key]);
         if (LANGS[lang] && LANGS[lang][key]) {
           el.textContent = LANGS[lang][key];
         }
       });
     }
-    // ===== 语言切换按钮事件 =====
-    document.getElementById('lang-switcher').onclick = function() {
-      if (currentLang === 'auto') setLang('zh');
-      else if (currentLang === 'zh') setLang('en');
-      else setLang('auto');
-    };
+
+
     // ===== 页面加载时自动刷新语言 =====
     updateLangUI();
     updateAllLangText();
