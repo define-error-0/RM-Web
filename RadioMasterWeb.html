@@ -698,6 +698,46 @@
       box-shadow: 0 4px 16px rgba(51,88,224,0.13);
     }
 
+    .setting-row {
+      display: flex;
+      align-items: center;
+      background: #eaf1ff;
+      border-radius: 12px;
+      padding: 12px 18px;
+      margin-bottom: 12px;
+      gap: 16px;
+    }
+
+    .setting-label {
+      color: #3358e0;
+      font-weight: 500;
+      width: 120px;         /* 固定宽度，保证对齐 */
+      text-align: left;     /* 左对齐 */
+      flex-shrink: 0;       /* 防止被压缩 */
+    }
+
+    input[type="range"] {
+      flex: 1;
+      max-width: 300px;
+      margin: 0 12px;
+    }
+
+    .setting-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 120px;
+      justify-content: flex-end;
+    }
+
+    .setting-value {
+      font-family: 'Roboto', monospace;
+      font-size: 1.08em;
+      min-width: 40px;
+      text-align: right;
+    }
+
+
     #lang-switcher {
       position: static;
       margin-left: 18px;
@@ -710,6 +750,7 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.08);
       user-select: none;
     }
+    
   </style>
 </head>
 <body style="margin:0;">
@@ -819,7 +860,6 @@
         </div>
         <div id="page-calib" class="main-page" style="display:none;">
           <div class="comm-container">
-            <div class="calib-title">设备校准</div>
             <!-- <div style="display:flex;align-items:center;gap:22px;margin-bottom:18px;">
               <button id="calib-action-btn" class="connect-btn" style="min-width:140px;">点击开始校准</button>
               <div class="calib-btn-slider-row" style="display:flex;align-items:center;gap:32px;">
@@ -871,6 +911,7 @@
               </div>
               <button id="fw-update-btn" class="connect-btn" style="width:100%;margin-top:8px;margin-bottom:8px;font-size:1.15em;" data-i18n="fw-update-btn">确认更新</button>
               <div id="fw-status" style="margin-top:10px;color:#e74c3c;font-weight:bold;min-height:28px;text-align:center;width:100%;"></div>
+              <div id="fw-status-text" style="margin-top:10px;color:#e74c3c;font-weight:bold;min-height:28px;text-align:center;width:100%;"></div>
             </div>
           </div>
         </div>
@@ -1758,7 +1799,7 @@
       timeout = setTimeout(() => {
         document.getElementById('refresh-settings').disabled = false;
         //statusElem.textContent = '超时';
-      }, 3000);
+      }, 1000);
       await refreshSettings(); // 发送刷新命令
       // 等待数据到来，readLoop会自动处理
       // 成功时清除超时
@@ -1790,7 +1831,7 @@
       timeout_rx = setTimeout(() => {
         document.getElementById('refresh-settings-rx').disabled = false;
         //statusElem.textContent = '超时';
-      }, 10000);
+      }, 6000);
       await refreshSettingsRX();
       setTimeout(() => {
         if (statusElem.textContent === LANGS[currentLang]['refresh-done']) clearTimeout(timeout_rx);
@@ -1804,7 +1845,6 @@
       calibPage.innerHTML = `
         <div class="calib-container" style="height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1vh 0;">
           <div>
-            <div class="calib-title" data-i18n="calib-title">设备校准</div>
             <div style="display:flex;align-items:center;gap:1vw;margin-bottom:1vh;">
               <div class="calib-btn-slider-row" style="display:flex;align-items:center;gap:1vw;">
                 <div class="calib-btn-group" id="calib-btn-group" style="display:flex;gap:0.5vw;"></div>
@@ -1816,6 +1856,14 @@
               </div>
             </div>
           </div>
+          <div>
+            <div id="calib-step-label" style="margin-bottom:1vh;color:#e74c3c;font-weight:bold;font-size:1.2em;text-align:center;" data-i18n="calib-start-step-label">点击"开始校准"按键进行校准操作</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;width:100%;margin-bottom:0.5vh;">
+              <button id="calib-action-btn" class="connect-btn" style="min-width:70px;font-size:0.95em;padding:8px 0;" data-i18n="calib-start">开始校准</button>
+              <button id="calib-save-action-btn" class="connect-btn" style="min-width:70px;font-size:0.95em;padding:8px 0;" data-i18n="calib-save">校准保存</button>
+              <button id="calib-reset-action-btn" class="connect-btn" style="min-width:70px;font-size:0.95em;padding:8px 0;" data-i18n="calib-reset">重新校准</button>
+            </div>
+          </div>
           <div class="calib-joystick-row" style="display:flex;gap:1.5vw;justify-content:center;flex:1;align-items:center;min-height:0;">
             <div class="calib-joystick-wrap" style="display:flex;flex-direction:column;align-items:center;">
               <div class="calib-joystick-label" data-i18n="calib-joystick-label-left">左摇杆</div>
@@ -1824,14 +1872,6 @@
             <div class="calib-joystick-wrap" style="display:flex;flex-direction:column;align-items:center;">
               <div class="calib-joystick-label" data-i18n="calib-joystick-label-right">右摇杆</div>
               <canvas class="calib-joystick" id="joystick2" width="260" height="260" style="width:20vh;height:20vh;max-width:260px;max-height:260px;min-width:100px;min-height:100px;"></canvas>
-            </div>
-          </div>
-          <div>
-            <div id="calib-step-label" style="margin-bottom:1vh;color:#e74c3c;font-weight:bold;font-size:1.2em;text-align:center;" data-i18n="calib-start-step-label">点击"开始校准"按键进行校准操作</div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;width:100%;margin-bottom:0.5vh;">
-              <button id="calib-action-btn" class="connect-btn" style="min-width:70px;font-size:0.95em;padding:8px 0;" data-i18n="calib-start">开始校准</button>
-              <button id="calib-save-action-btn" class="connect-btn" style="min-width:70px;font-size:0.95em;padding:8px 0;" data-i18n="calib-save">校准保存</button>
-              <button id="calib-reset-action-btn" class="connect-btn" style="min-width:70px;font-size:0.95em;padding:8px 0;" data-i18n="calib-reset">重新校准</button>
             </div>
           </div>
         </div>
@@ -2206,6 +2246,7 @@
           //window._adcMax = [0,0,0,0,0];
           //window._adcMin = [65535,65535,65535,65535,65535];
           document.getElementById('calib-save-action-btn').disabled = true;
+          document.getElementById('calib-reset-action-btn').click();
         }
       };
     }
@@ -2369,7 +2410,8 @@
       const reader = new FileReader();
       reader.onload = function(e) {
         fwFileData = new Uint8Array(e.target.result);
-        fwFileName.textContent = LANGS[lang]['fw-file-selected'] + file.name + LANGS[lang]['fw-file-size'] + fwFileData.length + LANGS[lang]['fw-file-bytes'];
+        fwFileName.textContent = LANGS[currentLang]['fw-file-selected'] + file.name 
+                                      + LANGS[currentLang]['fw-file-size'] + fwFileData.length + LANGS[currentLang]['fw-file-bytes'];
         fwProgressBar.style.width = '0%';
         fwProgressText.textContent = '0%';
       };
@@ -2843,7 +2885,7 @@
             // 判断bind类
             const isBind = (param.name && /bind|对频|配对/i.test(param.name)) || (param.info && /bind|对频|配对/i.test(param.info));
             if (isBind) {
-              msg.textContent = '正在对频...';
+              msg.textContent = currentLang === 'zh' ? '正在对频...' : 'Binding...';
               document.body.appendChild(dialog);
               dialog.appendChild(inner);
               // 2秒后自动发送06并关闭
@@ -2853,9 +2895,9 @@
                 document.body.removeChild(dialog);
               }, 2000);
             } else {
-              msg.textContent = '正在操作...';
+              msg.textContent = currentLang === 'zh' ? '正在操作...' : 'Operating...';
               closeBtn = document.createElement('button');
-              closeBtn.textContent = '结束';
+              closeBtn.textContent = currentLang === 'zh' ? '结束' : 'End';
               closeBtn.style.marginTop = '12px';
               closeBtn.style.background = 'linear-gradient(90deg,#e74c3c 0%,#c0392b 100%)';
               closeBtn.style.color = '#fff';
@@ -2994,15 +3036,19 @@
         const remoteCtlClass = buf[offset+7];
         const mixedCtl = buf[offset+8];
         const keyModel = buf.slice(offset + 9, offset + 9 + 6);;
+        const slideMid = buf[offset+9+6];
+        const slideMidData = buf[offset+9+8]*256 + buf[offset+9+7];
+        
 
+        console.log("数据:",buf[offset+9+7],buf[offset+9+8]);
         // 打印所有字段
         console.log('[设备属性] 字段明细:', {
           devVolume, serialNumber, elrsFirmWare, deviceFirmWare, elrsName, companyName, devName,
-          sendPackSpeed, returnSpeed, calibrationFlag, connectProtocol, channelNum, secretKey, powerVal, remoteCtlClass, mixedCtl,keyModel
+          sendPackSpeed, returnSpeed, calibrationFlag, connectProtocol, channelNum, secretKey, powerVal, remoteCtlClass, mixedCtl,keyModel,slideMid,slideMidData
         });
         return {
           devVolume, serialNumber, elrsFirmWare, deviceFirmWare, elrsName, companyName, devName,
-          sendPackSpeed, returnSpeed, calibrationFlag, connectProtocol, channelNum, secretKey, powerVal, remoteCtlClass, mixedCtl,keyModel
+          sendPackSpeed, returnSpeed, calibrationFlag, connectProtocol, channelNum, secretKey, powerVal, remoteCtlClass, mixedCtl,keyModel,slideMid,slideMidData
         };
       }
     }
@@ -3013,9 +3059,9 @@
       serialBuffer = [];
       console.log("serialBuffer:", serialBuffer);
       // 其他切换页面的逻辑...
-      if (btn.dataset.page === 'attr') {
-        renderDeviceInfoPage();
-      }
+      // if (btn.dataset.page === 'attr') {
+      //   renderDeviceInfoPage();
+      // }
       // 你原有的showMainPage逻辑也可以放这里
       showMainPage(btn.dataset.page);
     });
@@ -3211,11 +3257,11 @@
           // COMMAND
           const btn = document.createElement('button');
           if(currentLang === 'zh') {
-            btn.textContent = '执行';
+            btn.textContent = '启动';
           } else {
-            btn.textContent = 'Execute';
+            btn.textContent = 'Start';
           }
-          btn.setAttribute('data-i18n', 'execute');
+          btn.setAttribute('data-i18n', 'Start');
           btn.style.minWidth = '130px';
           btn.style.maxWidth = '130px';
           btn.onclick = () => {
@@ -3266,9 +3312,9 @@
                 document.body.removeChild(dialog);
               }, 2000);
             } else {
-              msg.textContent = '正在操作...';
+              msg.textContent = currentLang === 'zh' ? '正在操作...' : 'Operating...';
               closeBtn = document.createElement('button');
-              closeBtn.textContent = '结束';
+              closeBtn.textContent = currentLang === 'zh' ? '结束' : 'End';
               closeBtn.style.marginTop = '12px';
               closeBtn.style.background = 'linear-gradient(90deg,#e74c3c 0%,#c0392b 100%)';
               closeBtn.style.color = '#fff';
@@ -3948,7 +3994,7 @@
           autoSendDevAttr();
         } else if (!window._deviceInfo && _autoDevAttrTries >= _autoDevAttrMaxTries) {
           // 失败，显示按钮
-          renderDeviceInfoPage();
+          //renderDeviceInfoPage();
         }
       }, 2000);
     }
@@ -4420,6 +4466,27 @@
               }
             }
           }
+          // 检查0x45包
+          if (this[i] === 0x45) {
+            //console.log('[校准] 收到0x45包');
+            //console.log('this[i]:',this[i]);
+            const len = this[i+1];
+            if (this.length >= i + len + 2 && len >0) {
+              const buf = this.slice(i, i+len+2);
+              //console.log('buf',buf);
+              let parsed = false;
+              //if (window._currentPage === 'net' && 
+              if(typeof tryNetError === 'function') {
+                //console.log('[识别到没有ELRS固件] tryNetError Running');
+                parsed = tryNetError(buf);
+              }
+              if (parsed) {
+                this.splice(i, len+2);
+                found = true;
+                break;
+              }
+            }
+          }
 
           // 在Array.prototype.push代理中添加：
           if (this[i] === 0x55) {
@@ -4489,6 +4556,7 @@
       renderDeviceInfoPage();
       window._globalChannelTask = null;
       stopGlobalChannelTimer();
+      //console.log('initAttrPage');
       updateAllLangText();
     }
     function initConfigPage() {
@@ -4668,15 +4736,16 @@
       </div>`;
       // 顺序：单击(6), 双击(2), 三态(4), 双态(1)
       const keymodeOptions = [
-        [6, 2, 0, 0], // SA
+        [6, 3, 2, 0], // SA
         [0, 0, 4, 1], // SB
         [0, 0, 4, 1], // SC
-        [6, 2, 0, 0], // SD
+        [6, 3, 2, 0], // SD
         [0, 0, 0, 1], // SE
       ];
       const keyNames = ['SA', 'SB', 'SC', 'SD', 'SE'];
       const keymodeLabels = {
-        6: { text: '单击', i18n: 'keymode-single' },
+        6: { text: '触发', i18n: 'keymode-trigger' },
+        3: { text: '单击', i18n: 'keymode-single' },
         2: { text: '双击', i18n: 'keymode-double' },
         4: { text: '三态', i18n: 'keymode-triple' },
         1: { text: '双态', i18n: 'keymode-doubleStatus' }
@@ -4738,11 +4807,19 @@
         serialNumStr = serialNumStr.replace(/(00)+$/, '');
       }
       html += `<div style="width:100%;display:flex;flex-direction:column;gap:18px;">
-        <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#f4f8ff;border-radius:12px;padding:12px 18px;">
-          <span style="color:#3358e0;font-weight:500;min-width:90px;" data-i18n="volume">音量</span>
-          <div style="display:flex;align-items:center;gap:12px;">
-            <input id='volume-range' type='range' min='0' max='25' value='${dev.devVolume}' style='width:180px;'>
-            <span id='volume-value' type='range' min='0' max='100' style="font-family:'Roboto',monospace;font-size:1.08em;">${dev.devVolume * 4}</span>
+        <div class="setting-row">
+          <span class="setting-label" data-i18n="volume">音量</span>
+          <input id="volume-range"  min="0" max="25" value="${dev.devVolume}" type="range" ...>
+          <div class="setting-right">
+            <span id="volume-value" class="setting-value">${dev.devVolume*4}</span>
+          </div>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label" data-i18n="slide_mid">旋钮中点提示</span>
+          <input id="slide_mid-range"  min="1000" max="8000" value="${dev.slideMidData}" type="range" ...>
+          <div class="setting-right">
+            <span id="slide_mid-value" class="setting-value">${dev.slideMidData}</span>
+            <input type="checkbox" id="slide_mid" value="${dev.slideMid}">
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#eaf1ff;border-radius:12px;padding:12px 18px;">
@@ -4803,7 +4880,55 @@
     //       </div>
     //     </div>
     //   </div>
-      attrPage.innerHTML = html;
+ 
+    attrPage.innerHTML = html;
+    const  SildeRange = document.getElementById('slide_mid-range');
+    const SildeValue = document.getElementById('slide_mid-value');
+    SildeRange.addEventListener('input', function() {
+        let v = parseInt(SildeRange.value) || 0;
+        if (v < 1000) v = 1000;
+        if (v > 8000) v = 8000;
+        SildeValue.textContent = v ;
+        window._deviceInfo.slideMidData = v;
+      });
+
+    SildeRange.addEventListener('change', function() {
+        let v = parseInt(SildeRange.value) || 0;
+        if (v < 1000) v = 1000;
+        if (v > 8000) v = 8000;
+
+        let cmdData = [];
+        if(window._deviceInfo.slideMid)
+        {
+          cmdData[0] = 0x01;
+          window._deviceInfo.slideMid = 1;
+        }
+        else
+        {
+          cmdData[0] = 0x00;
+          window._deviceInfo.slideMid = 0;
+        }
+        let value = parseInt(SildeRange.value) || 0;
+        cmdData[1] = (value >> 8) & 0xFF;
+        cmdData[2] = value & 0xFF;
+    
+        const sendData = new Uint8Array([0xA5, 0x55, 0x24,cmdData[0],cmdData[2],cmdData[1],0x0D,0x0A]);
+        if (typeof writer !== 'undefined' && writer) {
+          setTimeout(() => {
+            writer.write(sendData);
+          }, 100);
+          setTimeout(() => {
+            writer.write(sendData);
+          }, 200);
+          setTimeout(() => {
+            writer.write(sendData);
+          }, 300);
+          console.log('[ATTR] 频率设置已发送：' + v);
+          console.log('sendData',sendData);
+        }
+      });
+
+
       // 新增：音量进度条事件绑定
       const volumeRange = document.getElementById('volume-range');
       const volumeValue = document.getElementById('volume-value');
@@ -4833,6 +4958,7 @@
           console.log('[ATTR] 音量设置已发送：' + v);
         }
       });
+
       const factoryResetBtn = document.getElementById('factory-reset-btn');
       if (factoryResetBtn) {
         factoryResetBtn.onclick = function() {
@@ -4858,14 +4984,61 @@
             // 组装指令
             const cmd = new Uint8Array([0xA5, 0x55, 0x21, ...vals, 7, 0x0D, 0x0A]);
             if (typeof writer !== 'undefined' && writer) {
-              writer.write(cmd);
+              window._deviceInfo.keyModel = [...vals, 7];
+              // console.log([...vals, 7]);
+              // console.log("cmd:",cmd);
+              setTimeout(() => {      //防止失败,担心usb交互卡顿,所以,放弃了交互
+                 writer.write(cmd);
+              }, 500);
+              setTimeout(() => {
+                 writer.write(cmd);
+              }, 500);
+              setTimeout(() => {
+                 writer.write(cmd);
+              }, 500);
               //alert('已发送按键模式设置指令: ' + vals.join(','));
             }
           };
         }
       });
-      updateAllLangText();
+
+      const slideMid = document.getElementById('slide_mid');
+      const slideMidData = document.getElementById('slide_midData');
+      slideMid.checked = dev.slideMid === 1;
+      if (slideMid) {
+        slideMid.onchange = function() {
+        let cmdData = [];
+        if(window._deviceInfo.slideMid)
+        {
+          cmdData[0] = 0x00;
+          window._deviceInfo.slideMid = 0;
+          //console.log("0:",window._deviceInfo.slideMid);
+        }
+        else
+        {
+          cmdData[0] = 0x01;
+          window._deviceInfo.slideMid = 1;
+          //console.log("1",window._deviceInfo.slideMid);
+        }
+        let value = parseInt(SildeRange.value) || 0;
+        cmdData[1] = (value >> 8) & 0xFF;
+        cmdData[2] = value & 0xFF;
+
+        console.log('SildeRange.value:',SildeRange.value);
+        const sendData = new Uint8Array([0xA5, 0x55, 0x24,cmdData[0],cmdData[2],cmdData[1],0x0D,0x0A]);
+        setTimeout(() => {
+            writer.write(sendData);    
+              }, 500);
+        setTimeout(() => {
+            writer.write(sendData);    
+              }, 500);
+      }
     }
+
+
+
+      updateAllLangText();
+      }
 
 
     function updateFwUI() {
@@ -4878,6 +5051,7 @@
       const fwFileName = document.getElementById('fw-file-name');
       const fwUpdateBtn = document.getElementById('fw-update-btn');
       const fwStatus = document.getElementById('fw-status');
+      const fwStatusText = document.getElementById('fw-status-text');
       const fwProgressLabel = document.getElementById('fw-progress-label');
       const fwProgressBarWrap = document.getElementById('fw-progress-bar-wrap');
 
@@ -4891,6 +5065,7 @@
         fwProgressLabel.style.display = 'none';
         fwProgressBarWrap.style.display = 'none';
         fwStatus.textContent = '';
+        fwStatusText.textContent = '';
         document.getElementById('fw-device-type').disabled = false;
       } else if (upDataFlag === 1) {
         fwEnterUpdateBtn.style.display = 'none';
@@ -4914,6 +5089,7 @@
         fwProgressBarWrap.style.display = '';
         document.getElementById('fw-device-type').disabled = true;
         fwStatus.textContent =LANGS[currentLang]['fw-ready-update'];
+        fwStatusText.textContent =LANGS[currentLang]['fw-ready-update-text'];
       }
       updateAllLangText();
     }
@@ -5087,8 +5263,11 @@
           console.log('[ADC校准] 当前最大值:', window._adcMax, '最小值:', window._adcMin,'当前中立点:',recvMidAdc,'当前校准状态:',isCalib);
         }
       }
-
-      if(isCalib==4)
+      if(window._adcMax[4]>3000 && window._adcMin[4]<1000)
+      {
+        isCalib++;
+      }
+      if(isCalib==5)
       {
         //console.log('使能失败,请检查摇杆是否正常');
         console.log('[ADC校准] 当前最大值:', window._adcMax, '最小值:', window._adcMin,'当前中立点:',recvMidAdc);
@@ -5128,6 +5307,35 @@
         if (recvMidAdc[0] !== 0) {
           console.log('[校准中心点] 获得了校准中心点');
         }
+        return true;
+    }
+    function tryNetError(buf) {
+        // 只在校准页面可见时刷新控件
+        //console.log('buf',buf);
+        //var pageNet = document.getElementById('page-net');
+        //if (!pageNet || pageNet.style.display === 'none') return false;
+        if (!buf || buf.length < 3) return false;
+        if (buf[0] !== 0x45) return false;
+        const len = buf[1];
+        // if (buf.length < len + 2) return false;
+        const crc = buf[len+1];
+        const calcCrc = crc8tab_js(buf.slice(2, 2+len-1), len-1);
+        if (crc !== calcCrc) return false;
+        if(buf[2]==0)
+        {
+          console.log('[识别到ELRS固件]');
+        }
+        else if(buf[2]==1)
+        {
+          alert(LANGS[currentLang]['elrs-missing-alert'] || 'ELRS固件不存在或需重启设备'); 
+          console.log('[识别到没有ELRS固件]');
+        }
+        else
+        {
+          console.log('buf',buf);
+        }
+        //console.log('buf:',buf);
+        // 打印到控制台
         return true;
     }
 
@@ -5533,6 +5741,7 @@
         'exit-fw-update': '退出固件更新',
         'keymode-title': '按键模式设置',
         'keymode-single': '单击',
+        'keymode-trigger': '触发',
         'keymode-double': '双击',
         'keymode-triple': '三态',
         'keymode-doubleStatus': '双态',
@@ -5625,6 +5834,7 @@
         'fw-select-file': '请选择固件文件！',
         'fw-connect-port': '请先连接串口！',
         'fw-ready-update': '设备已就绪，可以开始固件更新',
+        'fw-ready-update-text': '想要退出更新,请重新上电,刷新网页在首页点击"退出固件更新"按钮',
         'fw-wait-ready': '请等待设备就绪...',
         'fw-update-btn': '确认更新',
         'fw-update-progress': '更新进度',
@@ -5648,6 +5858,8 @@
         'channel-map-default-output': '默认输出',
         'channel-map-channel-input': '默认输入',
         'Sub-trim-title': '舵机中立点',
+        'slide_mid':'旋钮中点提示',
+        'elrs-missing-alert': '未检测到ELRS固件，请检查设备或重启',
         // ... 你可以继续补充 ...
       },
       en: {
@@ -5673,8 +5885,9 @@
         'factory-reset': 'Factory Reset',
         'exit-fw-update': 'Exit Firmware Update',
         'keymode-title': 'Key Mode Setting',
-        'keymode-single': 'Click',
+        'keymode-single': 'Single',
         'keymode-double': 'Double',
+        'keymode-trigger': 'Click',
         'keymode-triple': '3-POS',
         'keymode-doubleStatus': '2-POS',
         'keymode-toggle': 'Toggle',
@@ -5763,6 +5976,7 @@
         'fw-select-file': 'Please select firmware file!',
         'fw-connect-port': 'Please connect serial port first!',
         'fw-ready-update': 'Device is ready, you can start firmware update',
+        'fw-ready-update-text': 'To exit the update, please power off and then power on again, refresh the webpage and click the "Exit Firmware Update" button on the home page.',
         'fw-wait-ready': 'Please wait for the device to be ready...',
         'fw-update-btn': 'Confirm Update',
         'fw-update-progress': 'Update Progress',
@@ -5793,7 +6007,10 @@
         'channel-map-default-output': 'Default',
         'channel-map-channel-input': 'Input',
         'factory-reset-confirm': 'Are you sure you want to restore the factory settings? This will initialize all configurations and calibrations!!! This operation should not be ignored!',
-        'Sub-trim-title':'Sub Trim'
+        'Sub-trim-title':'Sub Trim',
+        'factory-reset-success':"The factory reset instruction has been sent",
+        'slide_mid':'S1 Mid tone',
+         'elrs-missing-alert': 'ELRS firmware not detected. Please check the device or restart.'
         // ... 你可以继续补充 ...        
         // ... you can continue ...
       }
@@ -5837,7 +6054,6 @@
       updateAllLangText();
       //autoTranslateAllText();
       //showMainPage("attr");
-      //renderDeviceInfoPage();
     };
 
     // ===== 典型用法：所有可切换文本都用 data-i18n="key" 属性标记 =====
