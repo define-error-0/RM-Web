@@ -1482,6 +1482,26 @@
 
     // 解析大包并渲染参数控件
     function parseCRSFPacket(bigPacket) {
+      let i = 0;
+      // 循环处理所有开头的多余数据块
+      while (i + 4 < bigPacket.length) { // 确保至少有5个元素（索引i到i+4）
+        // 检查是否是0x23 0x03开头的多余数据块
+        if (bigPacket[i] === 0x23 && bigPacket[i + 1] === 0x03) {
+          i += 5; // 跳过这个5字节的数据块
+        } else {
+          break; // 不是目标数据块，停止处理
+        }
+      }
+
+      bigPacket = bigPacket.slice(i);
+
+      console.log('处理后bigPacket:', bigPacket, '长度:', bigPacket.length);
+
+      // // 检查数据有效性
+      // if (!bigPacket || bigPacket.length < 4) {
+      //   return '数据太短或已处理完毕';
+      // }
+
       if (!bigPacket || bigPacket.length < 4) return '数据太短';
       let rxOrTx = '';
       // 跳过前2字节长度，去掉末尾3字节（CRC/0A/0D），判断包头
@@ -1834,7 +1854,7 @@
       timeout_rx = setTimeout(() => {
         document.getElementById('refresh-settings-rx').disabled = false;
         //statusElem.textContent = '超时';
-      }, 6000);
+      }, 10000);
       await refreshSettingsRX();
       setTimeout(() => {
         if (statusElem.textContent === LANGS[currentLang]['refresh-done']) clearTimeout(timeout_rx);
@@ -4505,15 +4525,31 @@
                 //console.log('window._currentPage2:', window._currentPage);
                 tryParseOrigChannelPacketCalib(buf);
               }
-              else
-              {
-
-
-              }
+              // else
+              // {
+              // }
               if (parsed) {
                 this.splice(i, len+2);
                 found = true;
                 break;
+              }
+            }
+          }
+
+          if(this[i] === 0x23){
+             const len = this[i+1];
+             if (this.length >= i + len + 2 && len >0) {
+              let parsed = false;
+              const buf = this.slice(i, i+len+2);
+              if (window._currentPage === 'net' && typeof tryParseNetProgress === 'function')
+              {
+                parsed = tryParseNetProgress(buf);
+                if (parsed) {
+                  this.splice(i, len+2);
+                  found = true;
+                  console.log('进程:%d 所属:%d',buf[2],buf[3]);
+                  break;
+                }
               }
             }
           }
@@ -5229,6 +5265,19 @@
         window._globalChannelTimer = null;
       }
     }
+
+    function tryParseNetProgress(buf){
+      if (!buf || buf.length < 3) return false;
+      if (buf[0] !== 0x23) return false;
+      const len = buf[1];
+      if (buf.length < len + 2) return false;
+      const crc = buf[len+1];
+      const calcCrc = crc8tab_js(buf.slice(2, 2+len-1), len-1);
+      if (crc !== calcCrc) return false;
+      console.log('buf:',buf);
+      return true;
+    }
+
 
     function tryParseAdcPacketCalib(buf) {
       var pageCalib = document.getElementById('page-calib');
