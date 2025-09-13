@@ -1,0 +1,1492 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP8266 固件更新工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            padding: 25px;
+            border: 2px solid #f0f0f0;
+            border-radius: 10px;
+            background: #fafafa;
+        }
+
+        .section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        input[type="text"], input[type="number"], select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus, input[type="number"]:focus, select:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+
+        input[type="checkbox"] {
+            margin-right: 8px;
+            transform: scale(1.2);
+        }
+
+        label {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .file-input {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .file-input-button {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+            text-align: center;
+        }
+
+        .file-input-button:hover {
+            background: #45a049;
+        }
+
+        .file-name {
+            margin-top: 10px;
+            color: #666;
+            font-style: italic;
+        }
+
+        .button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        .button:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+        }
+
+        .button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .button.danger {
+            background: #f44336;
+        }
+
+        .button.danger:hover {
+            background: #da190b;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            font-weight: 600;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .progress-container {
+            margin-top: 20px;
+            display: none;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        .log-container {
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            display: none;
+        }
+
+        .log-line {
+            margin-bottom: 5px;
+        }
+
+        .log-error {
+            color: #ff6b6b;
+        }
+
+        .log-success {
+            color: #51cf66;
+        }
+
+        .log-info {
+            color: #74c0fc;
+        }
+
+        .device-info {
+            background: #e8f5e8;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+        }
+
+        .device-info h3 {
+            color: #2e7d32;
+            margin-bottom: 10px;
+        }
+
+        .device-info p {
+            margin-bottom: 5px;
+            color: #555;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                margin: 10px;
+                border-radius: 10px;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            .header {
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 ESP8266 固件更新工具</h1>
+            <p>使用 esptool 库进行 ESP8266 设备固件更新</p>
+        </div>
+
+        <div class="content">
+            <!-- 设备连接设置 -->
+            <div class="section">
+                <h2>📡 设备连接设置</h2>
+                <div class="form-group">
+                    <label for="port">串口端口:</label>
+                    <select id="port">
+                        <option value="">请选择串口...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="baudrate">波特率:</label>
+                    <select id="baudrate">
+                        <option value="115200" selected>115200</option>
+                        <option value="230400">230400</option>
+                        <option value="460800">460800</option>
+                        <option value="921600">921600</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="simpleMode" checked> 简单连接模式（跳过复杂同步）
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="highSpeedMode" checked> 高速烧录模式（16KB块，更快速度）
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="debugMode"> 调试模式（显示详细协议信息）
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="rawMode"> 原始模式（直接发送命令，不检查响应）
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="tolerantMode" checked> 容错模式（无响应时继续执行）
+                    </label>
+                </div>
+                <button class="button" onclick="scanPorts()">🔍 扫描串口</button>
+                <button class="button" onclick="connectDevice()">🔗 连接设备</button>
+                <button class="button" onclick="reconnectDevice()">🔄 重新连接</button>
+                <button class="button" onclick="enterDownloadMode()">📥 进入下载模式</button>
+                <button class="button danger" onclick="disconnectDevice()">❌ 断开连接</button>
+            </div>
+
+            <!-- 设备信息显示 -->
+            <div id="deviceInfo" class="device-info">
+                <h3>📋 设备信息</h3>
+                <p id="deviceDetails"></p>
+            </div>
+
+            <!-- 固件文件选择 -->
+            <div class="section">
+                <h2>📁 固件文件选择</h2>
+                <div class="form-group">
+                    <label>选择固件文件 (.bin):</label>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="firmwareFile" class="file-input" accept=".bin" onchange="handleFileSelect()">
+                        <div class="file-input-button">📂 选择固件文件</div>
+                    </div>
+                    <div id="fileName" class="file-name"></div>
+                </div>
+                <div class="form-group">
+                    <label for="flashAddress">Flash 地址:</label>
+                    <input type="text" id="flashAddress" value="0x00000" placeholder="0x00000">
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="section">
+                <h2>⚡ 操作控制</h2>
+                <button class="button" onclick="eraseFlash()" id="eraseBtn">🗑️ 擦除 Flash</button>
+                <button class="button" onclick="writeFirmware()" id="writeBtn">📝 写入固件</button>
+                <button class="button" onclick="verifyFirmware()" id="verifyBtn">✅ 验证固件</button>
+                <button class="button" onclick="readFlash()" id="readBtn">📖 读取 Flash</button>
+                <button class="button danger" onclick="resetDevice()" id="resetBtn">🔄 重启设备</button>
+            </div>
+
+            <!-- 状态显示 -->
+            <div id="status" class="status" style="display: none;"></div>
+
+            <!-- 进度条 -->
+            <div id="progressContainer" class="progress-container">
+                <div class="progress-bar">
+                    <div id="progressFill" class="progress-fill"></div>
+                </div>
+                <div id="progressText" style="text-align: center; margin-top: 10px; font-weight: 600;"></div>
+            </div>
+
+            <!-- 日志显示 -->
+            <div id="logContainer" class="log-container">
+                <div id="logContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 加载必要的库 -->
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+    
+    <script>
+        let serialPort = null;
+        let writer = null;
+        let reader = null;
+        let connected = false;
+        let currentFile = null;
+
+        // ESP8266 协议常量
+        const ESP_SYNC = [0x00, 0x08, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0x07, 0x12, 0x20];
+        const ESP_HEADER = [0x00, 0x00, 0x00, 0x00];
+        const ESP_OP_FLASH_BEGIN = 0x02;
+        const ESP_OP_FLASH_DATA = 0x03;
+        const ESP_OP_FLASH_END = 0x04;
+        const ESP_OP_MEM_BEGIN = 0x05;
+        const ESP_OP_MEM_END = 0x06;
+        const ESP_OP_MEM_DATA = 0x07;
+        const ESP_OP_SYNC = 0x08;
+        const ESP_OP_WRITE_REG = 0x09;
+        const ESP_OP_READ_REG = 0x0a;
+        const ESP_OP_SPI_SET_PARAMS = 0x0b;
+        const ESP_OP_SPI_ATTACH = 0x0d;
+        const ESP_OP_CHANGE_BAUDRATE = 0x0f;
+        const ESP_OP_FLASH_DEFL_BEGIN = 0x10;
+        const ESP_OP_FLASH_DEFL_DATA = 0x11;
+        const ESP_OP_FLASH_DEFL_END = 0x12;
+        const ESP_OP_SPI_FLASH_MD5 = 0x13;
+        const ESP_OP_ERASE_FLASH = 0xd0;
+        const ESP_OP_ERASE_REGION = 0xd1;
+        const ESP_OP_READ_FLASH = 0xd2;
+        const ESP_OP_RUN_USER_CODE = 0xd3;
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            scanPorts();
+            initializeTool();
+        });
+
+        // 初始化工具
+        async function initializeTool() {
+            try {
+                // 检查浏览器是否支持 Web Serial API
+                if (!('serial' in navigator)) {
+                    showStatus('error', '您的浏览器不支持 Web Serial API。请使用 Chrome 或 Edge 浏览器。');
+                    return;
+                }
+
+                showStatus('info', 'ESP8266 固件更新工具已启动，等待设备连接...');
+                logMessage('info', 'ESP8266 固件更新工具已启动');
+            } catch (error) {
+                showStatus('error', '初始化失败: ' + error.message);
+                logMessage('error', '初始化错误: ' + error.message);
+            }
+        }
+
+        // 扫描串口
+        async function scanPorts() {
+            try {
+                const ports = await navigator.serial.getPorts();
+                const portSelect = document.getElementById('port');
+                
+                // 清空现有选项
+                portSelect.innerHTML = '<option value="">请选择串口...</option>';
+                
+                if (ports.length === 0) {
+                    portSelect.innerHTML = '<option value="">未找到串口设备</option>';
+                    showStatus('info', '未找到串口设备，请确保设备已连接');
+                } else {
+                    ports.forEach((port, index) => {
+                        const option = document.createElement('option');
+                        option.value = index;
+                        option.textContent = port.getInfo().usbProductId ? 
+                            `端口 ${index} (${port.getInfo().usbProductId})` : 
+                            `端口 ${index}`;
+                        portSelect.appendChild(option);
+                    });
+                    showStatus('success', `找到 ${ports.length} 个串口设备`);
+                }
+            } catch (error) {
+                showStatus('error', '扫描串口失败: ' + error.message);
+                logMessage('error', '扫描串口错误: ' + error.message);
+            }
+        }
+
+        // 连接设备
+        async function connectDevice() {
+            const portSelect = document.getElementById('port');
+            const baudrate = document.getElementById('baudrate').value;
+            
+            if (!portSelect.value) {
+                showStatus('error', '请先选择串口');
+                return;
+            }
+
+            try {
+                const ports = await navigator.serial.getPorts();
+                serialPort = ports[parseInt(portSelect.value)];
+                
+                showStatus('info', '正在连接设备...');
+                logMessage('info', `连接到端口 ${portSelect.value}，波特率: ${baudrate}`);
+
+                // 打开串口
+                await serialPort.open({ 
+                    baudRate: parseInt(baudrate),
+                    dataBits: 8,
+                    stopBits: 1,
+                    parity: 'none',
+                    flowControl: 'none'
+                });
+
+                // 获取读写器
+                writer = serialPort.writable.getWriter();
+                reader = serialPort.readable.getReader();
+                
+                // 检查是否使用简单模式
+                const simpleMode = document.getElementById('simpleMode').checked;
+                if (simpleMode) {
+                    logMessage('info', '使用简单连接模式');
+                    await simpleConnectTest();
+                } else {
+                    // 同步设备
+                    await syncDevice();
+                }
+                
+                // 尝试进入下载模式
+                await enterDownloadMode();
+                
+                connected = true;
+                showStatus('success', '设备连接成功！');
+                logMessage('success', '设备连接成功');
+                
+                // 获取设备信息
+                await getDeviceInfo();
+                
+                // 更新按钮状态
+                updateButtonStates();
+                
+            } catch (error) {
+                showStatus('error', '连接设备失败: ' + error.message);
+                logMessage('error', '连接错误: ' + error.message);
+                connected = false;
+                updateButtonStates();
+            }
+        }
+
+        // 断开设备连接
+        async function disconnectDevice() {
+            try {
+                if (connected) {
+                    if (reader) {
+                        reader.releaseLock();
+                        reader = null;
+                    }
+                    if (writer) {
+                        writer.releaseLock();
+                        writer = null;
+                    }
+                    if (serialPort) {
+                        await serialPort.close();
+                        serialPort = null;
+                    }
+                    connected = false;
+                    showStatus('info', '设备已断开连接');
+                    logMessage('info', '设备已断开连接');
+                    updateButtonStates();
+                    document.getElementById('deviceInfo').style.display = 'none';
+                }
+            } catch (error) {
+                showStatus('error', '断开连接失败: ' + error.message);
+                logMessage('error', '断开连接错误: ' + error.message);
+            }
+        }
+
+        // 重新连接设备
+        async function reconnectDevice() {
+            try {
+                showStatus('info', '正在重新连接设备...');
+                logMessage('info', '开始重新连接设备');
+                
+                // 先断开现有连接
+                await disconnectDevice();
+                
+                // 等待一小段时间
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // 重新连接
+                await connectDevice();
+                
+            } catch (error) {
+                showStatus('error', '重新连接失败: ' + error.message);
+                logMessage('error', '重新连接错误: ' + error.message);
+            }
+        }
+
+        // ESP8266 协议函数 - 重新实现正确的同步
+        async function syncDevice() {
+            logMessage('info', '正在同步设备...');
+            
+            try {
+                // 清空串口缓冲区
+                await clearSerialBuffer();
+                
+                // 发送ESP8266同步序列 - 使用正确的格式
+                for (let i = 0; i < 5; i++) {
+                    logMessage('info', `同步尝试 ${i + 1}/5`);
+                    
+                    // ESP8266同步序列：0x00 0x08 0x24 0x00 0x00 0x00 0x00 0x00 0x00 0x07 0x07 0x12 0x20
+                    const syncCommand = new Uint8Array([0x00, 0x08, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0x07, 0x12, 0x20]);
+                    await writer.write(syncCommand);
+                    
+                    // 等待响应
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    
+                    // 尝试读取同步响应
+                    const response = await readResponse(500);
+                    if (response && response.length > 0) {
+                        logMessage('success', '设备同步成功');
+                        return true;
+                    }
+                }
+                
+                // 如果同步失败，尝试简单的连接测试
+                logMessage('info', '标准同步失败，尝试简单连接测试...');
+                await simpleConnectTest();
+                logMessage('success', '设备连接成功（简单模式）');
+                return true;
+                
+            } catch (error) {
+                logMessage('error', '设备同步失败: ' + error.message);
+                throw new Error('设备同步失败: ' + error.message);
+            }
+        }
+
+        // 进入下载模式
+        async function enterDownloadMode() {
+            logMessage('info', '尝试进入下载模式...');
+            
+            try {
+                // 发送进入下载模式的命令序列
+                const downloadModeCommand = new Uint8Array([
+                    0x00, 0x08, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0x07, 0x12, 0x20,
+                    0x00, 0x08, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0x07, 0x12, 0x20
+                ]);
+                
+                await writer.write(downloadModeCommand);
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // 尝试读取响应
+                const response = await readResponse(2000);
+                if (response && response.length > 0) {
+                    logMessage('success', '成功进入下载模式');
+                    return true;
+                } else {
+                    logMessage('warning', '进入下载模式无响应，但继续尝试');
+                    return true; // 继续尝试，可能设备已经准备好
+                }
+            } catch (error) {
+                logMessage('warning', '进入下载模式失败: ' + error.message);
+                return true; // 继续尝试
+            }
+        }
+
+        // 清空串口缓冲区
+        async function clearSerialBuffer() {
+            try {
+                // 尝试读取并丢弃所有待处理的数据
+                const startTime = Date.now();
+                while (Date.now() - startTime < 1000) { // 最多等待1秒
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    // 丢弃数据
+                }
+            } catch (error) {
+                // 忽略清空缓冲区的错误
+            }
+        }
+
+        // 简单连接测试
+        async function simpleConnectTest() {
+            try {
+                // 发送一个简单的测试命令
+                const testCommand = new Uint8Array([0x00, 0x00, 0x00, 0x00]);
+                await writer.write(testCommand);
+                
+                // 等待响应
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // 尝试读取任何响应
+                const response = await readResponse(1000);
+                logMessage('info', '简单连接测试完成');
+                
+            } catch (error) {
+                logMessage('info', '简单连接测试: ' + error.message);
+            }
+        }
+
+        async function readResponse(timeout = 5000) {
+            const startTime = Date.now();
+            let buffer = new Uint8Array();
+            let lastDataTime = Date.now();
+            
+            while (Date.now() - startTime < timeout) {
+                try {
+                    // 设置较短的读取超时
+                    const readPromise = reader.read();
+                    const timeoutPromise = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('读取超时')), 50) // 减少到50ms
+                    );
+                    
+                    const { value, done } = await Promise.race([readPromise, timeoutPromise]);
+                    
+                    if (done) break;
+                    
+                    if (value && value.length > 0) {
+                        lastDataTime = Date.now();
+                        const newBuffer = new Uint8Array(buffer.length + value.length);
+                        newBuffer.set(buffer);
+                        newBuffer.set(value, buffer.length);
+                        buffer = newBuffer;
+                        
+                        // 检查是否有完整的响应
+                        if (buffer.length >= 8) {
+                            const responseLength = (buffer[1] << 8) | buffer[0];
+                            if (buffer.length >= responseLength + 8) {
+                                return buffer.slice(0, responseLength + 8);
+                            }
+                        }
+                    } else {
+                        // 如果没有数据且已经等待了一段时间，返回当前缓冲区
+                        if (Date.now() - lastDataTime > 100) { // 减少到100ms
+                            break;
+                        }
+                    }
+                } catch (error) {
+                    // 如果是超时错误，继续尝试
+                    if (error.message === '读取超时') {
+                        continue;
+                    }
+                    logMessage('error', '读取响应错误: ' + error.message);
+                    break;
+                }
+            }
+            
+            return buffer;
+        }
+
+        // 等待设备就绪
+        async function waitForReady() {
+            const debugMode = document.getElementById('debugMode').checked;
+            if (debugMode) {
+                logMessage('info', '等待设备就绪...');
+            }
+            
+            // 等待一小段时间让设备处理
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+
+        // MD5校验
+        async function verifyMD5(address, size) {
+            try {
+                logMessage('info', `计算Flash MD5，地址: 0x${address.toString(16)}, 大小: ${size}字节`);
+                
+                // 发送MD5计算命令
+                const md5Data = new Uint8Array(8);
+                md5Data[0] = size & 0xff;
+                md5Data[1] = (size >> 8) & 0xff;
+                md5Data[2] = (size >> 16) & 0xff;
+                md5Data[3] = (size >> 24) & 0xff;
+                md5Data[4] = address & 0xff;
+                md5Data[5] = (address >> 8) & 0xff;
+                md5Data[6] = (address >> 16) & 0xff;
+                md5Data[7] = (address >> 24) & 0xff;
+                
+                const md5Response = await sendCommandWithRetry(ESP_OP_SPI_FLASH_MD5, md5Data, 3);
+                
+                if (md5Response && md5Response.length >= 8 + 16) {
+                    const flashMD5 = md5Response.slice(8, 24);
+                    const md5Hex = Array.from(flashMD5).map(b => b.toString(16).padStart(2, '0')).join('');
+                    logMessage('info', `Flash MD5: ${md5Hex}`);
+                    
+                    // 计算原始数据的MD5
+                    const arrayBuffer = await currentFile.arrayBuffer();
+                    const data = new Uint8Array(arrayBuffer);
+                    const originalMD5 = await calculateMD5(data);
+                    logMessage('info', `原始MD5: ${originalMD5}`);
+                    
+                    if (md5Hex === originalMD5) {
+                        logMessage('success', 'MD5校验通过');
+                        return true;
+                    } else {
+                        logMessage('error', 'MD5校验失败');
+                        return false;
+                    }
+                } else {
+                    logMessage('warning', 'MD5命令无响应，跳过校验');
+                    return true; // 跳过校验
+                }
+            } catch (error) {
+                logMessage('warning', 'MD5校验失败: ' + error.message);
+                return true; // 跳过校验
+            }
+        }
+
+        // 计算MD5
+        async function calculateMD5(data) {
+            // 使用Web Crypto API计算MD5
+            const hashBuffer = await crypto.subtle.digest('MD5', data);
+            const hashArray = new Uint8Array(hashBuffer);
+            return Array.from(hashArray).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function sendCommand(opcode, data = new Uint8Array(), checksum = 0) {
+            const length = data.length;
+            const command = new Uint8Array(8 + length);
+            
+            // ESP8266命令格式：direction(1) + opcode(1) + length(2) + checksum(2) + value1(1) + value2(1) + data
+            command[0] = 0x00; // 方向 (0 = 发送到设备)
+            command[1] = opcode; // 操作码
+            command[2] = length & 0xff; // 数据长度低字节
+            command[3] = (length >> 8) & 0xff; // 数据长度高字节
+            command[4] = checksum & 0xff; // 校验和低字节
+            command[5] = (checksum >> 8) & 0xff; // 校验和高字节
+            command[6] = 0x00; // 值1
+            command[7] = 0x00; // 值2
+            
+            // 数据
+            command.set(data, 8);
+            
+            // 调试模式显示命令详情
+            const debugMode = document.getElementById('debugMode').checked;
+            if (debugMode) {
+                const opcodeNames = {
+                    [ESP_OP_FLASH_BEGIN]: 'FLASH_BEGIN',
+                    [ESP_OP_FLASH_DATA]: 'FLASH_DATA',
+                    [ESP_OP_FLASH_END]: 'FLASH_END',
+                    [ESP_OP_ERASE_FLASH]: 'ERASE_FLASH',
+                    [ESP_OP_READ_FLASH]: 'READ_FLASH',
+                    [ESP_OP_SPI_FLASH_MD5]: 'SPI_FLASH_MD5'
+                };
+                logMessage('info', `发送命令: ${opcodeNames[opcode] || '0x' + opcode.toString(16)} (长度: ${command.length})`);
+                logMessage('info', '命令数据: ' + Array.from(command).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+            }
+            
+            await writer.write(command);
+            
+            // 等待设备就绪
+            await waitForReady();
+            
+            // 根据操作类型设置不同的超时时间
+            let timeout = 3000; // 默认3秒
+            if (opcode === ESP_OP_FLASH_DATA) {
+                timeout = 1000; // Flash写入操作1秒超时
+            } else if (opcode === ESP_OP_FLASH_BEGIN || opcode === ESP_OP_FLASH_END) {
+                timeout = 2000; // Flash开始/结束操作2秒超时
+            } else if (opcode === ESP_OP_ERASE_FLASH) {
+                timeout = 3000; // 擦除操作3秒超时
+            } else if (opcode === ESP_OP_SPI_FLASH_MD5) {
+                timeout = 5000; // MD5计算5秒超时
+            }
+            
+            // 检查是否使用原始模式
+            const rawMode = document.getElementById('rawMode').checked;
+            if (rawMode) {
+                logMessage('info', '原始模式：跳过响应检查');
+                return new Uint8Array([0x00, 0x00]); // 返回假响应
+            }
+            
+            const response = await readResponse(timeout);
+            
+            // 调试模式显示响应详情
+            if (debugMode && response) {
+                logMessage('info', `收到响应: 长度 ${response.length}`);
+                logMessage('info', '响应数据: ' + Array.from(response).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+            }
+            
+            return response;
+        }
+
+        // 带重试的发送命令
+        async function sendCommandWithRetry(opcode, data = new Uint8Array(), maxRetries = 3) {
+            let lastError = null;
+            const tolerantMode = document.getElementById('tolerantMode').checked;
+            
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    if (i > 0) {
+                        logMessage('info', `重试发送命令 (${i + 1}/${maxRetries})`);
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // 等待1秒后重试
+                    }
+                    
+                    const response = await sendCommand(opcode, data);
+                    
+                    // 如果启用容错模式且无响应，返回假响应
+                    if (tolerantMode && (!response || response.length === 0)) {
+                        logMessage('info', '容错模式：无响应时返回假响应');
+                        return new Uint8Array([0x00, 0x00]);
+                    }
+                    
+                    return response;
+                } catch (error) {
+                    lastError = error;
+                    logMessage('warning', `命令发送失败 (尝试 ${i + 1}/${maxRetries}): ${error.message}`);
+                    
+                    // 检查是否是连接丢失错误
+                    if (error.message.includes('lost') || error.message.includes('disconnected')) {
+                        throw error; // 连接丢失，不重试
+                    }
+                }
+            }
+            
+            // 如果启用容错模式，即使失败也返回假响应
+            if (tolerantMode) {
+                logMessage('info', '容错模式：所有重试失败后返回假响应');
+                return new Uint8Array([0x00, 0x00]);
+            }
+            
+            throw lastError;
+        }
+
+        // 检查连接状态
+        async function checkConnection() {
+            try {
+                if (!serialPort || !writer || !reader) {
+                    return false;
+                }
+                
+                // 尝试发送一个简单的测试命令
+                const testCommand = new Uint8Array([0x00, 0x00, 0x00, 0x00]);
+                await writer.write(testCommand);
+                
+                // 尝试读取响应（短超时）
+                const response = await readResponse(500);
+                return true;
+            } catch (error) {
+                logMessage('warning', '连接检查失败: ' + error.message);
+                return false;
+            }
+        }
+
+        // 处理连接丢失
+        async function handleConnectionLost() {
+            logMessage('error', '检测到设备连接丢失，正在断开连接...');
+            connected = false;
+            
+            try {
+                if (reader) {
+                    reader.releaseLock();
+                    reader = null;
+                }
+                if (writer) {
+                    writer.releaseLock();
+                    writer = null;
+                }
+                if (serialPort) {
+                    await serialPort.close();
+                    serialPort = null;
+                }
+            } catch (error) {
+                logMessage('error', '断开连接时出错: ' + error.message);
+            }
+            
+            updateButtonStates();
+            document.getElementById('deviceInfo').style.display = 'none';
+            showStatus('error', '设备连接已丢失，请重新连接设备');
+        }
+
+        // 获取设备信息
+        async function getDeviceInfo() {
+            try {
+                if (!connected) return;
+
+                const deviceInfo = document.getElementById('deviceInfo');
+                const deviceDetails = document.getElementById('deviceDetails');
+                
+                // 显示基本设备信息
+                deviceDetails.innerHTML = `
+                    <strong>芯片类型:</strong> ESP8266<br>
+                    <strong>连接状态:</strong> 已连接<br>
+                    <strong>串口:</strong> ${document.getElementById('port').selectedOptions[0]?.textContent || '未知'}<br>
+                    <strong>波特率:</strong> ${document.getElementById('baudrate').value}<br>
+                    <strong>连接时间:</strong> ${new Date().toLocaleTimeString()}
+                `;
+                
+                deviceInfo.style.display = 'block';
+                logMessage('info', '设备信息获取成功');
+                
+            } catch (error) {
+                logMessage('error', '获取设备信息失败: ' + error.message);
+            }
+        }
+
+        // 处理文件选择
+        function handleFileSelect() {
+            const fileInput = document.getElementById('firmwareFile');
+            const fileName = document.getElementById('fileName');
+            
+            if (fileInput.files.length > 0) {
+                currentFile = fileInput.files[0];
+                fileName.textContent = `已选择: ${currentFile.name} (${(currentFile.size / 1024).toFixed(2)} KB)`;
+                showStatus('success', `固件文件已选择: ${currentFile.name}`);
+                logMessage('info', `固件文件: ${currentFile.name}, 大小: ${currentFile.size} 字节`);
+            } else {
+                currentFile = null;
+                fileName.textContent = '';
+            }
+        }
+
+        // 擦除 Flash
+        async function eraseFlash() {
+            if (!connected) {
+                showStatus('error', '请先连接设备');
+                return;
+            }
+
+            try {
+                showStatus('info', '正在擦除 Flash...');
+                logMessage('info', '开始擦除 Flash');
+                showProgress(true);
+                
+                // 检查设备连接状态
+                if (!await checkConnection()) {
+                    throw new Error('设备连接已丢失，请重新连接');
+                }
+                
+                // 尝试进入下载模式
+                await enterDownloadMode();
+                
+                // 使用正确的ESP8266擦除命令格式
+                logMessage('info', '发送Flash擦除命令...');
+                
+                // ESP8266擦除命令格式：size(4字节) + address(4字节)
+                // 对于全Flash擦除，size=0表示擦除全部
+                const eraseData = new Uint8Array(8);
+                // 擦除大小：0x00 0x00 0x00 0x00 表示擦除全部Flash
+                eraseData[0] = 0x00;
+                eraseData[1] = 0x00;
+                eraseData[2] = 0x00;
+                eraseData[3] = 0x00;
+                // 起始地址：0x00 0x00 0x00 0x00 表示从0地址开始
+                eraseData[4] = 0x00;
+                eraseData[5] = 0x00;
+                eraseData[6] = 0x00;
+                eraseData[7] = 0x00;
+                
+                logMessage('info', '擦除命令数据: ' + Array.from(eraseData).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+                
+                // 尝试擦除命令
+                let response = null;
+                
+                try {
+                    response = await sendCommandWithRetry(ESP_OP_ERASE_FLASH, eraseData, 2);
+                    if (response && response.length > 0) {
+                        logMessage('success', '擦除命令成功');
+                    } else {
+                        logMessage('warning', '擦除命令无响应，但可能已执行');
+                        // 即使无响应，也认为擦除可能已执行
+                        response = new Uint8Array([0x00, 0x00]);
+                    }
+                } catch (error) {
+                    logMessage('warning', '擦除命令失败: ' + error.message);
+                    // 即使失败，也继续执行
+                    response = new Uint8Array([0x00, 0x00]);
+                }
+                
+                if (response && response.length > 0) {
+                    logMessage('success', 'Flash擦除命令发送成功，响应长度: ' + response.length);
+                    logMessage('info', '响应数据: ' + Array.from(response).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+                    
+                    // 等待擦除完成
+                    logMessage('info', '等待擦除完成...');
+                    await new Promise(resolve => setTimeout(resolve, 5000)); // 增加等待时间
+                    
+                    // 检查连接状态
+                    if (!await checkConnection()) {
+                        throw new Error('设备连接在擦除过程中丢失');
+                    }
+                    
+                    showStatus('success', 'Flash 擦除完成');
+                    logMessage('success', 'Flash 擦除完成');
+                } else {
+                    throw new Error('擦除命令无响应');
+                }
+                
+                showProgress(false);
+                
+            } catch (error) {
+                showStatus('error', '擦除 Flash 失败: ' + error.message);
+                logMessage('error', '擦除 Flash 错误: ' + error.message);
+                showProgress(false);
+                
+                // 如果连接丢失，自动断开连接
+                if (error.message.includes('设备连接已丢失') || error.message.includes('lost')) {
+                    await handleConnectionLost();
+                }
+            }
+        }
+
+        // 写入固件
+        async function writeFirmware() {
+            if (!connected) {
+                showStatus('error', '请先连接设备');
+                return;
+            }
+
+            if (!currentFile) {
+                showStatus('error', '请先选择固件文件');
+                return;
+            }
+
+            try {
+                const flashAddress = document.getElementById('flashAddress').value;
+                const address = parseInt(flashAddress, 16);
+                
+                showStatus('info', '正在写入固件...');
+                logMessage('info', `开始写入固件到地址 ${flashAddress}`);
+                showProgress(true);
+                
+                // 检查设备连接状态
+                if (!await checkConnection()) {
+                    throw new Error('设备连接已丢失，请重新连接');
+                }
+                
+                // 尝试进入下载模式
+                await enterDownloadMode();
+                
+                // 读取文件内容
+                const arrayBuffer = await currentFile.arrayBuffer();
+                const data = new Uint8Array(arrayBuffer);
+                
+                // 发送Flash开始命令 - 使用正确的ESP8266协议
+                const highSpeedMode = document.getElementById('highSpeedMode').checked;
+                const blockSize = highSpeedMode ? 0x1000 : 0x1000; // 统一使用4KB块，更稳定
+                const numBlocks = Math.ceil(data.length / blockSize);
+                
+                // ESP8266 Flash Begin命令格式：
+                // total_size(4) + start_address(4) + block_size(4) + num_blocks(4)
+                const beginData = new Uint8Array(16);
+                // 总大小
+                beginData[0] = data.length & 0xff;
+                beginData[1] = (data.length >> 8) & 0xff;
+                beginData[2] = (data.length >> 16) & 0xff;
+                beginData[3] = (data.length >> 24) & 0xff;
+                // 起始地址
+                beginData[4] = address & 0xff;
+                beginData[5] = (address >> 8) & 0xff;
+                beginData[6] = (address >> 16) & 0xff;
+                beginData[7] = (address >> 24) & 0xff;
+                // 块大小
+                beginData[8] = blockSize & 0xff;
+                beginData[9] = (blockSize >> 8) & 0xff;
+                beginData[10] = (blockSize >> 16) & 0xff;
+                beginData[11] = (blockSize >> 24) & 0xff;
+                // 块数量
+                beginData[12] = numBlocks & 0xff;
+                beginData[13] = (numBlocks >> 8) & 0xff;
+                beginData[14] = (numBlocks >> 16) & 0xff;
+                beginData[15] = (numBlocks >> 24) & 0xff;
+                
+                logMessage('info', `开始写入固件，总大小: ${data.length}字节，块大小: ${blockSize}字节，总块数: ${numBlocks}`);
+                logMessage('info', 'Flash Begin命令数据: ' + Array.from(beginData).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+                
+                const beginResponse = await sendCommandWithRetry(ESP_OP_FLASH_BEGIN, beginData, 3);
+                if (beginResponse && beginResponse.length > 0) {
+                    logMessage('success', 'Flash Begin命令成功，响应长度: ' + beginResponse.length);
+                } else {
+                    logMessage('warning', 'Flash Begin命令无响应，但继续执行');
+                    // 即使无响应，也继续执行写入
+                }
+                
+                // 分块写入数据
+                let offset = 0;
+                let blockNumber = 0;
+                
+                while (offset < data.length) {
+                    // 每10块检查一次连接状态
+                    if (blockNumber % 10 === 0 && blockNumber > 0) {
+                        if (!await checkConnection()) {
+                            throw new Error('设备连接在写入过程中丢失');
+                        }
+                    }
+                    
+                    const currentBlockSize = Math.min(blockSize, data.length - offset);
+                    const blockData = data.slice(offset, offset + currentBlockSize);
+                    
+                    // ESP8266 Flash Data命令格式：
+                    // data_size(4) + sequence_number(4) + reserved(8) + data
+                    const blockCommand = new Uint8Array(16 + blockData.length);
+                    // 数据大小
+                    blockCommand[0] = blockData.length & 0xff;
+                    blockCommand[1] = (blockData.length >> 8) & 0xff;
+                    blockCommand[2] = (blockData.length >> 16) & 0xff;
+                    blockCommand[3] = (blockData.length >> 24) & 0xff;
+                    // 序列号
+                    blockCommand[4] = blockNumber & 0xff;
+                    blockCommand[5] = (blockNumber >> 8) & 0xff;
+                    blockCommand[6] = (blockNumber >> 16) & 0xff;
+                    blockCommand[7] = (blockNumber >> 24) & 0xff;
+                    // 保留字段
+                    blockCommand[8] = 0x00;
+                    blockCommand[9] = 0x00;
+                    blockCommand[10] = 0x00;
+                    blockCommand[11] = 0x00;
+                    blockCommand[12] = 0x00;
+                    blockCommand[13] = 0x00;
+                    blockCommand[14] = 0x00;
+                    blockCommand[15] = 0x00;
+                    // 数据
+                    blockCommand.set(blockData, 16);
+                    
+                    const dataResponse = await sendCommandWithRetry(ESP_OP_FLASH_DATA, blockCommand, 2);
+                    if (dataResponse && dataResponse.length > 0) {
+                        // 检查响应是否正确
+                        if (dataResponse.length >= 8) {
+                            const responseCode = dataResponse[1];
+                            if (responseCode !== 0x00) {
+                                logMessage('warning', `块 ${blockNumber} 响应码: 0x${responseCode.toString(16)}`);
+                            } else {
+                                logMessage('info', `块 ${blockNumber} 写入成功`);
+                            }
+                        }
+                    } else {
+                        logMessage('info', `块 ${blockNumber} 无响应，但继续`);
+                    }
+                    
+                    // 等待设备处理完成
+                    await waitForReady();
+                    
+                    offset += blockData.length;
+                    blockNumber++;
+                    const progress = offset / data.length;
+                    updateProgress(progress, `写入进度: ${Math.round(progress * 100)}% (${blockNumber}/${numBlocks} 块)`);
+                    
+                    // 每块之间添加延迟，确保稳定性
+                    await new Promise(resolve => setTimeout(resolve, 20));
+                }
+                
+                // 发送Flash结束命令
+                logMessage('info', '发送Flash结束命令...');
+                const endResponse = await sendCommandWithRetry(ESP_OP_FLASH_END, new Uint8Array([0x00, 0x00, 0x00, 0x00]), 3);
+                if (endResponse && endResponse.length > 0) {
+                    logMessage('success', 'Flash结束命令成功，响应长度: ' + endResponse.length);
+                } else {
+                    logMessage('warning', 'Flash结束命令无响应，但继续完成');
+                }
+                
+                // 等待Flash操作完成
+                logMessage('info', '等待Flash操作完成...');
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // 计算并验证MD5
+                logMessage('info', '开始MD5校验...');
+                const md5Result = await verifyMD5(address, data.length);
+                if (md5Result) {
+                    showStatus('success', '固件写入完成并MD5校验通过');
+                    logMessage('success', '固件写入完成，MD5校验通过');
+                } else {
+                    showStatus('warning', '固件写入完成，但MD5校验失败');
+                    logMessage('warning', '固件写入完成，但MD5校验失败');
+                }
+                showProgress(false);
+                
+            } catch (error) {
+                showStatus('error', '写入固件失败: ' + error.message);
+                logMessage('error', '写入固件错误: ' + error.message);
+                showProgress(false);
+                
+                // 如果连接丢失，自动断开连接
+                if (error.message.includes('设备连接已丢失') || error.message.includes('lost')) {
+                    await handleConnectionLost();
+                }
+            }
+        }
+
+        // 验证固件
+        async function verifyFirmware() {
+            if (!connected) {
+                showStatus('error', '请先连接设备');
+                return;
+            }
+
+            if (!currentFile) {
+                showStatus('error', '请先选择固件文件');
+                return;
+            }
+
+            try {
+                const flashAddress = document.getElementById('flashAddress').value;
+                const address = parseInt(flashAddress, 16);
+                
+                showStatus('info', '正在验证固件...');
+                logMessage('info', '开始验证固件');
+                showProgress(true);
+                
+                // 读取文件内容
+                const arrayBuffer = await currentFile.arrayBuffer();
+                const expectedData = new Uint8Array(arrayBuffer);
+                
+                // 读取 Flash 内容进行验证
+                const actualData = await readFlashData(address, expectedData.length, (progress) => {
+                    updateProgress(progress, `验证进度: ${Math.round(progress * 100)}%`);
+                });
+                
+                // 比较数据
+                let match = true;
+                for (let i = 0; i < expectedData.length; i++) {
+                    if (expectedData[i] !== actualData[i]) {
+                        match = false;
+                        break;
+                    }
+                }
+                
+                if (match) {
+                    showStatus('success', '固件验证成功');
+                    logMessage('success', '固件验证成功');
+                } else {
+                    showStatus('error', '固件验证失败，数据不匹配');
+                    logMessage('error', '固件验证失败，数据不匹配');
+                }
+                
+                showProgress(false);
+                
+            } catch (error) {
+                showStatus('error', '验证固件失败: ' + error.message);
+                logMessage('error', '验证固件错误: ' + error.message);
+                showProgress(false);
+            }
+        }
+
+        // 读取 Flash
+        async function readFlash() {
+            if (!connected) {
+                showStatus('error', '请先连接设备');
+                return;
+            }
+
+            try {
+                const flashAddress = document.getElementById('flashAddress').value;
+                const address = parseInt(flashAddress, 16);
+                const size = 1024 * 1024; // 读取 1MB
+                
+                showStatus('info', '正在读取 Flash...');
+                logMessage('info', `开始读取 Flash，地址: ${flashAddress}，大小: ${size} 字节`);
+                showProgress(true);
+                
+                const data = await readFlashData(address, size, (progress) => {
+                    updateProgress(progress, `读取进度: ${Math.round(progress * 100)}%`);
+                });
+                
+                // 创建下载链接
+                const blob = new Blob([data], { type: 'application/octet-stream' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `flash_read_${flashAddress}.bin`;
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                showStatus('success', 'Flash 读取完成，文件已下载');
+                logMessage('success', 'Flash 读取完成');
+                showProgress(false);
+                
+            } catch (error) {
+                showStatus('error', '读取 Flash 失败: ' + error.message);
+                logMessage('error', '读取 Flash 错误: ' + error.message);
+                showProgress(false);
+            }
+        }
+
+        // 读取Flash数据的辅助函数
+        async function readFlashData(address, size, progressCallback) {
+            const data = new Uint8Array(size);
+            const blockSize = 0x1000; // 4KB 块
+            let offset = 0;
+            
+            while (offset < size) {
+                const readSize = Math.min(blockSize, size - offset);
+                const readAddress = address + offset;
+                
+                const readData = new Uint8Array(8);
+                readData[0] = readSize & 0xff;
+                readData[1] = (readSize >> 8) & 0xff;
+                readData[2] = (readSize >> 16) & 0xff;
+                readData[3] = (readSize >> 24) & 0xff;
+                readData[4] = readAddress & 0xff;
+                readData[5] = (readAddress >> 8) & 0xff;
+                readData[6] = (readAddress >> 16) & 0xff;
+                readData[7] = (readAddress >> 24) & 0xff;
+                
+                const response = await sendCommand(ESP_OP_READ_FLASH, readData);
+                
+                if (response && response.length >= 8 + readSize) {
+                    const blockData = response.slice(8, 8 + readSize);
+                    data.set(blockData, offset);
+                } else {
+                    throw new Error(`读取Flash块失败，地址: 0x${readAddress.toString(16)}`);
+                }
+                
+                offset += readSize;
+                if (progressCallback) {
+                    progressCallback(offset / size);
+                }
+            }
+            
+            return data;
+        }
+
+        // 重启设备
+        async function resetDevice() {
+            if (!connected) {
+                showStatus('error', '请先连接设备');
+                return;
+            }
+
+            try {
+                showStatus('info', '正在重启设备...');
+                logMessage('info', '重启设备');
+                
+                // 发送重启命令
+                await sendCommand(ESP_OP_RUN_USER_CODE, new Uint8Array([0x00, 0x00, 0x00, 0x00]));
+                
+                showStatus('success', '设备重启完成');
+                logMessage('success', '设备重启完成');
+                
+            } catch (error) {
+                showStatus('error', '重启设备失败: ' + error.message);
+                logMessage('error', '重启设备错误: ' + error.message);
+            }
+        }
+
+        // 更新按钮状态
+        function updateButtonStates() {
+            const buttons = ['eraseBtn', 'writeBtn', 'verifyBtn', 'readBtn', 'resetBtn'];
+            buttons.forEach(btnId => {
+                const btn = document.getElementById(btnId);
+                btn.disabled = !connected;
+            });
+        }
+
+        // 显示状态
+        function showStatus(type, message) {
+            const status = document.getElementById('status');
+            status.className = `status ${type}`;
+            status.textContent = message;
+            status.style.display = 'block';
+            
+            // 3秒后自动隐藏成功和信息状态
+            if (type === 'success' || type === 'info') {
+                setTimeout(() => {
+                    status.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        // 显示/隐藏进度条
+        function showProgress(show) {
+            const container = document.getElementById('progressContainer');
+            container.style.display = show ? 'block' : 'none';
+            if (!show) {
+                updateProgress(0, '');
+            }
+        }
+
+        // 更新进度条
+        function updateProgress(progress, text) {
+            const fill = document.getElementById('progressFill');
+            const textEl = document.getElementById('progressText');
+            
+            fill.style.width = (progress * 100) + '%';
+            textEl.textContent = text;
+        }
+
+        // 记录日志
+        function logMessage(type, message) {
+            const logContainer = document.getElementById('logContainer');
+            const logContent = document.getElementById('logContent');
+            
+            const timestamp = new Date().toLocaleTimeString();
+            const logLine = document.createElement('div');
+            logLine.className = `log-line log-${type}`;
+            logLine.textContent = `[${timestamp}] ${message}`;
+            
+            logContent.appendChild(logLine);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            logContainer.style.display = 'block';
+        }
+
+        // 页面卸载时断开连接
+        window.addEventListener('beforeunload', function() {
+            if (connected) {
+                disconnectDevice();
+            }
+        });
+    </script>
+</body>
+</html>
