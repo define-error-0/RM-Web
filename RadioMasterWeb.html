@@ -1010,6 +1010,15 @@
       box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
     }
 
+    #calib-bar-rv  {
+      transform: scaleY(-1);
+
+    }
+
+    #calib-bar-lv  {
+      transform: scaleY(-1);
+
+    }
     /* 动画效果 */
     @keyframes fadeIn {
       from { opacity: 0; }
@@ -1161,7 +1170,8 @@
                 <span id="settings-status-rx" class="settings-status"></span>
               </div>
               <label id="settings-status-label" class="settings-status" data-i18n="settings-status-label-Text" style="text-align:center;"></label>
-          </div>
+              <label id="settings-rxLua-label" class="settings-status" data-i18n="settings-rxLua-label-Text" style="text-align:center;"></label>         
+            </div>
         </div>
         
         <div id="page-calib" class="main-page" style="display:none;">
@@ -1406,6 +1416,8 @@
       deviceInfoBar.style.display = 'none';
     }
 
+
+
     // 连接逻辑
     connectBtn.onclick = async () => {
       if (isSerialConnected) return;
@@ -1413,11 +1425,12 @@
       statusBox.textContent =LANGS[currentLang]['connecting'];
       try {
         // 始终弹出串口选择
+        
         if (navigator.userAgent.indexOf("Chrome") != -1 && !navigator.userAgent.indexOf("Edge") != -1) {
         console.log("This is Chrome browser.");
         const selectedPort = await navigator.serial.requestPort();
         //const baudRate = parseInt(baudrateInput.value) || 115200;
-        const baudRate = parseInt(460800) || 115200;
+        const baudRate = parseInt(420000);// || 460800;
         await selectedPort.open({ baudRate });
         port = selectedPort;
         writer = port.writable.getWriter();
@@ -1695,7 +1708,7 @@
                 parseCRSFPacket(bigPacket);
                 netConfBuffer = netConfBuffer.slice(bigLen);
                 setTimeout(() => {
-                  document.getElementById('refresh-settings').disabled = false;
+                  //document.getElementById('refresh-settings').disabled = false;
                   document.getElementById('settings-status').textContent =LANGS[currentLang]['refresh-done'];
                   //document.getElementById('refresh-settings-rx').disabled = false;
                   document.getElementById('settings-status-rx').textContent =LANGS[currentLang]['refresh-done']; 
@@ -1810,7 +1823,7 @@
       
           }
         } catch (error) {
-           console.error('读取数据错误:', error); // 已关闭串口读取错误日志
+           console.error('读取数据错误'+error); // 已关闭串口读取错误日志
           break;
         }
       }
@@ -2166,13 +2179,13 @@
     let timeout 
     document.getElementById('refresh-settings').onclick = async () => {
       netConfBuffer = []; // 清空buffer，防止旧数据残留
-      //document.getElementById('refresh-settings').disabled = true;
+      document.getElementById('refresh-settings').disabled = true;
       const statusElem = document.getElementById('settings-status');
       statusElem.textContent = LANGS[currentLang]['refresh-getting'];
       timeout = setTimeout(() => {
         document.getElementById('refresh-settings').disabled = false;
         //statusElem.textContent = '超时';
-      }, 400);
+      }, 700);
 
       await refreshSettings(); // 发送刷新命令
       // 等待数据到来，readLoop会自动处理
@@ -2213,44 +2226,397 @@
       }, 1000);
     };
 
+  // 每30分钟清空一次控制台
+  setInterval(() => {
+    if (console.clear) {
+      console.clear();
+      //顺便也清空所有缓冲区
+      if(window._currentPage !== 'net')
+      {
+        netConfBuffer = [];
+        serialBuffer = [];
+      }
+    }
+  }, 1800000/60);   //60s就会清空缓冲区,以免内存溢出
+
 
     // --- 设备校准页面 ---
     function renderCalibPage() {
-      const calibPage = document.getElementById('page-calib');
-      calibPage.innerHTML = `
-        <div class="calib-container" style="height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1vh 0;">
-          <div>
-            <div style="display:flex;align-items:center;gap:1vw;margin-bottom:1vh;">
-              <div class="calib-btn-slider-row" style="display:flex;align-items:center;gap:1vw;">
-                <div class="calib-btn-group" id="calib-btn-group" style="display:flex;gap:0.5vw;"></div>
-                <div class="calib-slider-row" style="display:flex;align-items:center;gap:0.5vw;min-width:140px;">
-                  <span class="calib-slider-label" style="font-size:1.5em;color:#3358e0;text-align:center;">S1</span>
-                  <input type="range" min="0" max="100" value="50" class="calib-slider-sao" id="calib-slider">
-                  <span class="calib-slider-value" id="calib-slider-value">50</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div>
-            <div id="calib-step-label" style="margin-bottom:1vh;color:#e74c3c;font-weight:bold;font-size:1.2em;text-align:center;" data-i18n="calib-start-step-label">点击"开始校准"按键进行校准操作</div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;width:100%;margin-bottom:0.5vh;">
-              <button id="calib-action-btn" class="connect-btn" style="min-width:70px;font-size:0.95em;padding:8px 0;" data-i18n="calib-start">开始校准</button>
-              <button id="calib-save-action-btn" class="connect-btn" style="min-width:70px;font-size:0.95em;padding:8px 0;" data-i18n="calib-save">校准保存</button>
-              <button id="calib-reset-action-btn" class="connect-btn" style="min-width:70px;font-size:0.95em;padding:8px 0;" data-i18n="calib-reset">重新校准</button>
-            </div>
-          </div>
-          <div class="calib-joystick-row" style="display:flex;gap:1.5vw;justify-content:center;flex:1;align-items:center;min-height:0;">
-            <div class="calib-joystick-wrap" style="display:flex;flex-direction:column;align-items:center;">
-              <div class="calib-joystick-label" data-i18n="calib-joystick-label-left">左摇杆</div>
-              <canvas class="calib-joystick" id="joystick1" width="260" height="260" style="width:20vh;height:20vh;max-width:260px;max-height:260px;min-width:100px;min-height:100px;"></canvas>
-            </div>
-            <div class="calib-joystick-wrap" style="display:flex;flex-direction:column;align-items:center;">
-              <div class="calib-joystick-label" data-i18n="calib-joystick-label-right">右摇杆</div>
-              <canvas class="calib-joystick" id="joystick2" width="260" height="260" style="width:20vh;height:20vh;max-width:260px;max-height:260px;min-width:100px;min-height:100px;"></canvas>
+    const calibPage = document.getElementById('page-calib');
+
+    const MIN_VAL = 988;
+    const MAX_VAL = 2012;
+    const INIT_VAL = 1500;
+    const INIT_PCT = ((INIT_VAL - MIN_VAL) / (MAX_VAL - MIN_VAL) * 100).toFixed(4);
+
+    const TRIM_MIN_VAL = -130;
+    const TRIM_MAX_VAL = 130;
+      const TRIM_INIT_VAL = 0;
+      const TRIM_INIT_PCT = ((TRIM_INIT_VAL - TRIM_MIN_VAL) / (TRIM_MAX_VAL - TRIM_MIN_VAL) * 100).toFixed(4);
+
+      // 初始化 channelMap 对象，防止未定义错误
+      if (!window.channelMap) {
+        window.channelMap = {
+          channelTrimSend: [0,0,0,0],
+          channelTrimRecv: [0,0,0,0],
+          channelMidSend: [0,0,0,0],
+          channelMidRecv: [0,0,0,0],
+          channelMapSend: Array.from({length:16}, (_,i)=>i+1),
+          channelDirSend: Array(16).fill(0),
+          channelLeftSend: Array(16).fill(0),
+          channelRightSend: Array(16).fill(0)
+        };
+      }
+
+    calibPage.innerHTML = `
+    <style>
+      /* slider 样式：轨道为单色坐标轴，不显示"已填充"效果 */
+      .horizontal-slider, .vertical-slider { -webkit-appearance: none; appearance: none; background: transparent; }
+      .horizontal-slider { width:200px; height:6px; } /* 缩短横向滑块 */
+      .horizontal-slider::-webkit-slider-runnable-track{ 
+        height:6px; 
+        background:#e0e7ff; 
+        border-radius:6px; 
+        position: relative; 
+      }
+      .horizontal-slider::-webkit-slider-runnable-track::before{ 
+        content: ''; 
+        position: absolute; 
+        top: 50%; 
+        left: 50%; 
+        width: 2px; 
+        height: 12px; 
+        background: #e74c3c; 
+        transform: translate(-50%, -50%); 
+        border-radius: 1px; 
+        z-index: 1;
+      }
+      .horizontal-slider::-webkit-slider-thumb{ 
+        -webkit-appearance:none; 
+        width:16px; 
+        height:16px; 
+        border-radius:50%; 
+        background:#4f8cff; 
+        box-shadow:0 1px 4px rgba(0,0,0,0.15); 
+        margin-top:-5px; 
+        cursor:pointer; 
+        z-index: 2;
+        position: relative;
+      }
+      .horizontal-slider::-moz-range-track{ 
+        height:6px; 
+        background:#e0e7ff; 
+        border-radius:6px; 
+        position: relative; 
+      }
+      .horizontal-slider::-moz-range-track::before{ 
+        content: ''; 
+        position: absolute; 
+        top: 50%; 
+        left: 50%; 
+        width: 2px; 
+        height: 12px; 
+        background: #e74c3c; 
+        transform: translate(-50%, -50%); 
+        border-radius: 1px; 
+        z-index: 1;
+      }
+      .horizontal-slider::-moz-range-thumb{ 
+        width:16px; 
+        height:16px; 
+        border-radius:50%; 
+        background:#4f8cff; 
+        border:none; 
+        z-index: 2;
+        position: relative;
+      }
+
+      /* 竖向用旋转实现（旋转后看起来像竖直轴） */
+      .vertical-slider { width:200px; height:22px; transform: rotate(-90deg); } /* 加长竖向滑块 */
+      .vertical-slider::-webkit-slider-runnable-track{ 
+        height:6px; 
+        background:#e0e7ff; 
+        border-radius:6px; 
+        position: relative; 
+      }
+      .vertical-slider::-webkit-slider-runnable-track::before{ 
+        content: ''; 
+        position: absolute; 
+        top: 50%; 
+        left: 50%; 
+        width: 12px; 
+        height: 2px; 
+        background: #e74c3c; 
+        transform: translate(-50%, -50%); 
+        border-radius: 1px; 
+        z-index: 1;
+      }
+      .vertical-slider::-webkit-slider-thumb{ 
+        -webkit-appearance:none; 
+        width:16px; 
+        height:16px; 
+        border-radius:50%; 
+        background:#4f8cff; 
+        box-shadow:0 1px 4px rgba(0,0,0,0.15); 
+        margin-top:-5px; 
+        cursor:pointer; 
+        z-index: 2;
+        position: relative;
+      }
+      .vertical-slider::-moz-range-track{ 
+        height:6px; 
+        background:#e0e7ff; 
+        border-radius:6px; 
+        position: relative; 
+      }
+      .vertical-slider::-moz-range-track::before{ 
+        content: ''; 
+        position: absolute; 
+        top: 50%; 
+        left: 50%; 
+        width: 12px; 
+        height: 2px; 
+        background: #e74c3c; 
+        transform: translate(-50%, -50%); 
+        border-radius: 1px; 
+        z-index: 1;
+      }
+      .vertical-slider::-moz-range-thumb{ 
+        width:16px; 
+        height:16px; 
+        border-radius:50%; 
+        background:#4f8cff; 
+        border:none; 
+        z-index: 2;
+        position: relative;
+      }
+
+      /* 缩小一些间距让 bar 与 joystick 更靠近 */
+      .calib-joystick-row { gap:0.8vw; } /* 原来 2vw -> 0.8vw */
+      .calib-joystick-wrap { gap:3px; }  /* 原来 10px -> 3px */
+
+      /* 新增：叠加滑块到进度条上的样式（水平方向） */
+      .slider-bar-overlay { position: relative; display: inline-block; }
+      .slider-bar-overlay .horizontal-slider { position: absolute; top: 50%; left: 0; transform: translateY(-50%); width: 100%; height: 6px; z-index: 2; pointer-events: none; }
+      .slider-bar-overlay .horizontal-slider::-webkit-slider-thumb { pointer-events: auto; }
+      .slider-bar-overlay .horizontal-slider::-moz-range-thumb { pointer-events: auto; }
+
+      /* 新增：叠加滑块到进度条上的样式（竖直方向） */
+      .vertical-slider-bar-overlay { position: relative; display: inline-flex; align-items: center; }
+      .vertical-slider-bar-overlay .vertical-slider-container { position: absolute; top: 0; left: 50%; transform: translateX(-50%) rotate(-90deg); width: 100%; height: 22px; z-index: 2; pointer-events: none; }
+      .vertical-slider-bar-overlay .vertical-slider-container input { pointer-events: auto; }
+    </style>
+
+    <div class="calib-container" style="height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0.5vh 0;">
+      <div>
+        <div style="display:flex;align-items:center;gap:0.8vw;margin-bottom:0.5vh;">
+          <div class="calib-btn-slider-row" style="display:flex;align-items:center;gap:0.8vw;">
+            <div class="calib-btn-group" id="calib-btn-group" style="display:flex;gap:0.3vw;"></div>
+            <div class="calib-slider-row" style="display:flex;align-items:center;gap:0.3vw;min-width:120px;">
+              <span class="calib-slider-label" style="font-size:1.2em;color:#3358e0;text-align:center;">S1</span>
+              <input type="range" min="0" max="100" value="50" class="calib-slider-sao" id="calib-slider">
+              <span class="calib-slider-value" id="calib-slider-value">50</span>
             </div>
           </div>
         </div>
-        `;
+      </div>
+
+      <div>
+        <div id="calib-step-label" style="margin-bottom:0.5vh;color:#e74c3c;font-weight:bold;font-size:1.0em;text-align:center;" data-i18n="calib-start-step-label">点击"开始校准"按键进行校准操作</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;width:100%;margin-bottom:0.3vh;">
+          <div style="display: flex; flex-direction: row; gap: 6px; min-height: 80px; align-items: center; justify-content: center;">
+              <button id="calib-action-btn" class="connect-btn" style="min-width: 200px; min-height: 60px; font-size: 0.85em; padding: 6px 8px;" data-i18n="calib-start">开始校准</button>
+              <button id="calib-save-action-btn" class="connect-btn" style="min-width: 200px; min-height: 60px; font-size: 0.85em; padding: 6px 8px;" data-i18n="calib-save">校准保存</button>
+              <button id="calib-reset-action-btn" class="connect-btn" style="min-width: 200px; min-height: 60px; font-size: 0.85em; padding: 6px 8px;" data-i18n="calib-reset">重新校准</button>
+          </div>
+        </div>
+
+        <div class="calib-joystick-row" style="display:flex;justify-content:center;align-items:center;min-height:0;gap:1.2vw;">
+
+          <!-- 左竖：滑块 + 原进度条（保持原样，新增滑块值显示）-->
+          <div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
+            <div style="display:flex;align-items:center;gap:4px;">
+              <!-- 竖向滑块容器（旋转实现） -->
+              <div style="width:18px;height:160px;display:flex;align-items:center;justify-content:center;">
+                <input id="calib-slider-lv" class="vertical-slider" type="range" min="${TRIM_MIN_VAL}" max="${TRIM_MAX_VAL}" value="${TRIM_INIT_VAL}">
+              </div>
+
+              <!-- 保留原进度条结构，添加 fill 与 indicator 的 id 以便同步 -->
+              <div id="calib-bar-lv" style="width:18px;height:240px;background:#e0e7ff;border-radius:10px;overflow:hidden;position:relative;box-shadow:0 1px 6px #b3cfff;">
+                <div id="calib-bar-lv-fill" style="width:100%;height:${INIT_PCT}%;background:linear-gradient(0deg, #4f8cff 0%, #3358e0 100%);transition:height 0.05s;"></div>
+                <div id="calib-bar-lv-ind" style="position:absolute;top:${INIT_PCT}%;left:0;right:0;height:2px;background:#e74c3c;opacity:0.7;"></div>
+              </div>
+            </div>
+            <!-- 紧凑的数值显示区域 -->
+            <div style="display:flex;flex-direction:column;gap:2px;align-items:center;">
+              <span id="val-bar-lv" style="font-family:'Roboto',monospace;font-size:1.1em;color:#222;background:#fff;border-radius:6px;padding:2px 12px;box-shadow:0 1px 3px #e0e7ff;min-width:3.5em;display:inline-block;text-align:center;">${TRIM_INIT_VAL}</span>
+              <span id="val-calib-slider-lv" style="font-family:'Roboto',monospace;font-size:0.9em;color:#666;background:#f0f0f0;border-radius:4px;padding:1px 8px;box-shadow:0 1px 2px #e0e7ff;min-width:3em;display:inline-block;text-align:center;">${TRIM_INIT_VAL}</span>
+              <span id="val-actual-lv" style="font-family:'Roboto',monospace;font-size:0.85em;color:#e74c3c;background:#fff5f5;border:1px solid #fecaca;border-radius:4px;padding:1px 6px;box-shadow:0 1px 2px #fecaca;min-width:2.8em;display:inline-block;text-align:center;">0</span>
+            </div>
+          </div>
+
+          <!-- 左横条 + Joystick -->
+          <div class="calib-joystick-wrap" style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <div style="display:flex; align-items: center; gap: 4px;">
+              <!-- 修改：水平滑块 -->
+              <div class="slider-bar-overlay" style="width:160px;">
+                <input id="calib-slider-lh" class="horizontal-slider" type="range" min="${TRIM_MIN_VAL}" max="${TRIM_MAX_VAL}" value="${TRIM_INIT_VAL}">
+              </div>
+              <!-- 新增：滑块值显示 -->
+              <span id="val-calib-slider-lh" style="font-family:'Roboto',monospace;font-size:0.9em;color:#666;background:#f0f0f0;border-radius:4px;padding:1px 8px;box-shadow:0 1px 2px #e0e7ff;min-width:3em;display:inline-block;text-align:center;">${TRIM_INIT_VAL}</span>
+            </div>
+            <div style="display:flex; align-items: center; gap: 4px;">
+              <!-- 进度条 -->
+              <div id="calib-bar-lh" style="height:18px;width:240px;background:#e0e7ff;border-radius:10px;overflow:hidden;position:relative;box-shadow:0 1px 6px #b3cfff;">
+                <div id="calib-bar-lh-fill" style="height:100%;width:${INIT_PCT}%;background:linear-gradient(90deg, #4f8cff 0%, #3358e0 100%);transition:width 0.05s;"></div>
+                <div id="calib-bar-lh-ind" style="position:absolute;left:${INIT_PCT}%;top:0;bottom:0;width:2px;background:#e74c3c;opacity:0.7;"></div>
+              </div>
+              <!-- 紧凑的数值显示区域 -->
+              <div style="display:flex;flex-direction:column;gap:1px;align-items:center;">
+                <span id="val-bar-lh" style="font-family:'Roboto',monospace;font-size:1.0em;color:#222;background:#fff;border-radius:4px;padding:1px 8px;box-shadow:0 1px 3px #e0e7ff;min-width:3.2em;display:inline-block;text-align:center;">${TRIM_INIT_VAL}</span>
+                <span id="val-actual-lh" style="font-family:'Roboto',monospace;font-size:0.8em;color:#e74c3c;background:#fff5f5;border:1px solid #fecaca;border-radius:3px;padding:1px 6px;box-shadow:0 1px 2px #fecaca;min-width:2.5em;display:inline-block;text-align:center;">0</span>
+            </div>
+            </div>
+            <canvas class="calib-joystick" id="joystick1" width="200" height="200" style="width:16vh;height:16vh;max-width:200px;max-height:200px;min-width:80px;min-height:80px;"></canvas>
+          </div>
+
+
+          <!-- 右横条 + Joystick -->
+          <div class="calib-joystick-wrap" style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <div style="display:flex; align-items: center; gap: 4px;">
+              <!-- 修改：水平滑块 -->
+              <div class="slider-bar-overlay" style="width:160px;">
+                <input id="calib-slider-rh" class="horizontal-slider" type="range" min="${TRIM_MIN_VAL}" max="${TRIM_MAX_VAL}" value="${TRIM_INIT_VAL}">
+              </div>
+              <!-- 新增：滑块值显示 -->
+              <span id="val-calib-slider-rh" style="font-family:'Roboto',monospace;font-size:0.9em;color:#666;background:#f0f0f0;border-radius:4px;padding:1px 8px;box-shadow:0 1px 2px #e0e7ff;min-width:3em;display:inline-block;text-align:center;">${TRIM_INIT_VAL}</span>
+            </div>
+            <div style="display:flex; align-items: center; gap: 4px;">
+              <!-- 进度条 -->
+              <div id="calib-bar-rh" style="height:18px;width:240px;background:#e0e7ff;border-radius:10px;overflow:hidden;position:relative;box-shadow:0 1px 6px #b3cfff;">
+                <div id="calib-bar-rh-fill" style="height:100%;width:${INIT_PCT}%;background:linear-gradient(90deg, #4f8cff 0%, #3358e0 100%);transition:width 0.05s;"></div>
+                <div id="calib-bar-rh-ind" style="position:absolute;left:${INIT_PCT}%;top:0;bottom:0;width:2px;background:#e74c3c;opacity:0.7;"></div>
+              </div>
+              <!-- 紧凑的数值显示区域 -->
+              <div style="display:flex;flex-direction:column;gap:1px;align-items:center;">
+                <span id="val-bar-rh" style="font-family:'Roboto',monospace;font-size:1.0em;color:#222;background:#fff;border-radius:4px;padding:1px 8px;box-shadow:0 1px 3px #e0e7ff;min-width:3.2em;display:inline-block;text-align:center;">${TRIM_INIT_VAL}</span>
+                <span id="val-actual-rh" style="font-family:'Roboto',monospace;font-size:0.8em;color:#e74c3c;background:#fff5f5;border:1px solid #fecaca;border-radius:3px;padding:1px 6px;box-shadow:0 1px 2px #fecaca;min-width:2.5em;display:inline-block;text-align:center;">0</span>
+            </div>
+            </div>
+            <canvas class="calib-joystick" id="joystick2" width="200" height="200" style="width:16vh;height:16vh;max-width:200px;max-height:200px;min-width:80px;min-height:80px;"></canvas>
+          </div>
+
+          <!-- 右竖：进度条 + 滑块（保持原样，新增滑块值显示） -->
+          <div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
+            <div style="display:flex;align-items:center;gap:4px;">
+              <div id="calib-bar-rv" style="width:18px;height:240px;background:#e0e7ff;border-radius:10px;overflow:hidden;position:relative;box-shadow:0 1px 6px #b3cfff;">
+                <div id="calib-bar-rv-fill" style="width:100%;height:${INIT_PCT}%;background:linear-gradient(0deg, #4f8cff 0%, #3358e0 100%);transition:height 0.05s;"></div>
+                <div id="calib-bar-rv-ind" style="position:absolute;top:${INIT_PCT}%;left:0;right:0;height:2px;background:#e74c3c;opacity:0.7;"></div>
+              </div>
+
+              <div style="width:18px;height:160px;display:flex;align-items:center;justify-content:center;">
+                <input id="calib-slider-rv" class="vertical-slider" type="range" min="${TRIM_MIN_VAL}" max="${TRIM_MAX_VAL}" value="${TRIM_INIT_VAL}">
+              </div>
+            </div>
+            <!-- 紧凑的数值显示区域 -->
+            <div style="display:flex;flex-direction:column;gap:2px;align-items:center;">
+              <span id="val-bar-rv" style="font-family:'Roboto',monospace;font-size:1.1em;color:#222;background:#fff;border-radius:6px;padding:2px 12px;box-shadow:0 1px 3px #e0e7ff;min-width:3.5em;display:inline-block;text-align:center;">${TRIM_INIT_VAL}</span>
+              <span id="val-calib-slider-rv" style="font-family:'Roboto',monospace;font-size:0.9em;color:#666;background:#f0f0f0;border-radius:4px;padding:1px 8px;box-shadow:0 1px 2px #e0e7ff;min-width:3em;display:inline-block;text-align:center;">${TRIM_INIT_VAL}</span>
+              <span id="val-actual-rv" style="font-family:'Roboto',monospace;font-size:0.85em;color:#e74c3c;background:#fff5f5;border:1px solid #fecaca;border-radius:4px;padding:1px 6px;box-shadow:0 1px 2px #fecaca;min-width:2.8em;display:inline-block;text-align:center;">0</span>
+            </div>
+          </div>
+
+
+        </div>
+      </div>
+    </div>
+  `;
+
+      // 滑块与微调功能同步
+      function syncSliderWithTrim() {
+        // 滑块ID映射到微调索引
+        const sliderMap = {
+          'calib-slider-lv': 2,  // 左竖
+          'calib-slider-lh': 3,  // 左横
+          'calib-slider-rh': 0,  // 右横
+          'calib-slider-rv': 1   // 右竖
+        };
+
+        // 为每个滑块添加事件监听器
+        Object.keys(sliderMap).forEach(sliderId => {
+          const slider = document.getElementById(sliderId);
+          const trimIdx = sliderMap[sliderId];
+          
+          if (slider) {
+            // 滑块值变化时更新微调值
+            slider.addEventListener('input', function() {
+              const value = parseInt(this.value);
+              
+              // 更新微调值
+              if (window.channelMap && window.channelMap.channelTrimSend) {
+                window.channelMap.channelTrimSend[trimIdx] = value;
+              }
+              
+              // 更新微调UI
+              updateTrimUI(trimIdx, value);
+              
+              // 更新滑块值显示
+              const valSpan = document.getElementById(`val-${sliderId}`);
+              if (valSpan) {
+                valSpan.textContent = value;
+              }
+            });
+          }
+        });
+      }
+
+      // 更新微调UI的函数
+      function updateTrimUI(trimIdx, value) {
+        const trimValSpan = document.getElementById(`trim-val-${trimIdx}`);
+        const trimDot = document.getElementById(`trim-dot-${trimIdx}`);
+        const trimBar = document.getElementById(`trim-bar-${trimIdx}`);
+        
+        if (trimValSpan) trimValSpan.textContent = value;
+        if (trimBar && trimDot) {
+          let percent = (value + 130) / 260;
+          let left = percent * (trimBar.offsetWidth - trimDot.offsetWidth);
+          trimDot.style.left = left + 'px';
+        }
+      }
+
+      // 从微调值同步到滑块
+      function syncTrimToSlider() {
+        if (!window.channelMap || !window.channelMap.channelTrimSend) return;
+        
+        const sliderMap = {
+          'calib-slider-lv': 2,
+          'calib-slider-lh': 3,
+          'calib-slider-rh': 0,
+          'calib-slider-rv': 1
+        };
+
+        Object.keys(sliderMap).forEach(sliderId => {
+          const slider = document.getElementById(sliderId);
+          const trimIdx = sliderMap[sliderId];
+          const value = window.channelMap.channelTrimSend[trimIdx];
+          
+          if (slider) {
+            slider.value = value;
+            const valSpan = document.getElementById(`val-${sliderId}`);
+            if (valSpan) {
+              valSpan.textContent = value;
+            }
+          }
+        });
+      }
+
+      // 初始化滑块同步
+      setTimeout(() => {
+        syncSliderWithTrim();
+        syncTrimToSlider();
+      }, 100);
+
+      // 三态按钮
       const btnNames = ['SA', 'SB', 'SC', 'SD', 'SE'];
       const btnGroup = document.getElementById('calib-btn-group');
       const stateSvgs = [
@@ -2263,6 +2629,7 @@
       ];
       const stateNames = ['low', 'mid', 'high'];
       // 进度条
+
       const slider = document.getElementById('calib-slider');
       const sliderValue = document.getElementById('calib-slider-value');
       slider.oninput = function() {
@@ -2421,18 +2788,65 @@
         {
             if(joxy[i]>100)
             {
-              console.log("异常大:",joxy[i],";recvChannel:",recvChannel,";buf:",buf);
+              //console.log("异常大:",joxy[i],";recvChannel:",recvChannel,";buf:",buf);
               joxy[i] = 100;
             }
             else if(joxy[i]<-100)
             {
-              console.log("异常小:",joxy[i],";recvChannel:",recvChannel,";buf:",buf);
+              //console.log("异常小:",joxy[i],";recvChannel:",recvChannel,";buf:",buf);
               joxy[i] = -100;
             }
         }
+        const calibElements = [          //映射表
+            { barId: 'calib-bar-rh', valId: 'val-bar-rh' ,dir:2},   // 右进度条2          
+            { barId: 'calib-bar-rv', valId: 'val-bar-rv' ,dir:1},  // 右进度条1
+            { barId: 'calib-bar-lv', valId: 'val-bar-lv' ,dir:1},  // 左进度条1
+            { barId: 'calib-bar-lh', valId: 'val-bar-lh' ,dir:2},  // 左进度条2
+            // { barId: 'calib-bar-rl', valId: 'val-bar-rl' },  // 右进度条1
+            // { barId: 'calib-bar-rh', valId: 'val-bar-rh' },   // 右进度条2    
+          ];
+
         if (typeof drawJoystick === 'function') {
           drawJoystick(joy1Canvas, joxy[2], joxy[3]);
           drawJoystick(joy2Canvas, joxy[0], joxy[1]);
+          //let bar = document.getElementById(`ch-bar-${i}`)?.children[0]
+          // document.getElementById('calib-bar-lv')?.children[0].style.width  = ((recvChannel[i]-988)/(2012-988)*100) + '%';
+          // document.getElementById('calib-bar-lh')?.children[0].style.width  = ((recvChannel[1]-988)/(2012-988)*100) + '%';
+          // document.getElementById('calib-bar-rv')?.children[0].style.width  = ((recvChannel[2]-988)/(2012-988)*100) + '%';
+          // document.getElementById('calib-bar-rh')?.children[0].style.width  = ((recvChannel[3]-988)/(2012-988)*100) + '%';
+          for (let i = 0; i < calibElements.length; i++) {
+            const { barId, valId, dir } = calibElements[i];
+            
+            // 更新数值显示
+            const valElement = document.getElementById(valId);
+            if (valElement) {
+              let tmpData = (recvChannel[i]-1500)/5;
+              if(tmpData>100) tmpData=100;
+              else if(tmpData<-100) tmpData=-100;
+              valElement.textContent = Math.round(tmpData); // 假设processedCalib是校准数据数组
+            }
+            
+            // 更新实际数值显示（-100到100范围）
+            const actualValElement = document.getElementById(`val-actual-${['lv', 'lh', 'rv', 'rh'][i]}`);
+            if (actualValElement) {
+              actualValElement.textContent = Math.round(recvChannel[i]);
+            }
+            
+            // 更新进度条宽度
+            const barFill = document.getElementById(barId)?.children[0];
+            if (barFill) {
+              if(dir==1)
+              {
+                // 注意：校准的数值范围可能和通道不同，这里沿用你的计算方式，实际需按校准范围调整
+                barFill.style.height = `${((recvChannel[i] - 988) / (2012 - 988) * 100)}%`;
+              }
+              else if(dir==2)
+              {
+                // 注意：校准的数值范围可能和通道不同，这里沿用你的计算方式，实际需按校准范围调整
+                barFill.style.width = `${((recvChannel[i] - 988) / (2012 - 988) * 100)}%`;
+              }
+            }
+          }
         }
         // 三态开关
         for(let i=0;i<5;i++){
@@ -2492,10 +2906,15 @@
             data[i*6+5] = (zero >> 8) & 0xFF;
           }
           // 第5通道（电位器）
-          data[24] = adcMax[4] & 0xFF;
-          data[25] = (adcMax[4] >> 8) & 0xFF;
-          data[26] = adcMin[4] & 0xFF;
-          data[27] = (adcMin[4] >> 8) & 0xFF;
+          // data[24] = adcMax[4] & 0xFF;
+          // data[25] = (adcMax[4] >> 8) & 0xFF;
+          // data[26] = adcMin[4] & 0xFF;
+          // data[27] = (adcMin[4] >> 8) & 0xFF;
+          data[24] = 4096 & 0xFF;
+          data[25] = (4096 >> 8) & 0xFF;
+          data[26] = 0;
+          data[27] = 0;
+
           // zero 固定2048
           // 组包
           let buf = new Uint8Array(3+28+2);
@@ -2527,7 +2946,8 @@
           calibStepLabel.textContent = LANGS[currentLang]['calib-step-label-center-point'];
           console.log('[校准流程] 进入选择中心点，停止定时器');
           stopGlobalChannelTimer();
-        } else if (window.calibState === 'calibratMid') {
+        } 
+        else if (window.calibState === 'calibratMid') {
           // 计算中心点均值
           let means = [0,0,0,0];
           for(let i=0;i<4;i++){
@@ -2575,10 +2995,14 @@
             data[i*6+5] = (zero >> 8) & 0xFF;
           }
           // 第5通道（电位器）
-          data[24] = adcMax[4] & 0xFF;
-          data[25] = (adcMax[4] >> 8) & 0xFF;
-          data[26] = adcMin[4] & 0xFF;
-          data[27] = (adcMin[4] >> 8) & 0xFF;
+          // data[24] = adcMax[4] & 0xFF;
+          // data[25] = (adcMax[4] >> 8) & 0xFF;
+          // data[26] = adcMin[4] & 0xFF;
+          // data[27] = (adcMin[4] >> 8) & 0xFF;
+          data[24] = 4096 & 0xFF;
+          data[25] = (4096 >> 8) & 0xFF;
+          data[26] = 0;
+          data[27] = 0;
           // zero 固定2048
           // 组包
           let buf = new Uint8Array(3+28+2);
@@ -2608,7 +3032,7 @@
 
           window._globalChannelTask = {
             channelRequest: () => {
-              console.log('[定时器] 发送 0xA5,0x55,0x02,0x0D,0x0A');
+              //console.log('[定时器] 发送 0xA5,0x55,0x02,0x0D,0x0A');
               if (writer) writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A]));
             },
             commandRequest: () => {}
@@ -3565,7 +3989,7 @@
     }
 
     function autoRefresh(mode, callback) {
-      document.getElementById('refresh-settings').disabled = false;
+      //document.getElementById('refresh-settings').disabled = false;
       document.getElementById('refresh-settings-rx').disabled = false;
       stopAutoRefresh();
       window._lastRefreshMode = mode;
@@ -3878,7 +4302,13 @@
       ];
       let currentModeIdx = window._currentModeIdx || 0;
       
-      function getModeMap(idx) { return modeList[idx].map; }
+      function getModeMap(idx) { 
+        // 确保索引在有效范围内，默认返回第一个模式
+        if (typeof idx !== 'number' || idx < 0 || idx >= modeList.length) {
+          idx = 0;
+        }
+        return modeList[idx].map; 
+      }
       // 结构：左侧菜单+右侧栈式页面
       let html = `<div class="comm-container"><div class="comm-title" data-i18n="config-channel">通道配置</div>
         <div style="display:flex;gap:0;align-items:flex-start;">
@@ -4129,6 +4559,11 @@
 
         // 操作模式页面的摇杆绘制和下拉事件
         const drawModePage = () => {
+          // 确保 _currentModeIdx 已初始化
+          if (typeof window._currentModeIdx !== 'number' || window._currentModeIdx < 0 || window._currentModeIdx >= modeList.length) {
+            window._currentModeIdx = 0;
+          }
+          
           const left = document.getElementById('cross-left');
           const right = document.getElementById('cross-right');
           if (left && right) {
@@ -4348,8 +4783,11 @@
           const restoreMapBtn = document.getElementById('channel-map-restore-btn');
           if (restoreMapBtn) {
             restoreMapBtn.onclick = function() {
+              if (!window.channelMap) { alert('通道数据未加载'); return; }
               let dataTmp = [ 9,5,6,7,8,10]; 
-              window.channelMap.channelMapSend.splice(4, 10, ...dataTmp);
+              if (window.channelMap.channelMapSend) {
+                window.channelMap.channelMapSend.splice(4, 10, ...dataTmp);
+              }
               for(let i=4;i<10;i++){  
                 const sel = document.getElementById(`ch-map-in2-${i}`); 
                 if (sel) {
@@ -4460,7 +4898,7 @@
               data[1] = 0x55;
               data[2] = 0x0F;
               for (let i = 0; i < 4; i++) {
-                val = window.channelMap.channelTrimSend[i];
+                val = window.channelMap.channelTrimSend ? window.channelMap.channelTrimSend[i] : 0;
                 data[3+i*2] = val & 0xFF;
                 data[3+i*2+1] = (val >> 8) & 0xFF;
               }
@@ -4661,6 +5099,7 @@
           let left = percent * (trimBar.offsetWidth - trimDot.offsetWidth);
           trimDot.style.left = left + 'px';
         }
+        
       }
       window.channelMap = channelMap;
       console.log('channelMap:', channelMap);
@@ -6069,11 +6508,11 @@
           console.log('[ADC校准] 当前最大值:', window._adcMax, '最小值:', window._adcMin,'当前中立点:',recvMidAdc,'当前校准状态:',isCalib);
         }
       }
-      if(window._adcMax[4]>3000 && window._adcMin[4]<1000)
-      {
-        isCalib++;
-      }
-      if(isCalib==5)
+      // if(window._adcMax[4]>3000 && window._adcMin[4]<1000)
+      // {
+      //   isCalib++;
+      // }
+      if(isCalib==4)
       {
         //console.log('使能失败,请检查摇杆是否正常');
         console.log('[ADC校准] 当前最大值:', window._adcMax, '最小值:', window._adcMin,'当前中立点:',recvMidAdc);
@@ -6508,7 +6947,6 @@
     }, 0);
     }
 
-
     // 在全局添加解析函数：
     function tryParseTrimPacket(buf) {
       if (!buf || buf.length < 3) return false;
@@ -6523,6 +6961,14 @@
         console.log('异常数据全为0');
         return false;   //异常crc全为0 
       } 
+
+      // const trimElements = [          //映射表
+      //       { barId: 'val-slider-rh', valId: 'val-bar-rh' ,dir:1},   // 右进度条2          
+      //       { barId: 'val-slider-rv', valId: 'val-bar-rv' ,dir:1},  // 右进度条1
+      //       { barId: 'val-slider-lv', valId: 'val-bar-lv' ,dir:1},  // 左进度条1
+      //       { barId: 'val-slider-lh', valId: 'val-bar-lh' ,dir:1},  // 左进度条2
+      //     ];
+
       // 解析4个通道的trim
       let trim = [];
       for (let i = 0; i < 4; i++) {
@@ -6535,6 +6981,7 @@
       let adcMap = window.channelMap && window.channelMap.channelMapSend ? window.channelMap.channelMapSend : [0,1,2,3];
       // 映射到UI
       for (let i = 0; i < 4; i++) {
+        
         let uiIdx = i;//adcMap[i];
         // 更新Trim
         const trimValSpan = document.getElementById(`trim-val-${uiIdx}`);
@@ -6546,11 +6993,60 @@
           let left = percent * (trimBar.offsetWidth - trimDot.offsetWidth) + 1;
           trimDot.style.left = left + 'px';
         }
-        // 不要动center
+
+        // 更新校准页面的滑块
+        const sliderMap = {
+          2: 'calib-slider-lv',  // 左竖
+          3: 'calib-slider-lh',  // 左横
+          0: 'calib-slider-rh',  // 右横
+          1: 'calib-slider-rv'   // 右竖
+        };
+        
+        const sliderId = sliderMap[i];
+        if (sliderId) {
+          const slider = document.getElementById(sliderId);
+          if (slider) {
+            slider.value = trim[i];
+          }
+          
+          // 更新滑块值显示
+          const valSpan = document.getElementById(`val-${sliderId}`);
+          if (valSpan) {
+            valSpan.textContent = trim[i];
+          }
+        }
+
+        // const { barId, valId, dir } = trimElements[i];    
+        // // 更新数值显示
+        // const valElement = document.getElementById(valId);
+        // if (valElement) {
+        //   valElement.textContent = (trim[i] + 130) / 260;
+        // }
+        
+        // // 更新进度条宽度
+        // const barFill = document.getElementById(barId);
+        // let left = percent * (trimBar.offsetWidth - trimDot.offsetWidth) + 1;
+        // if (barFill) {
+        //   barFill.style.left =  left + 'px';
+        // }
       }
+
+
+
+        // 不要动center
+
 
       // window.channelMap.channelMidRecv = channelMidRecv;
       // window.channelMap.channelMidSend = channelMidSend;
+      
+      // 确保 channelMap 存在，如果不存在则创建
+      if (!window.channelMap) {
+        window.channelMap = {
+          channelTrimSend: [0,0,0,0],
+          channelTrimRecv: [0,0,0,0]
+        };
+      }
+      
       window.channelMap.channelTrimSend = trim;
       window.channelMap.channelTrimRecv = trim;
 
@@ -6558,15 +7054,26 @@
       console.log('[TRIM包] 解析到4个trim:', trim, '映射顺序:', adcMap);
       return true;
     }
+
     function sendCenterCommand(centerArr) {
       // centerArr: 4个通道的center，单位-100~100
       let data = new Uint8Array(3+8+2);
       data[0] = 0xA5;
       data[1] = 0x55;
       data[2] = 0x1A;
+      
+      // 确保 channelMap 存在
+      if (!window.channelMap) {
+        window.channelMap = {
+          channelMidSend: [0,0,0,0]
+        };
+      }
+      
       for (let i = 0; i < 4; i++) {
         let val = Math.round(centerArr[i] * 512 / 100);
-        window.channelMap.channelMidSend[i] = val;
+        if (window.channelMap.channelMidSend) {
+          window.channelMap.channelMidSend[i] = val;
+        }
         data[3+i*2] = val & 0xFF;
         data[3+i*2+1] = (val >> 8) & 0xFF;
       }
@@ -6663,7 +7170,8 @@
         'net-lua-config': 'LUA配置',
         'net-refresh-tx': '刷新TX',
         'net-refresh-rx': '刷新RX',
-        'settings-status-label-Text': '请不要快速连续点击,进而导致数据传输异常和缓冲区异常',
+        'settings-status-label-Text': '请不要快速连续点击,进而导致数据传输异常和缓冲区异常.',
+        'settings-rxLua-label-Text':'50Hz和150Hz模式下,建议在配置接收机时将舵机比例改为1:2.',
         'recv-hex-checked': '16进制显示接收内容',
         'mode-left-stick': '左手摇杆',
         'mode-right-stick': '右手摇杆',
@@ -6817,7 +7325,8 @@
         'channel-map-confirm-btn': 'Save',
         'channel-map-restore-btn': 'Restore',
         'net-lua-config': 'LUA Config',
-        'settings-status-label-Text': 'Please do not click quickly in succession, which will cause data transmission exceptions and buffer exceptions',
+        'settings-status-label-Text': 'Please do not click quickly in succession, which will cause data transmission exceptions and buffer exceptions.',
+        'settings-rxLua-label-Text': 'For 50Hz and 150Hz modes it is recommended to change tele ratio to 1:2 while configuring the RX.',
         'net-refresh-tx': 'Refresh TX',
         'net-refresh-rx': 'Refresh RX',
         'net-recv-hex': 'Hex Display',
@@ -7135,4 +7644,5 @@ function linkSacn()
 
   </script>
 </body>
+</html> 
 </html> 
