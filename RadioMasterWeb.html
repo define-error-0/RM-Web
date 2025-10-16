@@ -1209,6 +1209,7 @@
                 <select id="fw-device-type" style="padding:4px 12px;border-radius:8px;border:1.5px solid #4f8cff;font-size:1.08em;">
                   <option value="remote" selected data-i18n="fw-remote">遥控器</option>
                   <option value="transmitter" data-i18n="fw-transmitter">高频头</option>
+                  <option value="sensor" data-i18n="fw-sensor">传感器</option>
                 </select>
               </div>
               <!-- 文件拖拽上传区 -->
@@ -1257,6 +1258,10 @@
   </div>
   
   <script>
+
+    // web版本打印
+    console.log('RadioMasterWeb_V1.5.0');
+
     // ========== 全局任务管理器 ==========
     window._pageTasks = {
       timers: [],
@@ -1310,7 +1315,8 @@
     let progressInterval = null; // 进度监听（模拟，实际需替换为真实数据更新）
     let isProcessing = false; // 操作锁
 
-    let currentLang = localStorage.getItem('lang') || 'zh';//|| 'auto';
+    //let currentLang = localStorage.getItem('lang') || 'zh';//|| 'auto';
+    let currentLang = 'en';
     
     let g_linkState = {
       upLinkRssiAnt1: 0,           // uint8_t -> 无符号8位整数
@@ -1717,10 +1723,10 @@
                 // document.getElementById('settings-status').textContent =LANGS[currentLang]['refresh-done'];
                 // document.getElementById('refresh-settings-rx').disabled = false;
                 // document.getElementById('settings-status-rx').textContent =LANGS[currentLang]['refresh-done']; 
-                netConfBuffer = [];               
-              } else {
-                break;
-              }
+                  netConfBuffer = [];               
+                } else {
+                  break;
+                }
               // // 假设在外面已经累积了 netConfBuffer（Array or Array-like of bytes）
               // if (netConfBuffer.length >= 3) {
               //   // 必须先至少能读到 len 字段
@@ -1773,10 +1779,10 @@
               //   } // end if netConfBuffer.length >= bigLen
               // } // end if netConfBuffer.length >= 3
 
+              }
             }
-          }
-          else
-          {
+            else
+            {
               serialBuffer.push(...value);    //公共缓冲区
             // --- 新增: 0.5秒内未能解析出包则清空缓冲区 ---
             // if (devAttrBufferTimeout) clearTimeout(devAttrBufferTimeout);
@@ -3052,8 +3058,8 @@
 
     renderCalibPage();
 
-    // --- 校准页面样式增强 ---
-    const calibStyle = document.createElement('style');
+// --- 校准页面样式增强 ---
+const calibStyle = document.createElement('style');
     calibStyle.innerHTML = `
       .calib-btn-state {
       background: #fff;
@@ -3236,12 +3242,22 @@
         if(upDataDev=="remote")
         {
           await writer.write(new Uint8Array([0xA5, 0x66, 0x01, 0x0D, 0x0A]));
+        }
+        if(upDataDev=="sensor")
+        {
+          setTimeout(async () => {
+            await writer.write(new Uint8Array([0x60, 0xF1, 0x55, 0x55]));  
+          }, 500);
 
+          upDataFlag = 1;
+          updateFwUI();
+          setTimeout(async () => {
+            startFwReadyCheck();
+          }, 1000);
         }
         else if(upDataDev=="transmitter")
         {
           await writer.write(new Uint8Array([0xA5, 0x66, 0x02, 0x0D, 0x0A]));
-
           // showConnectPage();
           // hideDeviceInfoBar();
             // //await port.close(); 
@@ -5144,7 +5160,7 @@
       if (!buf || buf.length < 3) return false;
       if (buf[0] !== 0x12) return false;
       const len = buf[1];
-      if (buf.length < len + 2) return false;
+      if (buf.length < len + 2 || len < 10) return false;
       const crc = buf[len+1];
       const calcCrc = crc8tab_js(buf.slice(2,2+len-1), len-1);
       if (crc !== calcCrc) return false;
@@ -5187,6 +5203,8 @@
           let left = percent * (trimBar.offsetWidth - trimDot.offsetWidth);
           trimDot.style.left = left + 'px';
         }
+
+
       }
       // 全局唯一：直接赋值到window.channelMap
       if (window.channelMap) {
@@ -5195,6 +5213,8 @@
         window.channelMap.channelTrimSend = channelTrimSend;
         window.channelMap.channelTrimRecv = channelTrimRecv;
       }
+
+
       // 移除window.trimMidObj = trimMidObj;
       console.log('trimMidObj:', { channelMidRecv, channelMidSend, channelTrimRecv, channelTrimSend });
       _hasTrimAndMid = true;
@@ -5399,6 +5419,9 @@
       //console.log('原始通道数据:', recvChannel);
       return true;
     }
+
+
+    
     // 在serialBuffer推入数据后，尝试判定0x44/0x12/0x22包并移除数据
     const _orig_serialBufferPush = Array.prototype.push;
     Array.prototype.push = function(...args) {
@@ -5446,10 +5469,11 @@
               if (this.length >= i + len + 2 && len >0) {
                 const buf = this.slice(i, i+len+2);
                 if (tryParseTrimAndMidPacket(buf)) {
+                  console.log('[DEBUG] 0x12包解析成功，准备移除');
                   this.splice(i, len+2);
                   found = true;
                   break;
-                }
+                } 
               }
             }
 
@@ -5855,9 +5879,9 @@
         if (writer && fwSend31Count < 2) {
           try {
             //console.log('[FW] 定时器已发送0x31，第' + fwSend31Count + '次');
-            await writer.write(new Uint8Array([0x31]));
+            await writer.write(new Uint8Array([0x33]));
             fwSend31Count++;
-            console.log('[FW] 定时器已发送0x31，第' + fwSend31Count + '次');
+            console.log('[FW] 定时器已发送0x32，第' + fwSend31Count + '次');
             if (fwSend31Count >= 2) {
               clearInterval(fwSend31Timer);
               fwSend31Timer = null;
@@ -7107,6 +7131,7 @@
         'or': '或',
         'fw-remote': '遥控器',
         'fw-transmitter': '高频头',
+        'fw-sensor': '传感器',
         'factory-reset': '恢复出厂设置!',
         'exit-fw-update': '退出固件更新',
         'keymode-title': '按键模式设置',
@@ -7266,6 +7291,7 @@
         'or': 'Or',
         'fw-remote': 'T8L Controller',
         'fw-transmitter': 'Internal ELRS Module',
+        'fw-sensor': 'Sensor',
         'factory-reset': 'Factory Reset',
         'exit-fw-update': 'Exit Firmware Update',
         'keymode-title': 'Key Mode Setting',
@@ -7424,7 +7450,7 @@
     }
     function setLang(lang) {
       currentLang = lang;
-      localStorage.setItem('lang', lang);
+      //localStorage.setItem('lang', lang);
       updateLangUI();
       updateAllLangText();
     }
