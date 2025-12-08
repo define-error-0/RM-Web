@@ -1070,8 +1070,8 @@
           var commBtn = document.querySelector('.menu-btn[data-page="comm"]');
           if (commBtn) commBtn.style.display = 'none'; 
         -->
-        <!-- <button data-i18n="comm-uart" class="menu-btn" data-page="comm">串口通信</button> -->
-        <button class="menu-btn" data-page="comm" style="display:none;">串口通信</button> 
+        <button data-i18n="comm-uart" class="menu-btn" data-page="comm">串口通信</button>
+        <!--<button class="menu-btn" data-page="comm" style="display:none;">串口通信</button> -->
         <button data-i18n='attr-dev' class="menu-btn" data-page="attr">设备概况</button>
         <button data-i18n='config-dev' class="menu-btn" data-page="config">设备配置</button>
         <button data-i18n='net-config' class="menu-btn" data-page="net">无线配置</button>
@@ -1274,6 +1274,43 @@
       console.error('Unhandled promise rejection:', event.reason);
     });
     
+    // 检测操作系统类型
+    function detectOS() {
+      const userAgent = navigator.userAgent || navigator.appVersion || navigator.vendor || '';
+      const platform = navigator.platform || '';
+      
+      // 检测Windows
+      if (userAgent.indexOf('Win') !== -1 || platform.indexOf('Win') !== -1) {
+        return 'Windows';
+      }
+      
+      // 检测Mac
+      if (userAgent.indexOf('Mac') !== -1 || platform.indexOf('Mac') !== -1) {
+        return 'Mac';
+      }
+      
+      // 检测Linux
+      if (userAgent.indexOf('Linux') !== -1 || platform.indexOf('Linux') !== -1) {
+        return 'Linux';
+      }
+      
+      // 检测iOS
+      if (userAgent.indexOf('iPhone') !== -1 || userAgent.indexOf('iPad') !== -1) {
+        return 'iOS';
+      }
+      
+      // 检测Android
+      if (userAgent.indexOf('Android') !== -1) {
+        return 'Android';
+      }
+      
+      return 'Unknown';
+    }
+    
+    // 获取当前操作系统（全局变量）
+    const currentOS = detectOS();
+    console.log('检测到的操作系统:', currentOS);
+    
     // 检查串口API可用性
     function checkSerialAPISupport() {
       if (!navigator.serial) {
@@ -1357,6 +1394,9 @@
     let upDataFlag = 0;
     let upDataDev = "remote";
     let channelMap = {};
+    // 根据操作系统设置初始波特率：Mac使用460800，Windows使用420000
+    let currentBaudRate = (currentOS === 'Windows') ? 420000 : 460800; // 当前使用的波特率
+    let baudRateDetectionActive = false; // 波特率检测是否激活
     let rxLuaStats = 0;
     let txLuaStats = 0;
     let progressTimer = null; // 超时定时器
@@ -1494,16 +1534,53 @@
         const selectedPort = await navigator.serial.requestPort().catch(err => {
           console.error('串口权限请求失败:', err);
           if (err.name === 'NotAllowedError') {
-            throw new Error('用户拒绝了串口访问权限，或者浏览器环境不支持串口访问。');
+            throw new Error(LANGS[currentLang]['serial-permission-denied']);
           } else if (err.name === 'NotFoundError') {
-            throw new Error('未找到可用的串口设备。如果设备刚插入，请等待几秒后重试。');
+            throw new Error(LANGS[currentLang]['serial-not-found']);
           } else {
-            throw new Error('串口访问失败: ' + err.message);
+            throw new Error(LANGS[currentLang]['serial-access-failed'] + err.message);
           }
         });
-        //const baudRate = parseInt(baudrateInput.value) || 115200;
-        const baudRate = parseInt(420000);// || 460800;
-        await selectedPort.open({ baudRate });
+        // 根据操作系统选择波特率：Mac直接使用460800，Windows先尝试420000
+        let baudRate = 460800;
+        if (currentOS === 'Windows') {
+          // Windows系统：先尝试420000，失败则切换到460800
+          baudRate = 420000;
+          try {
+            console.log('[BaudRate] Windows系统：尝试使用420000波特率连接...');
+            await selectedPort.open({ baudRate: 420000 });
+            currentBaudRate = 420000;
+            console.log('[BaudRate] 成功使用420000波特率连接');
+          } catch (error) {
+            console.warn('[BaudRate] 420000波特率连接失败:', error.message);
+            console.log('[BaudRate] 切换到460800波特率尝试连接...');
+            try {
+              // 如果已经打开，先关闭
+              if (selectedPort.readable) {
+                await selectedPort.close();
+              }
+              await selectedPort.open({ baudRate: 460800 });
+              baudRate = 460800;
+              currentBaudRate = 460800;
+              console.log('[BaudRate] 成功使用460800波特率连接');
+            } catch (error2) {
+              console.error('[BaudRate] 460800波特率连接也失败:', error2.message);
+              throw new Error('无法使用420000或460800波特率连接: ' + error2.message);
+            }
+          }
+        } else {
+          // Mac或其他系统：直接使用460800（不支持420000）
+          console.log(`[BaudRate] ${currentOS}系统：直接使用460800波特率连接（不支持420000）`);
+          try {
+            await selectedPort.open({ baudRate: 460800 });
+            baudRate = 460800;
+            currentBaudRate = 460800;
+            console.log('[BaudRate] 成功使用460800波特率连接');
+          } catch (error) {
+            console.error('[BaudRate] 460800波特率连接失败:', error.message);
+            throw new Error('无法使用460800波特率连接: ' + error.message);
+          }
+        }
         port = selectedPort;
         writer = port.writable.getWriter();
         reader = port.readable.getReader();
@@ -1564,6 +1641,70 @@
     }
 
     // 通道映射
+    // 波特率切换函数
+    async function switchBaudRate(newBaudRate) {
+      if (!port || !isSerialConnected) {
+        console.error('[BaudRate] 无法切换波特率：串口未连接');
+        return false;
+      }
+      
+      try {
+        console.log(`[BaudRate] 正在切换波特率: ${currentBaudRate} -> ${newBaudRate}`);
+        
+        // 停止读取循环
+        isSerialConnected = false;
+        
+        // 释放reader
+        if (reader) {
+          try {
+            await reader.cancel();
+            reader.releaseLock();
+          } catch (e) {
+            console.warn('[BaudRate] 释放reader时出错:', e);
+          }
+          reader = null;
+        }
+        
+        // 释放writer
+        if (writer) {
+          try {
+            writer.releaseLock();
+          } catch (e) {
+            console.warn('[BaudRate] 释放writer时出错:', e);
+          }
+          writer = null;
+        }
+        
+        // 关闭串口
+        try {
+          await port.close();
+        } catch (e) {
+          console.warn('[BaudRate] 关闭串口时出错:', e);
+        }
+        
+        // 重新打开串口（新波特率）
+        await port.open({ baudRate: newBaudRate });
+        
+        // 重新获取writer和reader
+        writer = port.writable.getWriter();
+        reader = port.readable.getReader();
+        
+        // 更新当前波特率
+        currentBaudRate = newBaudRate;
+        isSerialConnected = true;
+        
+        // 重新启动读取循环
+        readLoop();
+        
+        console.log(`[BaudRate] 波特率切换成功: ${newBaudRate}`);
+        return true;
+      } catch (error) {
+        console.error(`[BaudRate] 切换波特率失败 (${newBaudRate}):`, error);
+        isSerialConnected = false;
+        return false;
+      }
+    }
+
     // 断开连接逻辑
     disconnectBtn.onclick = async () => {
       if (!isSerialConnected) return;
@@ -3349,13 +3490,13 @@ const calibStyle = document.createElement('style');
         if(upDataDev=="sensor")
         {
           
-          setTimeout(async () => {
-            await writer.write(new Uint8Array([0x60, 0xF1, 0x55, 0x55]));  
-          }, 500);
+          // setTimeout(async () => {
+          //   await writer.write(new Uint8Array([0x60, 0xF1, 0x55, 0x55]));  
+          // }, 500);
 
-          setTimeout(async () => {
-            await writer.write(new Uint8Array([0xA5, 0x66, 0x01, 0x0D, 0x0A]));
-          }, 500);
+          // setTimeout(async () => {
+          //   await writer.write(new Uint8Array([0xA5, 0x66, 0x01, 0x0D, 0x0A]));
+          // }, 500);
           
           upDataFlag = 1;
           updateFwUI();
@@ -3486,16 +3627,47 @@ const calibStyle = document.createElement('style');
     let fwSend31Timer = null;
     let fwSend31Count = 0;
     let fwLastSerialLen = 0;
+    let fwBaudRateDetectionTimer = null; // 波特率检测定时器
+    let fwCurrentTryBaudRate = 460800; // 当前尝试的波特率，优先460800
+    let fwBaudRateCheckCount = 0; // 检测计数，用于3秒超时
+    
     function startFwReadyCheck() {
       fwReadyCheckActive = true;
       fwCCount = 0;
+      fwBaudRateCheckCount = 0;
+      fwCurrentTryBaudRate = 460800; // 优先尝试460800
       if (fwUpdateBtn) fwUpdateBtn.disabled = true; // 再加一层保险
       fwStatus.textContent = LANGS[currentLang]['fw-wait-update-cmd'];
       if (fwReadyCheckTimer) clearInterval(fwReadyCheckTimer);
+      if (fwBaudRateDetectionTimer) clearInterval(fwBaudRateDetectionTimer);
+      
+      // 如果是sensor更新，启动波特率检测
+      if(upDataDev=="sensor"&&upDataFlag==1) {
+        if (currentOS === 'Windows') {
+          // Windows系统：启动波特率切换检测（在460800和420000之间切换）
+          baudRateDetectionActive = true;
+          console.log('[BaudRate] Windows系统：开始sensor更新模式，将在460800和420000之间切换检测');
+          // 立即切换到460800并开始检测
+          switchBaudRateForDetection(460800).then(() => {
+            // 启动检测循环
+            startBaudRateDetection();
+          });
+        } else {
+          // Mac系统：不支持420000，只使用460800，不进行切换
+          baudRateDetectionActive = false;
+          console.log(`[BaudRate] ${currentOS}系统：sensor更新模式，仅使用460800波特率（不支持420000切换）`);
+          // 确保使用460800波特率
+          if (currentBaudRate !== 460800) {
+            switchBaudRateForDetection(460800);
+          }
+        }
+      }
+      
       // 只监听，不再定时发0x31
       fwReadyCheckTimer = setInterval(() => {
         if (!fwReadyCheckActive) return;
         if (fwUpdateBtn) fwUpdateBtn.disabled = true;
+
         // 检查serialBuffer是否有数据
         if (serialBuffer.length > 0) {
           // 检查是否有连续3个C
@@ -3510,9 +3682,11 @@ const calibStyle = document.createElement('style');
           }
           if (cStreak >= 3) {
             fwReadyCheckActive = false;
+            baudRateDetectionActive = false;
+            if (fwBaudRateDetectionTimer) clearInterval(fwBaudRateDetectionTimer);
             if (fwUpdateBtn) {
               fwUpdateBtn.disabled = false;
-              console.log('[FW] 收到连续3个C，解锁确认更新按钮');
+              console.log(`[FW] 收到连续3个C，解锁确认更新按钮 (当前波特率: ${currentBaudRate})`);
             }
             fwStatus.textContent =LANGS[currentLang]['fw-ready-update'];
             upDataFlag = 2;
@@ -3524,6 +3698,192 @@ const calibStyle = document.createElement('style');
           }
         }
       }, 20); // 监听频率可适当提高
+    }
+    
+    // 波特率检测专用切换函数（用于sensor更新模式）
+    async function switchBaudRateForDetection(targetBaudRate) {
+      if (!port || !isSerialConnected) {
+        console.error('[BaudRate] 无法切换波特率：串口未连接');
+        return false;
+      }
+      
+      // 如果当前已经是目标波特率，不需要切换
+      if (currentBaudRate === targetBaudRate) {
+        console.log(`[BaudRate] 当前已是${targetBaudRate}波特率，无需切换`);
+        // 清空buffer并发送检测命令
+        serialBuffer = [];
+        sendSensorDetectionCommands();
+        return true;
+      }
+      
+      try {
+        console.log(`[BaudRate] 检测模式：切换波特率 ${currentBaudRate} -> ${targetBaudRate}`);
+        
+        // 停止读取循环
+        isSerialConnected = false;
+        
+        // 释放reader
+        if (reader) {
+          try {
+            await reader.cancel();
+            reader.releaseLock();
+          } catch (e) {
+            console.warn('[BaudRate] 释放reader时出错:', e);
+          }
+          reader = null;
+        }
+        
+        // 释放writer
+        if (writer) {
+          try {
+            writer.releaseLock();
+          } catch (e) {
+            console.warn('[BaudRate] 释放writer时出错:', e);
+          }
+          writer = null;
+        }
+        
+        // 关闭串口
+        try {
+          await port.close();
+        } catch (e) {
+          console.warn('[BaudRate] 关闭串口时出错:', e);
+        }
+        
+        // 重新打开串口（新波特率）
+        try {
+          await port.open({ baudRate: targetBaudRate });
+        } catch (error) {
+          console.error(`[BaudRate] 无法切换到${targetBaudRate}波特率:`, error.message);
+          console.log(`[BaudRate] 可能是Mac系统不支持${targetBaudRate}波特率`);
+          // 如果切换失败，尝试恢复原波特率
+          try {
+            await port.open({ baudRate: currentBaudRate });
+            writer = port.writable.getWriter();
+            reader = port.readable.getReader();
+            isSerialConnected = true;
+            readLoop();
+          } catch (e) {
+            console.error('[BaudRate] 恢复原波特率也失败:', e);
+            isSerialConnected = false;
+          }
+          return false;
+        }
+        
+        // 重新获取writer和reader
+        writer = port.writable.getWriter();
+        reader = port.readable.getReader();
+        
+        // 更新当前波特率
+        currentBaudRate = targetBaudRate;
+        fwCurrentTryBaudRate = targetBaudRate;
+        isSerialConnected = true;
+        
+        // 重新启动读取循环
+        readLoop();
+        
+        // 清空buffer并发送检测命令
+        serialBuffer = [];
+        sendSensorDetectionCommands();
+        
+        console.log(`[BaudRate] 检测模式：波特率切换成功 ${targetBaudRate}`);
+        return true;
+      } catch (error) {
+        console.error(`[BaudRate] 检测模式：切换波特率失败 (${targetBaudRate}):`, error);
+        isSerialConnected = false;
+        return false;
+      }
+    }
+    
+    // 发送sensor检测命令
+    async function sendSensorDetectionCommands() {
+      if (!writer) return;
+      try {
+        setTimeout(async () => {
+          if (writer) await writer.write(new Uint8Array([0x60, 0xF1, 0x55, 0x55]));  
+        }, 20);
+        
+        setTimeout(async () => {
+          if (writer) await writer.write(new Uint8Array([0xA5, 0x66, 0x01, 0x0D, 0x0A]));
+        }, 20);
+      } catch (e) {
+        console.error('[BaudRate] 发送检测命令失败:', e);
+      }
+    }
+    
+    // 启动波特率检测循环（每3秒切换一次，仅Windows系统）
+    function startBaudRateDetection() {
+      if (!baudRateDetectionActive) return;
+      
+      // Mac系统不支持420000，不进行切换检测
+      if (currentOS !== 'Windows') {
+        console.log(`[BaudRate] ${currentOS}系统不支持420000波特率切换，停止检测`);
+        baudRateDetectionActive = false;
+        return;
+      }
+      
+      if (fwBaudRateDetectionTimer) clearInterval(fwBaudRateDetectionTimer);
+      
+      fwBaudRateDetectionTimer = setInterval(async () => {
+        if (!baudRateDetectionActive || !fwReadyCheckActive) {
+          if (fwBaudRateDetectionTimer) clearInterval(fwBaudRateDetectionTimer);
+          return;
+        }
+        
+        // 再次检查操作系统（防止运行时变化）
+        if (currentOS !== 'Windows') {
+          console.log(`[BaudRate] ${currentOS}系统不支持420000波特率切换，停止检测`);
+          baudRateDetectionActive = false;
+          if (fwBaudRateDetectionTimer) clearInterval(fwBaudRateDetectionTimer);
+          return;
+        }
+        
+        fwBaudRateCheckCount++;
+        console.log(`[BaudRate] 检测周期 ${fwBaudRateCheckCount}：当前尝试 ${fwCurrentTryBaudRate} 波特率`);
+        
+        // 检查是否收到3个C
+        let hasThreeC = false;
+        if (serialBuffer.length > 0) {
+          let cStreak = 0;
+          for (let i = 0; i < serialBuffer.length; i++) {
+            if (serialBuffer[i] === 0x43) {
+              cStreak++;
+              if (cStreak >= 3) {
+                hasThreeC = true;
+                break;
+              }
+            } else {
+              cStreak = 0;
+            }
+          }
+        }
+        
+        if (hasThreeC) {
+          // 收到3个C，停止检测
+          console.log(`[BaudRate] 检测到3个C，确认波特率为 ${fwCurrentTryBaudRate}`);
+          baudRateDetectionActive = false;
+          if (fwBaudRateDetectionTimer) clearInterval(fwBaudRateDetectionTimer);
+          return;
+        }
+        
+        // 没收到3个C，切换到另一个波特率（仅Windows系统）
+        if (fwCurrentTryBaudRate === 460800) {
+          // 当前是460800，切换到420000
+          console.log('[BaudRate] 460800未检测到3个C，切换到420000尝试');
+          const success = await switchBaudRateForDetection(420000);
+          if (!success) {
+            // 如果无法切换到420000，继续用460800
+            console.log('[BaudRate] 无法切换到420000，继续使用460800');
+            fwCurrentTryBaudRate = 460800;
+            serialBuffer = [];
+            sendSensorDetectionCommands();
+          }
+        } else {
+          // 当前是420000，切换回460800
+          console.log('[BaudRate] 420000未检测到3个C，切换回460800尝试');
+          await switchBaudRateForDetection(460800);
+        }
+      }, 3000); // 每3秒检测一次
     }
     // 进入固件更新页面时自动启动检测
     //const _orig_initFwPage = typeof initFwPage === 'function' ? initFwPage : null;
@@ -4444,7 +4804,7 @@ const calibStyle = document.createElement('style');
             <button class="config-menu-btn" data-page="channel-map" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="channel-map">通道映射</button>
             <button class="config-menu-btn" data-page="trim-center" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="trim-center">Trim和Center</button>
             <button class="config-menu-btn" data-page="mode" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="mode">摇杆模式</button>
-            <button class="config-menu-btn" data-page="expo" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="dual-rate-title">大小舵</button>
+            <button class="config-menu-btn" data-page="expo" style="padding:18px 0;display:none;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="dual-rate-title">大小舵</button>
           </div>
           <div id="config-stack" style="flex:1 1 0;background:#fff;border-radius:0 12px 12px 0;box-shadow:0 2px 8px #e0e7ff;padding:32px 36px;min-height:900px;position:relative;">
             <div class="config-stack-page" data-page="channel-map" style="display:none;">
@@ -5380,7 +5740,7 @@ const calibStyle = document.createElement('style');
           
           // 通道查询按钮事件
           if (queryBtn) {
-            queryBtn.onclick = async function() {
+            queryBtn.onclick = function() {
               const channel = channelSelect ? parseInt(channelSelect.value) : 0;
               const channelNames = ['AIL', 'ELE', 'THR', 'RUD'];
               console.log('通道查询:', {
@@ -5389,18 +5749,10 @@ const calibStyle = document.createElement('style');
                 action: '查询通道'
               });
               
-              // 发送查询指令 {0xA5,0x55,0x2B,channel,'\r','\n'}
-              // channel从1开始，所以需要+1
-              if (typeof writer !== 'undefined' && writer) {
-                const channelNum = channel + 1; // 转换为1-4
-                const queryCmd = new Uint8Array([0xA5, 0x55, 0x2B, channelNum, 0x0D, 0x0A]);
-                try {
-                  await writer.write(queryCmd);
-                  console.log('[DR] 发送查询指令:', Array.from(queryCmd).map(x => '0x' + x.toString(16).padStart(2, '0').toUpperCase()).join(' '));
-                } catch (e) {
-                  console.error('[DR] 发送查询指令失败:', e);
-                }
-              }
+              // TODO: 发送查询指令
+              // if (typeof writer !== 'undefined' && writer) {
+              //   // 发送查询指令
+              // }
               
               // 按钮反馈效果
               this.style.transform = 'scale(0.95)';
@@ -5596,7 +5948,7 @@ const calibStyle = document.createElement('style');
           
           // 确认按钮事件
           if (confirmBtn) {
-            confirmBtn.onclick = async function() {
+            confirmBtn.onclick = function() {
               const channel = channelSelect ? parseInt(channelSelect.value) : 0;
               const switchChannel = switchChannelSelect ? parseInt(switchChannelSelect.value) : 0;
               const kLeft = kInputLeft ? parseFloat(kInputLeft.value) : 0;
@@ -5604,51 +5956,24 @@ const calibStyle = document.createElement('style');
               const kRight = kInputRight ? parseFloat(kInputRight.value) : 0;
               const expoRight = expoInputRight ? parseFloat(expoInputRight.value) : 0;
               
-              // 获取反向状态
-              const reverseBtn = document.getElementById('expo-reverse-btn');
-              const isReverse = reverseBtn && reverseBtn.textContent === 'REV' ? 1 : 0;
-              
-              // 转换数据格式
-              // UI范围: -100 到 100
-              // 数据范围: 0 到 200 (100对应UI的0)
-              const channelNum = channel + 1; // 转换为1-4
-              const ctl0 = switchChannel + 1; // 转换为1-6 (SA=1, SB=2, ..., S1=6)
-              const ctl1 = isReverse; // 0=正向, 1=反向
-              const dr0 = Math.round(Math.max(0, Math.min(200, kLeft + 100))); // -100~100 -> 0~200
-              const dr1 = Math.round(Math.max(0, Math.min(200, kRight + 100))); // -100~100 -> 0~200
-              const expo0 = Math.round(Math.max(0, Math.min(200, expoLeft + 100))); // -100~100 -> 0~200
-              const expo1 = Math.round(Math.max(0, Math.min(200, expoRight + 100))); // -100~100 -> 0~200
-              
+              // 这里可以发送数据到设备
               console.log('确认设置:', {
-                channel: channelNum,
-                ctl0: ctl0,
-                ctl1: ctl1,
-                dr0: dr0,
-                dr1: dr1,
-                expo0: expo0,
-                expo1: expo1
+                channel: channel + 1,
+                switchChannel: switchChannel + 1,
+                left: {
+                  rate: kLeft,
+                  expo: expoLeft
+                },
+                right: {
+                  rate: kRight,
+                  expo: expoRight
+                }
               });
               
-              // 发送确认指令 {0xA5,0x55,0x2A,channel,ctl0,ctl1,dr0,dr1,expo0,expo1,'\r','\n'}
-              if (typeof writer !== 'undefined' && writer) {
-                const confirmCmd = new Uint8Array([
-                  0xA5, 0x55, 0x2A,
-                  channelNum,
-                  ctl0,
-                  ctl1,
-                  dr0,
-                  dr1,
-                  expo0,
-                  expo1,
-                  0x0D, 0x0A
-                ]);
-                try {
-                  await writer.write(confirmCmd);
-                  console.log('[DR] 发送确认指令:', Array.from(confirmCmd).map(x => '0x' + x.toString(16).padStart(2, '0').toUpperCase()).join(' '));
-                } catch (e) {
-                  console.error('[DR] 发送确认指令失败:', e);
-                }
-              }
+              // 可以在这里添加发送数据的代码
+              // if (typeof writer !== 'undefined' && writer) {
+              //   // 发送数据协议
+              // }
               
               // 按钮反馈效果
               this.style.transform = 'scale(0.95)';
@@ -6636,14 +6961,6 @@ const calibStyle = document.createElement('style');
               if (this.length >= i + len + 2 && len >0) {
                 const buf = this.slice(i, i+len+2);
                 let parsed = false;
-                if (typeof tryParseDRChannelPacket === 'function') {
-                  parsed = tryParseDRChannelPacket(buf);
-                }
-                if (parsed) {
-                  this.splice(i, len+2);
-                  found = true;
-                  break;
-                }
               }
             }
 
@@ -8124,112 +8441,6 @@ const calibStyle = document.createElement('style');
     }, 0);
     }
 
-    // 解析0x89包，大小舵通道数据
-    function tryParseDRChannelPacket(buf) {
-      if (!buf || buf.length < 3) return false;
-      if (buf[0] !== 0x89) return false;
-      const len = buf[1];
-      // 包格式: [0x89, len, channel, ctl0, ctl1, dr0, dr1, expo0, expo1, crc8]
-      // len应该是8，总长度10字节
-      if (buf.length < len + 2 || len !== 8) return false;
-      
-      // CRC8校验：计算从channel到expo1的7个字节
-      const crc = buf[len+1]; // buf[9]
-      const calcCrc = crc8tab_js(buf.slice(2, 2+len-1), len-1); // 计算buf[2]到buf[8]共7字节
-      if (crc !== calcCrc) {
-        console.log('[DR] CRC校验失败:', '计算值=' + calcCrc.toString(16), '接收值=' + crc.toString(16));
-        return false;
-      }
-      
-      // 解析数据
-      const channel = buf[2]; // 1-4
-      const ctl0 = buf[3];    // SA/SB选择: 0=未选择, 1=SA, 2=SB, 3=SC, 4=SD, 5=SE, 6=S1
-      const ctl1 = buf[4];    // 反向: 0=正向, 1=反向
-      const dr0 = buf[5];      // 左侧Rate值
-      const dr1 = buf[6];      // 右侧Rate值
-      const expo0 = buf[7];   // 左侧Expo值
-      const expo1 = buf[8];   // 右侧Expo值
-      
-      console.log('[DR] 收到大小舵数据:', {
-        channel: channel,
-        ctl0: ctl0,
-        ctl1: ctl1,
-        dr0: dr0,
-        dr1: dr1,
-        expo0: expo0,
-        expo1: expo1
-      });
-      
-      // 更新UI
-      // channel是1-4，需要转换为0-3用于select
-      const channelIndex = channel - 1;
-      if (channelIndex >= 0 && channelIndex < 4) {
-        // 更新通道选择（如果当前不在该通道，不强制切换）
-        const channelSelect = document.getElementById('expo-channel-select');
-        if (channelSelect && parseInt(channelSelect.value) === channelIndex) {
-          // 更新开关选择
-          const switchChannelSelect = document.getElementById('expo-switch-channel-select');
-          if (switchChannelSelect) {
-            // ctl0: 0=未选择, 1=SA, 2=SB, 3=SC, 4=SD, 5=SE, 6=S1
-            // select的value是0-5对应SA-S1
-            if (ctl0 > 0 && ctl0 <= 6) {
-              switchChannelSelect.value = (ctl0 - 1).toString();
-            } else {
-              // 如果未选择(0)，保持当前选择或设为默认
-              // 不强制改变，让用户看到是未选择状态
-            }
-          }
-          
-          // 更新反向按钮状态
-          const reverseBtn = document.getElementById('expo-reverse-btn');
-          if (reverseBtn) {
-            reverseBtn.textContent = ctl1 === 1 ? 'REV' : 'NOR';
-          }
-          
-          // 更新Rate值（数据范围0-200，转换为UI范围-100到100）
-          const kInputLeft = document.getElementById('k-input-left');
-          const kSliderLeft = document.getElementById('k-slider-left');
-          if (kInputLeft && kSliderLeft) {
-            const rateLeft = dr0 - 100; // 0-200 -> -100到100
-            kInputLeft.value = Math.round(rateLeft);
-            kSliderLeft.value = Math.round(rateLeft);
-          }
-          
-          const kInputRight = document.getElementById('k-input-right');
-          const kSliderRight = document.getElementById('k-slider-right');
-          if (kInputRight && kSliderRight) {
-            const rateRight = dr1 - 100; // 0-200 -> -100到100
-            kInputRight.value = Math.round(rateRight);
-            kSliderRight.value = Math.round(rateRight);
-          }
-          
-          // 更新Expo值（数据范围0-200，转换为UI范围-100到100）
-          const expoInputLeft = document.getElementById('expo-input-left');
-          const expoSliderLeft = document.getElementById('expo-slider-left');
-          if (expoInputLeft && expoSliderLeft) {
-            const expoLeft = expo0 - 100; // 0-200 -> -100到100
-            expoInputLeft.value = Math.round(expoLeft);
-            expoSliderLeft.value = Math.round(expoLeft);
-          }
-          
-          const expoInputRight = document.getElementById('expo-input-right');
-          const expoSliderRight = document.getElementById('expo-slider-right');
-          if (expoInputRight && expoSliderRight) {
-            const expoRight = expo1 - 100; // 0-200 -> -100到100
-            expoInputRight.value = Math.round(expoRight);
-            expoSliderRight.value = Math.round(expoRight);
-          }
-          
-          // 重新绘制图表
-          if (typeof drawExpoGraph === 'function') {
-            drawExpoGraph();
-          }
-        }
-      }
-      
-      return true;
-    }
-
     // 在全局添加解析函数：
     function tryParseTrimPacket(buf) {
       if (!buf || buf.length < 3) return false;
@@ -8698,6 +8909,9 @@ const calibStyle = document.createElement('style');
         'send-success':'Sent',
         'trim-left-reset-test':'Trim left reset function',
         'trim-right-reset-test':'Trim right reset function',
+        'serial-not-found': 'No available serial port device found. If the device is just inserted, please wait a few seconds and try again.',
+        'serial-access-failed': 'Serial port access failed: ',
+        'serial-permission-denied': 'User has denied serial port access permission, or the browser environment does not support serial port access.',
         // ... 你可以继续补充 ...        
         // ... you can continue ...
       }
@@ -8950,6 +9164,6 @@ window.addEventListener('load', function() {
 });
 
   </script>
-  <div id="app-version" style="position:fixed; bottom:10px; right:14px; color:#6b7a99; font-size:12px; z-index:1000; pointer-events:none;">Version 1.6.3</div>
+  <div id="app-version" style="position:fixed; bottom:10px; right:14px; color:#6b7a99; font-size:12px; z-index:1000; pointer-events:none;">Version 1.7.0</div>
 </body>
 </html> 
