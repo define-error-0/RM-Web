@@ -1070,8 +1070,8 @@
           var commBtn = document.querySelector('.menu-btn[data-page="comm"]');
           if (commBtn) commBtn.style.display = 'none'; 
         -->
-        <button data-i18n="comm-uart" class="menu-btn" data-page="comm">串口通信</button>
-        <!--<button class="menu-btn" data-page="comm" style="display:none;">串口通信</button> -->
+        <!--button data-i18n="comm-uart" class="menu-btn" data-page="comm">串口通信</button>-->
+        <button class="menu-btn" data-page="comm" style="display:none;">串口通信</button>
         <button data-i18n='attr-dev' class="menu-btn" data-page="attr">设备概况</button>
         <button data-i18n='config-dev' class="menu-btn" data-page="config">设备配置</button>
         <button data-i18n='net-config' class="menu-btn" data-page="net">无线配置</button>
@@ -5025,7 +5025,7 @@ const calibStyle = document.createElement('style');
             <button class="config-menu-btn" data-page="channel-map" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="channel-map">通道映射</button>
             <button class="config-menu-btn" data-page="trim-center" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="trim-center">Trim和Center</button>
             <button class="config-menu-btn" data-page="mode" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="mode">摇杆模式</button>
-            <button class="config-menu-btn" data-page="expo" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="dual-rate-title">大小舵</button>
+            <button class="config-menu-btn" data-page="expo" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="dual-rate-title">大小舵</button> 
           </div>
           <div id="config-stack" style="flex:1 1 0;background:#fff;border-radius:0 12px 12px 0;box-shadow:0 2px 8px #e0e7ff;padding:32px 36px;min-height:900px;position:relative;">
             <div class="config-stack-page" data-page="channel-map" style="display:none;">
@@ -6419,21 +6419,37 @@ const calibStyle = document.createElement('style');
               if (window.channelMap.channelMapSend) {
                 window.channelMap.channelMapSend.splice(4, 10, ...dataTmp);
               }
-              for(let i=4;i<10;i++){  
-                const sel = document.getElementById(`ch-map-in2-${i}`); 
-                if (sel) {
-                    //console.log('sel:',sel.value);          
-                    sel.value = window.channelMap.channelMapSend[i];
-                  };
-                }
-              if (confirmMapBtn) {
-                confirmMapBtn.click(); // 触发确认按钮
-              }  
+              // for(let i=4;i<10;i++){  
+              //   const sel = document.getElementById(`ch-map-in2-${i}`); 
+              //   if (sel) {
+              //       //console.log('sel:',sel.value);          
+              //       sel.value = window.channelMap.channelMapSend[i];
+              //     };
+              //   }
+
+              // setTimeout(()=>{
+              //     if (confirmMapBtn) {
+              //       confirmMapBtn.click(); // 触发确认按钮
+              //     }  
+              //   }, 200);
+
               setTimeout(()=>{
                 if (typeof writer !== 'undefined' && writer) {
+                  console.log('发送通道数据');
                   writer.write(new Uint8Array([0xA5,0x55,0x31,0x0D,0x0A]));
                 }
-              }, 1000);
+              }, 200);
+
+
+              setTimeout(()=>{
+                if (typeof writer !== 'undefined' && writer) {
+                  console.log('发送通道查询数据');
+                  writer.write(new Uint8Array([0xA5,0x55,0x0D,0,0,0x0D,0x0A]));
+                }
+              }, 200);
+
+
+
             }
           }
 
@@ -6804,6 +6820,16 @@ const calibStyle = document.createElement('style');
         window._onCalibMapReceived();
         window._onCalibMapReceived = null;
       }
+
+      for(let i=4;i<10;i++){    
+      const sel = document.getElementById(`ch-map-in2-${i}`); 
+      if (sel) {
+          //console.log('sel:',sel.value);          
+          sel.value = window.channelMap.channelMapSend[i];
+        };
+      }
+
+
       return channelMap;
     }
     // 在tryParseTrimAndMidPacket里收到包后，重置标志
@@ -7745,10 +7771,10 @@ const calibStyle = document.createElement('style');
       html += '<span style="color:#1e40af;font-size:1.4em;font-weight:700;text-shadow:0 1px 2px rgba(255,255,255,0.8);">设备属性</span>';
       html += '</div>';
       html += `<div style="margin: 24px 0 0 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; max-width: 100%; justify-items: center;">
-        <button id="enter-passthrough-btn" style="background: linear-gradient(90deg,#27ae60 0%,#229954 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">进入透传模式</button>
-        <button id="exit-passthrough-btn" style="background: linear-gradient(90deg,#f39c12 0%,#e67e22 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">退出透传模式</button>
-        <button id="enable-wifi-btn" style="background: linear-gradient(90deg,#3498db 0%,#2980b9 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">开启WiFi模式</button>
-        <button id="disable-wifi-btn" style="background: linear-gradient(90deg,#95a5a6 0%,#7f8c8d 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">关闭WiFi模式</button>
+        <button id="enter-passthrough-btn" data-i18n="enter-passthrough" style="background: linear-gradient(90deg,#27ae60 0%,#229954 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">进入透传模式</button>
+        <button id="exit-passthrough-btn" data-i18n="exit-passthrough" style="background: linear-gradient(90deg,#f39c12 0%,#e67e22 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">退出透传模式</button>
+        <button id="enable-wifi-btn" data-i18n="open-wifi" style="background: linear-gradient(90deg,#3498db 0%,#2980b9 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">开启WiFi模式</button>
+        <button id="disable-wifi-btn" data-i18n="close-wifi" style="background: linear-gradient(90deg,#95a5a6 0%,#7f8c8d 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">关闭WiFi模式</button>
         <button id="factory-reset-btn" data-i18n="factory-reset" style="background: linear-gradient(90deg,#e74c3c 0%,#c0392b 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">恢复出厂设置!</button>
         <button id="exit-fw-update-btn" data-i18n="exit-fw-update" style="background: linear-gradient(90deg,#3498db 0%,#2980b9 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">退出固件更新</button>
       </div>`;
@@ -9348,6 +9374,10 @@ const calibStyle = document.createElement('style');
         'trim-right-reset-test':'右Trim复位功能',
         'dual-rate-title':'大小舵',
         'dual-rate-title-text':'大小舵',
+        'enter-passthrough': '进入透传模式',
+        'exit-passthrough': '退出透传模式',
+        'open-wifi': '开启WiFi模式',
+        'close-wifi': '关闭WiFi模式',
         // ... 你可以继续补充 ...
       },
       en: {
@@ -9521,6 +9551,10 @@ const calibStyle = document.createElement('style');
         'serial-permission-denied': 'User has denied serial port access permission, or the browser environment does not support serial port access.',
         'dual-rate-title': 'Dual Rate',
         'dual-rate-title-text': 'Dual Rate',
+        'enter-passthrough': 'Enter Passthrough',
+        'exit-passthrough': 'Exit Passthrough',
+        'open-wifi': 'Open WiFi',
+        'close-wifi': 'Close WiFi',
         // ... 你可以继续补充 ...        
         // ... you can continue ...
       }
