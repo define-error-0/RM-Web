@@ -1141,6 +1141,13 @@
               <input type="checkbox" id="recv-hex">
               <label style="font-size:0.98em;color:#3358e0;font-weight:bold;"  data-i18n="recv-hex-checked">16进制显示接收内容</label>
             </div>
+            <div class="form-group" style="margin-top:18px;margin-bottom:18px;">
+              <label for="manual-baudrate" style="font-size:1.08em;color:#3358e0;margin-bottom:8px;font-weight:500;">手动选择波特率</label>
+              <div style="display:flex;gap:10px;width:100%;">
+                <input id="manual-baudrate" type="number" min="1200" max="921600" step="1" placeholder="请输入波特率" style="flex:1;padding:12px 14px;border:1.5px solid #d0d7e6;border-radius:8px;font-size:1.08em;outline:none;transition:border 0.2s;">
+                <button id="apply-baudrate" style="padding:12px 24px;background:linear-gradient(90deg,#4f8cff 0%,#3358e0 100%);color:#fff;border:none;border-radius:8px;font-size:1.08em;cursor:pointer;transition:opacity 0.2s;white-space:nowrap;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">确认</button>
+              </div>
+            </div>
             <button class="connect-btn" id="disconnect" style="margin-top:18px;background:linear-gradient(90deg,#e74c3c 0%,#c0392b 100%);" data-i18n="comm-disconnect-btn">断开连接</button>
           </div>
         </div>
@@ -1719,6 +1726,70 @@
       hideDeviceInfoBar();
     };
 
+    // 手动选择波特率功能
+    const manualBaudrateInput = document.getElementById('manual-baudrate');
+    const applyBaudrateBtn = document.getElementById('apply-baudrate');
+    
+    // 初始化时显示当前波特率
+    if (manualBaudrateInput) {
+      manualBaudrateInput.value = currentBaudRate;
+    }
+    
+    // 确认按钮点击事件
+    applyBaudrateBtn.onclick = async () => {
+      if (!isSerialConnected) {
+        alert('请先连接串口');
+        return;
+      }
+      
+      const newBaudRate = parseInt(manualBaudrateInput.value);
+      
+      // 验证波特率范围
+      if (isNaN(newBaudRate) || newBaudRate < 1200 || newBaudRate > 921600) {
+        alert('请输入有效的波特率（1200-921600）');
+        return;
+      }
+      
+      // 如果和当前波特率相同，不需要切换
+      if (newBaudRate === currentBaudRate) {
+        alert(`当前已经是 ${newBaudRate} 波特率`);
+        return;
+      }
+      
+      // 显示切换中状态
+      applyBaudrateBtn.disabled = true;
+      applyBaudrateBtn.textContent = '切换中...';
+      applyBaudrateBtn.style.opacity = '0.6';
+      
+      try {
+        const success = await switchBaudRate(newBaudRate);
+        if (success) {
+          alert(`波特率已成功切换到 ${newBaudRate}`);
+          // 更新输入框显示当前波特率
+          manualBaudrateInput.value = currentBaudRate;
+        } else {
+          alert(`波特率切换失败，请检查波特率是否支持`);
+        }
+      } catch (error) {
+        console.error('切换波特率时出错:', error);
+        alert(`切换波特率时出错: ${error.message}`);
+      } finally {
+        // 恢复按钮状态
+        applyBaudrateBtn.disabled = false;
+        applyBaudrateBtn.textContent = '确认';
+        applyBaudrateBtn.style.opacity = '1';
+      }
+    };
+    
+    // 支持回车键确认
+    if (manualBaudrateInput) {
+      manualBaudrateInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          applyBaudrateBtn.click();
+        }
+      });
+    }
+
     // 发送数据（发送后不清空输入框）
     sendBtn.onclick = async () => {
       const data = inputBox.value.trim(); 
@@ -1831,12 +1902,12 @@
       // 设备属性包超时监控
       if (window._waitingDevAttr) clearTimeout(window._waitingDevAttr);
       window._waitingDevAttr = setTimeout(() => {
-        console.warn('[设备属性] 超时未收到设备属性包！');
+        //console.warn('[设备属性] 超时未收到设备属性包！');
       }, 2000);
       
       // 添加循环超时保护，防止无限循环
       loopTimeout = setTimeout(() => {
-        console.warn('[readLoop] 循环超时，强制退出');
+        //console.warn('[readLoop] 循环超时，强制退出');
         isReading = false;
       }, 30000); // 30秒超时
       
@@ -2370,6 +2441,39 @@
           }
           entry.chunkNums.add(chunkNum);
           entry.chunks.push(pkt.slice(po)); // 从po开始，即payload部分，不含CRC
+        } else if (type === 0x29) {
+          // 处理ping包，提取名字（CRSF协议）
+          let po = 0;
+          po++; // 跳过type
+          // CRSF ping包可能包含srcNode和dstNode，然后才是名字
+          // 如果包长度足够，尝试跳过可能的头部信息
+          if (pkt.length > 2) {
+            // 尝试跳过srcNode和dstNode（如果存在）
+            // 通常名字从第3个字节开始（跳过type, srcNode, dstNode）
+            let nameStart = po;
+            if (pkt.length > 3) {
+              // 如果包足够长，可能包含srcNode和dstNode
+              nameStart = po + 2; // 跳过可能的srcNode和dstNode
+            }
+            // 从nameStart开始提取名字（通常是字符串，可能以null结尾）
+            const nameBytes = [];
+            for (let i = nameStart; i < pkt.length; i++) {
+              if (pkt[i] === 0) break; // 遇到null终止符
+              if (pkt[i] < 32 || pkt[i] > 126) break; // 遇到非可打印字符，停止
+              nameBytes.push(pkt[i]);
+            }
+            // 将字节转换为字符串
+            if (nameBytes.length > 0) {
+              const name = String.fromCharCode(...nameBytes).trim();
+              if (name) {
+                // 保存名字到全局变量
+                window._crsfPingName = name;
+                // 更新子菜单右上角显示
+                updatePingNameDisplay(name);
+                // console.log('[CRSF] 收到ping包(0x29)，名字:', name);
+              }
+            }
+          }
         }
         offset += packetTotalLen;
       }
@@ -2393,6 +2497,55 @@
       container.innerHTML = '';
       renderParameterControls(paramList, container);
       return paramList;
+    }
+
+    // 更新ping名字显示到无线配置页面标题行的右上角
+    function updatePingNameDisplay(name) {
+      // 查找无线配置页面的标题行容器
+      const pageNet = document.getElementById('page-net');
+      if (!pageNet) {
+        console.warn('[CRSF] page-net 未找到，无法显示ping名字');
+        return;
+      }
+      
+      // 查找标题行（包含"LUA配置"的div，第一个子元素）
+      const commContainer = pageNet.querySelector('.comm-container');
+      if (!commContainer) {
+        console.warn('[CRSF] comm-container 未找到');
+        return;
+      }
+      
+      const titleRow = commContainer.children[0];
+      if (!titleRow) {
+        console.warn('[CRSF] 标题行未找到，无法显示ping名字');
+        return;
+      }
+      
+      // 确保标题行有flex布局（如果还没有）
+      if (titleRow.style.display !== 'flex') {
+        titleRow.style.display = 'flex';
+      }
+      if (!titleRow.style.justifyContent) {
+        titleRow.style.justifyContent = 'space-between';
+      }
+      if (!titleRow.style.alignItems) {
+        titleRow.style.alignItems = 'center';
+      }
+      
+      // 查找或创建显示元素
+      let pingNameDisplay = document.getElementById('crsf-ping-name');
+      if (!pingNameDisplay) {
+        pingNameDisplay = document.createElement('div');
+        pingNameDisplay.id = 'crsf-ping-name';
+        pingNameDisplay.style.cssText = 'color:#3358e0;font-weight:bold;font-size:1.1em;margin-left:auto;padding:6px 12px;background:#f4f8ff;border-radius:6px;box-shadow:0 1px 4px rgba(79,140,255,0.15);white-space:nowrap;';
+        // 插入到标题行的最后（在按钮之后）
+        titleRow.appendChild(pingNameDisplay);
+      }
+      
+      // 更新显示内容
+      pingNameDisplay.textContent = name;
+      pingNameDisplay.style.display = 'block';
+      // console.log('[CRSF] ping名字已显示在标题行右上角:', name);
     }
 
     // 发送参数设置命令
@@ -3280,10 +3433,23 @@
             sendCalibCommand(); // 立即发送第一次
           }
 
+          // 初始化数据源状态：true为原始数据，false为输出数据
+          if (typeof window._channelDataSourceRaw === 'undefined') {
+            window._channelDataSourceRaw = true;
+          }
+          
           window._globalChannelTask = {
             channelRequest: () => {
-              //console.log('[定时器] 发送 0xA5,0x55,0x02,0x0D,0x0A');
-              if (writer) writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A]));
+              //console.log('[定时器] 发送数据源:', window._channelDataSourceRaw ? '原始数据' : '输出数据');
+              if (writer) {
+                // if (window._channelDataSourceRaw) {
+                  // 原始数据
+                  writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A]));
+                // } else {
+                //   // 输出数据
+                //   writer.write(new Uint8Array([0xA5,0x55,0x1B,0x0D,0x0A]));
+                // }
+              }
             },
             commandRequest: () => {}
           };
@@ -3628,6 +3794,7 @@ const calibStyle = document.createElement('style');
     let fwSend31Count = 0;
     let fwLastSerialLen = 0;
     let fwBaudRateDetectionTimer = null; // 波特率检测定时器
+    let fwSensorDetectionTimer = null; // sensor检测命令持续发送定时器
     let fwCurrentTryBaudRate = 460800; // 当前尝试的波特率，优先460800
     let fwBaudRateCheckCount = 0; // 检测计数，用于3秒超时
     
@@ -3640,6 +3807,7 @@ const calibStyle = document.createElement('style');
       fwStatus.textContent = LANGS[currentLang]['fw-wait-update-cmd'];
       if (fwReadyCheckTimer) clearInterval(fwReadyCheckTimer);
       if (fwBaudRateDetectionTimer) clearInterval(fwBaudRateDetectionTimer);
+      if (fwSensorDetectionTimer) clearInterval(fwSensorDetectionTimer);
       
       // 如果是sensor更新，启动波特率检测
       if(upDataDev=="sensor"&&upDataFlag==1) {
@@ -3684,6 +3852,7 @@ const calibStyle = document.createElement('style');
             fwReadyCheckActive = false;
             baudRateDetectionActive = false;
             if (fwBaudRateDetectionTimer) clearInterval(fwBaudRateDetectionTimer);
+            if (fwSensorDetectionTimer) clearInterval(fwSensorDetectionTimer);
             if (fwUpdateBtn) {
               fwUpdateBtn.disabled = false;
               console.log(`[FW] 收到连续3个C，解锁确认更新按钮 (当前波特率: ${currentBaudRate})`);
@@ -3795,20 +3964,68 @@ const calibStyle = document.createElement('style');
       }
     }
     
-    // 发送sensor检测命令
+    // 发送sensor检测命令（持续发送3秒，每200ms发送一次）
     async function sendSensorDetectionCommands() {
       if (!writer) return;
+      
+      // 清除之前的定时器
+      if (fwSensorDetectionTimer) {
+        clearInterval(fwSensorDetectionTimer);
+        fwSensorDetectionTimer = null;
+      }
+      
+      // 立即发送一次
       try {
+        console.log('sendSensorDetectionCommands - 开始持续发送');
         setTimeout(async () => {
           if (writer) await writer.write(new Uint8Array([0x60, 0xF1, 0x55, 0x55]));  
         }, 20);
         
         setTimeout(async () => {
           if (writer) await writer.write(new Uint8Array([0xA5, 0x66, 0x01, 0x0D, 0x0A]));
-        }, 20);
+        }, 40);
       } catch (e) {
         console.error('[BaudRate] 发送检测命令失败:', e);
       }
+      
+      // 启动定时器，每200ms发送一次，持续3秒（3秒后会切换波特率）
+      let sendCount = 0;
+      const maxSends = 15; // 3秒 / 200ms = 15次
+      //console.log('[BaudRate] 启动持续发送定时器，将每200ms发送一次，持续3秒');
+      fwSensorDetectionTimer = setInterval(async () => {
+        //console.log('[BaudRate] 定时器触发，sendCount:', sendCount, 'writer:', !!writer, 'baudRateDetectionActive:', baudRateDetectionActive, 'fwReadyCheckActive:', fwReadyCheckActive);
+        
+        if (!writer || !baudRateDetectionActive || !fwReadyCheckActive) {
+          //console.log('[BaudRate] 条件不满足，停止定时器');
+          if (fwSensorDetectionTimer) {
+            clearInterval(fwSensorDetectionTimer);
+            fwSensorDetectionTimer = null;
+          }
+          return;
+        }
+        
+        sendCount++;
+        //console.log('[BaudRate] 准备发送，当前次数:', sendCount, '/', maxSends);
+        
+        if (sendCount >= maxSends) {
+          // 3秒到了，停止发送（等待切换波特率）
+          //console.log('[BaudRate] 已发送', maxSends, '次，停止定时器');
+          if (fwSensorDetectionTimer) {
+            clearInterval(fwSensorDetectionTimer);
+            fwSensorDetectionTimer = null;
+          }
+          return;
+        }
+        
+        try {
+          //console.log('[BaudRate] 持续发送检测命令 - 第', sendCount, '次');
+          if (writer) await writer.write(new Uint8Array([0x60, 0xF1, 0x55, 0x55]));  
+          await new Promise(resolve => setTimeout(resolve, 20)); // 等待20ms
+          if (writer) await writer.write(new Uint8Array([0xA5, 0x66, 0x01, 0x0D, 0x0A]));
+        } catch (e) {
+          console.error('[BaudRate] 持续发送检测命令失败:', e);
+        }
+      }, 100); // 每100ms发送一次
     }
     
     // 启动波特率检测循环（每3秒切换一次，仅Windows系统）
@@ -3823,10 +4040,12 @@ const calibStyle = document.createElement('style');
       }
       
       if (fwBaudRateDetectionTimer) clearInterval(fwBaudRateDetectionTimer);
+      if (fwSensorDetectionTimer) clearInterval(fwSensorDetectionTimer);
       
       fwBaudRateDetectionTimer = setInterval(async () => {
         if (!baudRateDetectionActive || !fwReadyCheckActive) {
           if (fwBaudRateDetectionTimer) clearInterval(fwBaudRateDetectionTimer);
+          if (fwSensorDetectionTimer) clearInterval(fwSensorDetectionTimer);
           return;
         }
         
@@ -3835,6 +4054,7 @@ const calibStyle = document.createElement('style');
           console.log(`[BaudRate] ${currentOS}系统不支持420000波特率切换，停止检测`);
           baudRateDetectionActive = false;
           if (fwBaudRateDetectionTimer) clearInterval(fwBaudRateDetectionTimer);
+          if (fwSensorDetectionTimer) clearInterval(fwSensorDetectionTimer);
           return;
         }
         
@@ -3863,6 +4083,7 @@ const calibStyle = document.createElement('style');
           console.log(`[BaudRate] 检测到3个C，确认波特率为 ${fwCurrentTryBaudRate}`);
           baudRateDetectionActive = false;
           if (fwBaudRateDetectionTimer) clearInterval(fwBaudRateDetectionTimer);
+          if (fwSensorDetectionTimer) clearInterval(fwSensorDetectionTimer);
           return;
         }
         
@@ -4804,7 +5025,7 @@ const calibStyle = document.createElement('style');
             <button class="config-menu-btn" data-page="channel-map" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="channel-map">通道映射</button>
             <button class="config-menu-btn" data-page="trim-center" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="trim-center">Trim和Center</button>
             <button class="config-menu-btn" data-page="mode" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="mode">摇杆模式</button>
-            <button class="config-menu-btn" data-page="expo" style="padding:18px 0;display:none;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="dual-rate-title">大小舵</button>
+            <button class="config-menu-btn" data-page="expo" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="dual-rate-title">大小舵</button>
           </div>
           <div id="config-stack" style="flex:1 1 0;background:#fff;border-radius:0 12px 12px 0;box-shadow:0 2px 8px #e0e7ff;padding:32px 36px;min-height:900px;position:relative;">
             <div class="config-stack-page" data-page="channel-map" style="display:none;">
@@ -4859,7 +5080,10 @@ const calibStyle = document.createElement('style');
               </div>
             </div>
             <div class="config-stack-page" data-page="channel" style="display:block;">
-              <div style="font-weight:bold;color:#3358e0;margin-bottom:8px;" data-i18n="channel-monitor">通道监视器</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <div style="font-weight:bold;color:#3358e0;" data-i18n="channel-monitor">通道监视器</div>
+                <button id="channel-data-source-toggle-btn" style="background:linear-gradient(90deg,#3358e0 0%,#4f8cff 100%);color:#fff;border:none;border-radius:8px;padding:8px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;transition:all 0.2s;" data-i18n="channel-data-source-raw">原始数据</button>
+              </div>
               <div style="display:flex;flex-direction:column;gap:18px;">
                 ${(() => {
                   let html = '';
@@ -4978,7 +5202,7 @@ const calibStyle = document.createElement('style');
               </div>
             </div>
             <div class="config-stack-page" data-page="expo" style="display:none;">
-              <div style="font-weight:bold;color:#3358e0;margin-bottom:24px;font-size:1.22em;" data-i18n="dual-rate-title">Dual Rate</div>
+              <div style="font-weight:bold;color:#3358e0;margin-bottom:24px;font-size:1.22em;" data-i18n="dual-rate-title-text">Dual Rate</div>
               <div style="display:flex;flex-direction:column;gap:24px;">
                 <!-- 通道选择和开关选择 -->
                 <div style="display:flex;align-items:center;gap:16px;padding:16px;background:#f4f8ff;border-radius:12px;box-shadow:0 2px 8px #e0e7ff;">
@@ -4995,12 +5219,12 @@ const calibStyle = document.createElement('style');
                   </div>                  
                   <label style="color:#3358e0;font-weight:500;min-width:100px;" data-i18n="switch-channel-select">开关选择:</label>
                   <select id="expo-switch-channel-select" style="flex:1;max-width:200px;padding:8px 12px;border:2px solid #e0e7ff;border-radius:8px;background:#fff;color:#3358e0;font-size:1em;outline:none;cursor:pointer;">
-                    <option value="0">SA</option>
-                    <option value="1">SB</option>
-                    <option value="2">SC</option>
-                    <option value="3">SD</option>
-                    <option value="4">SE</option>
-                    <option value="5">S1</option>
+                    <option value="4">SA</option>
+                    <option value="5">SB</option>
+                    <option value="6">SC</option>
+                    <option value="7">SD</option>
+                    <option value="8">SE</option>
+                    <option value="9">S1</option>
                   </select>
                   <!-- 反正向按钮 -->
                   <div style="display:flex;justify-content:center;padding:16px;">
@@ -5743,16 +5967,21 @@ const calibStyle = document.createElement('style');
             queryBtn.onclick = function() {
               const channel = channelSelect ? parseInt(channelSelect.value) : 0;
               const channelNames = ['AIL', 'ELE', 'THR', 'RUD'];
+              const channelNum = channel + 1; // 从1开始计数 (1,2,3,4)
               console.log('通道查询:', {
-                channel: channel + 1,
+                channel: channelNum,
                 channelName: channelNames[channel] || 'Unknown',
                 action: '查询通道'
               });
               
-              // TODO: 发送查询指令
-              // if (typeof writer !== 'undefined' && writer) {
-              //   // 发送查询指令
-              // }
+              // 发送查询指令 {0xA5,0x55,0x2D,channel,'\r','\n'}
+              if (typeof writer !== 'undefined' && writer) {
+                const queryCmd = new Uint8Array([0xA5, 0x55, 0x2D, channelNum, 0x0D, 0x0A]);
+                writer.write(queryCmd);
+                console.log('[查询指令] 发送通道查询:', channelNum, Array.from(queryCmd).map(x => '0x' + x.toString(16).padStart(2, '0').toUpperCase()).join(' '));
+              } else {
+                console.warn('[查询指令] 串口未连接');
+              }
               
               // 按钮反馈效果
               this.style.transform = 'scale(0.95)';
@@ -6200,6 +6429,38 @@ const calibStyle = document.createElement('style');
               if (confirmMapBtn) {
                 confirmMapBtn.click(); // 触发确认按钮
               }  
+              setTimeout(()=>{
+                if (typeof writer !== 'undefined' && writer) {
+                  writer.write(new Uint8Array([0xA5,0x55,0x31,0x0D,0x0A]));
+                }
+              }, 1000);
+            }
+          }
+
+          // 数据源切换按钮事件
+          const dataSourceToggleBtn = document.getElementById('channel-data-source-toggle-btn');
+          if (dataSourceToggleBtn) {
+            // 初始化按钮状态
+            if (typeof window._channelDataSourceRaw === 'undefined') {
+              window._channelDataSourceRaw = true;
+            }
+            updateDataSourceButtonText(dataSourceToggleBtn);
+            
+            dataSourceToggleBtn.onclick = function() {
+              // 切换数据源状态
+              window._channelDataSourceRaw = !window._channelDataSourceRaw;
+              updateDataSourceButtonText(dataSourceToggleBtn);
+              console.log('[数据源切换] 当前数据源:', window._channelDataSourceRaw ? '原始数据' : '输出数据');
+            };
+          }
+          
+          // 更新数据源按钮文本的辅助函数
+          function updateDataSourceButtonText(btn) {
+            const lang = typeof getLang === 'function' ? getLang() : currentLang;
+            if (window._channelDataSourceRaw) {
+              btn.textContent = LANGS[lang]['channel-data-source-raw'] || '原始数据';
+            } else {
+              btn.textContent = LANGS[lang]['channel-data-source-output'] || '输出数据';
             }
           }
         }, 0);
@@ -6365,6 +6626,11 @@ const calibStyle = document.createElement('style');
       if (_autoDevAttrTimer) clearTimeout(_autoDevAttrTimer);
       window._deviceInfo = undefined;
       autoSendDevAttr();
+      // 更新手动波特率输入框显示当前波特率
+      const manualBaudrateInput = document.getElementById('manual-baudrate');
+      if (manualBaudrateInput) {
+        manualBaudrateInput.value = currentBaudRate;
+      }
     }
     
 
@@ -6706,6 +6972,123 @@ const calibStyle = document.createElement('style');
     }
 
 
+ // 解析0x22包，显示原始通道数据
+ function tryParseOutputChannelPacket(buf) {
+      //console.log('tryParseOrigChannelPacket Running', buf);
+      if (!buf || buf.length < 3) return false;
+      if (buf[0] !== 0xEE) return false;
+      const len = buf[1];
+      if (buf.length < len + 2) return false;
+      const crc = buf[len+1];
+      const calcCrc = crc8tab_js(buf.slice(2,2+len-1), len-1);
+      if (crc !== calcCrc) return false;
+      // 解析原始通道数据
+      let recvChannel = [];
+      for(let i=0;i<10;i++){
+        let off = 8 + i*2;
+        let val = buf[off] | (buf[off+1]<<8);
+        recvChannel[i] = val;
+      }
+      
+      //console.log('tryParseOrigChannelPacket Running', buf);
+      // ========== 新增：通道数据处理算法 ==========
+      let channlMinRoute = 988;
+      let channlMaxRoute = 2012;
+      let channlMidRoute = 1500;
+      let processedCH = new Array(10);
+      // 获取映射、反向、行程、中心点、Trim参数
+      let channelMapSend = (window.channelMap && window.channelMap.channelMapSend) ? window.channelMap.channelMapSend : Array.from({length:10}, (_,i)=>i+1);
+      let channelDirSend = (window.channelMap && window.channelMap.channelDirSend) ? window.channelMap.channelDirSend : Array(10).fill(0);
+      let routeLeft = (window.channelMap && window.channelMap.channelLeftSend) ? window.channelMap.channelLeftSend : Array(10).fill(0);
+      let routeRight = (window.channelMap && window.channelMap.channelRightSend) ? window.channelMap.channelRightSend : Array(10).fill(0);
+      let centerVal = (window.channelMap && window.channelMap.channelMidSend) ? window.channelMap.channelMidSend : Array(4).fill(0);
+      let trimVal = (window.channelMap && window.channelMap.channelTrimSend) ? window.channelMap.channelTrimSend : Array(4).fill(0);
+      // 1. 先中心点+行程，再Trim，再映射，最后反向
+      let tmpRouteData = new Array(10);
+      // 检查channelMap是否存在，如果不存在则直接使用原始数据
+      if (window.channelMap && window.channelMap.channelMapSend) {
+        for(let i = 0; i < 10; i++)
+        {
+          tmpRouteData[i] = recvChannel[channelMapSend[i]-1];
+        }
+      } else {
+        // 如果channelMap不存在，直接使用原始数据
+        for(let i = 0; i < 10; i++)
+        {
+          tmpRouteData[i] = recvChannel[i];
+        }
+      }
+      
+      //   for (let i = 0; i < 10; i++) {
+      //   // 先中心点+行程
+      //   let raw = tmpRouteData[i];
+      //   let midOffset = (i < 4) ? (centerVal[channelMapSend[i]-1] || 0) : 0;
+      //   let leftPercent = routeLeft[i] || 0;
+      //   let rightPercent = routeRight[i] || 0;
+      //   if (raw >= channlMidRoute) {
+      //     tmpRouteData[i] = ((raw - channlMidRoute) * (channlMaxRoute - channlMidRoute - midOffset) / (channlMaxRoute - channlMidRoute)) * (100 - rightPercent) / 100 + channlMidRoute + midOffset;
+      //   } else {
+      //     tmpRouteData[i] = (-1 * (channlMidRoute - raw) * (channlMidRoute + midOffset - channlMinRoute) / (channlMidRoute - channlMinRoute)) * (100 - leftPercent) / 100 + channlMidRoute + midOffset;
+      //   }
+      //   // 再Trim（仅前4个）
+      //   // if (i < 4) {
+      //   //   let handOffset = trimVal[window.channelMap.channelMapSend[i]-1] || 0;
+      //   //   if (handOffset > 0) {
+      //   //     if (tmpRouteData[i] + handOffset > channlMaxRoute) {
+      //   //       tmpRouteData[i] = channlMaxRoute;
+      //   //     } else {
+      //   //       tmpRouteData[i] = tmpRouteData[i] + handOffset;
+      //   //     }
+      //   //   } else if (handOffset < 0) {
+      //   //     if (tmpRouteData[i] + handOffset < channlMinRoute) {
+      //   //       tmpRouteData[i] = channlMinRoute;
+      //   //     } else {
+      //   //       tmpRouteData[i] = tmpRouteData[i] + handOffset;
+      //   //     }
+      //   //   }
+      //   // }
+      // }
+      // // 再映射
+      // let mappedCH = new Array(10);
+      // for (let i = 0; i < 10; i++) {
+      //   //let srcIdx = (channelMapSend[i] || (i+1)) - 1;
+      //   mappedCH[i] = tmpRouteData[i];
+      // }
+      // 最后反向
+      // 对于0xEE包（输出数据），数据已经是处理后的，直接使用
+      for (let i = 0; i < 10; i++) {
+        // 0xEE包是输出数据，可能已经按照映射关系排列，直接使用原始数据
+        // 如果需要反向，可以根据channelDirSend进行反向
+        if (window.channelMap && window.channelMap.channelDirSend && channelDirSend[i]) {
+          processedCH[i] = 2 * channlMidRoute - recvChannel[i];
+        } else {
+          processedCH[i] = recvChannel[i];
+        }
+        // 边界保护
+        if (processedCH[i] > channlMaxRoute) processedCH[i] = channlMaxRoute;
+        if (processedCH[i] < channlMinRoute) processedCH[i] = channlMinRoute;
+      }
+      // ========== 用处理后的数据显示到页面 ==========
+      if (processedCH && processedCH.length > 0 && processedCH[0] !== undefined) {
+        for(let i=0;i<10;i++){
+          let chVal = document.getElementById(`ch-val-${i}`);
+          let chInput = document.getElementById(`ch-input-${i}`);
+          if(chVal) chVal.textContent = Math.round(processedCH[i]);
+          if(chInput) chInput.value = Math.round(processedCH[i]);
+          let bar = document.getElementById(`ch-bar-${i}`)?.children[0];
+          if(bar) bar.style.width = ((processedCH[i]-988)/(2012-988)*100) + '%';
+          let barAttr = document.getElementById(`ch-bar-attr-${i}`)?.children[0];
+          if(barAttr) barAttr.style.width = ((processedCH[i]-988)/(2012-988)*100) + '%';
+        }
+      }
+      window.origChannelData = recvChannel;
+      // 新增：保存最新原始包
+      window._lastOrigChannelBuf = buf;
+      //console.log('原始通道数据:', recvChannel);
+      return true;
+    }
+
+
 
 
 
@@ -6871,7 +7254,7 @@ const calibStyle = document.createElement('style');
             }
 
 
-            // 检查0x22包
+            // 检查0x22包   原始数据包
             if (this[i] === 0x22) {
               const len = this[i+1];
               if (this.length >= i + len + 2 && len >0) {
@@ -6883,9 +7266,6 @@ const calibStyle = document.createElement('style');
                   //console.log('window._currentPage2:', window._currentPage);
                   tryParseOrigChannelPacketCalib(buf);
                 }
-                // else
-                // {
-                // }
                 if (parsed) {
                   this.splice(i, len+2);
                   found = true;
@@ -6893,8 +7273,22 @@ const calibStyle = document.createElement('style');
                 }
               }
             }
-            
-          
+
+
+            // 检查0xEE包   输出数据包
+            if(this[i] === 0xEE) {
+              const len = this[i+1];
+              if (this.length >= i + len + 2 && len >0) {
+                const buf = this.slice(i, i+len+2);
+                let parsed = tryParseOutputChannelPacket(buf);
+                if (parsed) {
+                  this.splice(i, len+2);
+                  found = true;
+                  break;
+                }
+              }
+            }
+
             // 检查0x33包
             if (this[i] === 0x33) {
               const len = this[i+1];
@@ -6961,6 +7355,14 @@ const calibStyle = document.createElement('style');
               if (this.length >= i + len + 2 && len >0) {
                 const buf = this.slice(i, i+len+2);
                 let parsed = false;
+                if(typeof tryParseDRPacket === 'function') {
+                  parsed = tryParseDRPacket(buf);
+                }
+                if (parsed) {
+                  this.splice(i, len+2);
+                  found = true;
+                  break;
+                }
               }
             }
 
@@ -7150,6 +7552,10 @@ const calibStyle = document.createElement('style');
       linkSacn();
       serialBuffer= [];
       renderConfigPage();
+      // 如果已经有保存的ping名字，恢复显示
+      if (window._crsfPingName) {
+        updatePingNameDisplay(window._crsfPingName);
+      }
       let state = { step: 0, gotMap: false, gotTrim: false };
       // step: 0=等待map, 1=等待trim/center, 2=通道数据
       function sendMapLoop() {
@@ -7184,8 +7590,17 @@ const calibStyle = document.createElement('style');
       window._globalChannelTask = {
         channelRequest: () => {
           if (state.gotMap && state.gotTrim) {
-            writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A])); // 通道数据
+            if (window._channelDataSourceRaw) 
+            {
+              // 原始数据
+              writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A]));
+            } else {
+              // 输出数据
+              writer.write(new Uint8Array([0xA5,0x55,0x1B,0x0D,0x0A]));
+            }
+            // writer.write(new Uint8Array([0xA5,0x55,0x02,0x0D,0x0A])); // 通道数据
           }
+
         },
         commandRequest: () => {}
       };
@@ -7216,6 +7631,13 @@ const calibStyle = document.createElement('style');
       updateAllLangText();
     }
     function initNetPage() {
+      // 如果已经有保存的ping名字，恢复显示
+      if (window._crsfPingName) {
+        // 延迟一下确保页面已经渲染
+        setTimeout(() => {
+          updatePingNameDisplay(window._crsfPingName);
+        }, 100);
+      }
       linkSacn();
       serialBuffer= [];
       if (typeof refreshSettings === 'function') {
@@ -7322,9 +7744,13 @@ const calibStyle = document.createElement('style');
       html += '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,0.1));"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#1e40af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
       html += '<span style="color:#1e40af;font-size:1.4em;font-weight:700;text-shadow:0 1px 2px rgba(255,255,255,0.8);">设备属性</span>';
       html += '</div>';
-      html += `<div style="margin: 24px 0 0 0; text-align: right;">
-        <button id="factory-reset-btn" data-i18n="factory-reset" style="background: linear-gradient(90deg,#e74c3c 0%,#c0392b 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer;">恢复出厂设置!</button>
-        <button id="exit-fw-update-btn" data-i18n="exit-fw-update" style="background: linear-gradient(90deg,#3498db 0%,#2980b9 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; margin-left: 16px;">退出固件更新</button>
+      html += `<div style="margin: 24px 0 0 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; max-width: 100%; justify-items: center;">
+        <button id="enter-passthrough-btn" style="background: linear-gradient(90deg,#27ae60 0%,#229954 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">进入透传模式</button>
+        <button id="exit-passthrough-btn" style="background: linear-gradient(90deg,#f39c12 0%,#e67e22 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">退出透传模式</button>
+        <button id="enable-wifi-btn" style="background: linear-gradient(90deg,#3498db 0%,#2980b9 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">开启WiFi模式</button>
+        <button id="disable-wifi-btn" style="background: linear-gradient(90deg,#95a5a6 0%,#7f8c8d 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">关闭WiFi模式</button>
+        <button id="factory-reset-btn" data-i18n="factory-reset" style="background: linear-gradient(90deg,#e74c3c 0%,#c0392b 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">恢复出厂设置!</button>
+        <button id="exit-fw-update-btn" data-i18n="exit-fw-update" style="background: linear-gradient(90deg,#3498db 0%,#2980b9 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">退出固件更新</button>
       </div>`;
       // 顺序：单击(6), 双击(2), 三态(4), 双态(1)
       const keymodeOptions = [
@@ -7567,6 +7993,52 @@ const calibStyle = document.createElement('style');
         }
       });
 
+      // 进入透传模式按钮
+      const enterPassthroughBtn = document.getElementById('enter-passthrough-btn');
+      //enterPassthroughBtn.style.display = 'none';
+      if (enterPassthroughBtn) {
+        enterPassthroughBtn.onclick = function() {
+          if (typeof writer !== 'undefined' && writer) {
+            writer.write(new Uint8Array([0xA5, 0x55, 0x2A, 0x0D, 0x0A]));
+            console.log('[ATTR] 进入透传模式指令已发送');
+          }
+        };
+      }
+      
+      // 退出透传模式按钮
+      const exitPassthroughBtn = document.getElementById('exit-passthrough-btn');
+      //exitPassthroughBtn.style.display = 'none';
+      if (exitPassthroughBtn) {
+        exitPassthroughBtn.onclick = function() {
+          if (typeof writer !== 'undefined' && writer) {
+            writer.write(new Uint8Array([0xA5, 0x55, 0x2B, 0x0D, 0x0A]));
+            console.log('[ATTR] 退出透传模式指令已发送');
+          }
+        };
+      }
+      
+      // 开启WiFi按钮
+      const enableWifiBtn = document.getElementById('enable-wifi-btn');
+      if (enableWifiBtn) {
+        enableWifiBtn.onclick = function() {
+          if (typeof writer !== 'undefined' && writer) {
+            writer.write(new Uint8Array([0xA5, 0x66, 0x05, 0x0D, 0x0A]));
+            console.log('[ATTR] 开启WiFi指令已发送');
+          }
+        };
+      }
+      
+      // 关闭WiFi按钮
+      const disableWifiBtn = document.getElementById('disable-wifi-btn');
+      if (disableWifiBtn) {
+        disableWifiBtn.onclick = function() {
+          if (typeof writer !== 'undefined' && writer) {
+            writer.write(new Uint8Array([0xA5, 0x66, 0x06, 0x0D, 0x0A]));
+            console.log('[ATTR] 关闭WiFi指令已发送');
+          }
+        };
+      }
+      
       const factoryResetBtn = document.getElementById('factory-reset-btn');
       if (factoryResetBtn) {
         factoryResetBtn.onclick = function() {
@@ -8048,6 +8520,135 @@ const calibStyle = document.createElement('style');
         }
         return true;
     }
+
+    function tryParseDRPacket(buf) {
+      if (!buf || buf.length < 5) return false; // 至少需要5字节: 0x89 + len(7) + 7字节数据 + CRC
+      if (buf[0] !== 0x89) return false;
+      const len = buf[1];
+      if (!buf ||  buf.length < len + 2) return false; // 数据长度应该是7字节
+      const crc = buf[len+1]; // buf[8]
+      const calcCrc = crc8tab_js(buf.slice(2, 2+len-1), len-1); // 计算buf[2]到buf[7]的CRC
+      if (crc !== calcCrc) {
+        console.warn('[DR包] CRC校验失败:', '期望', calcCrc, '实际', crc);
+        return false;
+      }
+      
+      // 解析数据包
+      // buf[0] = 0x89 (包类型)
+      // buf[1] = 7 (数据长度)
+      // buf[2] = channel (当前通道，从1开始: 1,2,3,4)
+      // buf[3] = channelCtl[channel-1][0] (控制位低字节)
+      // buf[4] = channelCtl[channel-1][1] (控制位高字节)
+      // buf[5] = channelDR[channel-1][0] (DR低字节)
+      // buf[6] = channelDR[channel-1][1] (DR高字节)
+      // buf[7] = channelEXPO[channel-1][0] (EXPO低字节)
+      // buf[8] = channelEXPO[channel-1][1] (EXPO高字节)
+      // buf[9] = CRC
+      
+      const channel = buf[2]; // 通道号 (1-4)
+      const channelCtl = buf[3] | (buf[4] << 8); // 控制位 (16位)
+      const channelDR = buf[5] | (buf[6] << 8); // DR值 (16位)
+      const channelEXPO = buf[7] | (buf[8] << 8); // EXPO值 (16位)
+      
+      console.log('[DR包] 解析成功:', {
+        channel: channel,
+        channelCtl: channelCtl,
+        channelDR: channelDR,
+        channelEXPO: channelEXPO,
+        raw: Array.from(buf).map(x => '0x' + x.toString(16).padStart(2, '0').toUpperCase()).join(' ')
+      });
+      
+      // 更新大小舵页面的参数
+      // channelCtl可能包含开关选择和正反方向信息
+      // channelDR可能是左右两侧的Rate值组合
+      // channelEXPO可能是左右两侧的Expo值组合
+      
+      // 假设数据格式：
+      // channelCtl: 低8位可能是开关选择(0-5)，高8位可能是正反方向(0或1)
+      // channelDR: 低8位是左侧Rate值(-100到100映射到0-200)，高8位是右侧Rate值
+      // channelEXPO: 低8位是左侧Expo值(-100到100映射到0-200)，高8位是右侧Expo值
+      
+      const switchChannel = channelCtl & 0xFF; // 开关选择 (0-5)
+      const reverse = (channelCtl >> 8) & 0xFF; // 正反方向 (0=NOR, 1=REV)
+      
+      // 将0-200映射回-100到100
+      const drLeft = ((channelDR & 0xFF)); // 左侧Rate值
+      const drRight = ((channelDR >> 8)); // 右侧Rate值
+      const expoLeft = ((channelEXPO & 0xFF)); // 左侧Expo值
+      const expoRight = ((channelEXPO >> 8) ); // 右侧Expo值
+      
+      // 更新页面控件 (通道索引从0开始，所以channel-1)
+      const channelIndex = channel - 1;
+      if (channelIndex >= 0 && channelIndex < 4) {
+        // 更新通道选择
+        const channelSelect = document.getElementById('expo-channel-select');
+        if (channelSelect) {
+          channelSelect.value = channelIndex;
+        }
+        
+        // 更新开关选择
+        const switchChannelSelect = document.getElementById('expo-switch-channel-select');
+        if (switchChannelSelect && switchChannel >= 0 && switchChannel <= 15) {
+          switchChannelSelect.value = switchChannel;
+        }
+        
+        // 更新正反方向按钮
+        const reverseBtn = document.getElementById('expo-reverse-btn');
+        if (reverseBtn) {
+          reverseBtn.textContent = reverse ? 'REV' : 'NOR';
+        }
+        
+        // 更新左侧Rate值
+        const kSliderLeft = document.getElementById('k-slider-left');
+        const kInputLeft = document.getElementById('k-input-left');
+        if (kSliderLeft && kInputLeft) {
+          kSliderLeft.value = drLeft;
+          kInputLeft.value = Math.round(drLeft);
+        }
+        
+        // 更新左侧Expo值
+        const expoSliderLeft = document.getElementById('expo-slider-left');
+        const expoInputLeft = document.getElementById('expo-input-left');
+        if (expoSliderLeft && expoInputLeft) {
+          expoSliderLeft.value = expoLeft;
+          expoInputLeft.value = Math.round(expoLeft);
+        }
+        
+        // 更新右侧Rate值
+        const kSliderRight = document.getElementById('k-slider-right');
+        const kInputRight = document.getElementById('k-input-right');
+        if (kSliderRight && kInputRight) {
+          kSliderRight.value = drRight;
+          kInputRight.value = Math.round(drRight);
+        }
+        
+        // 更新右侧Expo值
+        const expoSliderRight = document.getElementById('expo-slider-right');
+        const expoInputRight = document.getElementById('expo-input-right');
+        if (expoSliderRight && expoInputRight) {
+          expoSliderRight.value = expoRight;
+          expoInputRight.value = Math.round(expoRight);
+        }
+        
+        // 重新绘制图表
+        if (typeof drawExpoGraph === 'function') {
+          drawExpoGraph();
+        }
+        
+        console.log('[DR包] 页面参数已更新:', {
+          channel: channel,
+          switchChannel: switchChannel,
+          reverse: reverse ? 'REV' : 'NOR',
+          drLeft: drLeft,
+          drRight: drRight,
+          expoLeft: expoLeft,
+          expoRight: expoRight
+        });
+      }
+      
+      return true;
+    }
+
 
     function linkStats(buf) {
         // 只在校准页面可见时刷新控件
@@ -8648,6 +9249,8 @@ const calibStyle = document.createElement('style');
         'channel-monitor': '通道监视器',
         'channel-attr': '通道属性',
         'channel-map': '通道映射',
+        'channel-data-source-raw': '原始数据',
+        'channel-data-source-output': '输出数据',
         'trim-center': '微调和中立点',
         'mode': '摇杆模式',
         'channel-map-relation': '通道映射关系',
@@ -8743,6 +9346,8 @@ const calibStyle = document.createElement('style');
         'send-success':'已发送',
         'trim-left-reset-test':'左Trim复位功能',
         'trim-right-reset-test':'右Trim复位功能',
+        'dual-rate-title':'大小舵',
+        'dual-rate-title-text':'大小舵',
         // ... 你可以继续补充 ...
       },
       en: {
@@ -8809,6 +9414,8 @@ const calibStyle = document.createElement('style');
         'frieware-updata': 'Firmware Update',
         'channel-monitor': 'Channel Monitor',
         'channel-attr': 'Channel Settings',
+        'channel-data-source-raw': 'Raw Data',
+        'channel-data-source-output': 'Output Data',
         'channel-map': 'Channel Mapping',
         'trim-center': 'Trim and Sub Trim',
         'mode': 'Mode',
@@ -8912,6 +9519,8 @@ const calibStyle = document.createElement('style');
         'serial-not-found': 'No available serial port device found. If the device is just inserted, please wait a few seconds and try again.',
         'serial-access-failed': 'Serial port access failed: ',
         'serial-permission-denied': 'User has denied serial port access permission, or the browser environment does not support serial port access.',
+        'dual-rate-title': 'Dual Rate',
+        'dual-rate-title-text': 'Dual Rate',
         // ... 你可以继续补充 ...        
         // ... you can continue ...
       }
@@ -8964,7 +9573,18 @@ const calibStyle = document.createElement('style');
         const key = el.getAttribute('data-i18n');
         //console.log('[ATTR] 更新语言:', key, lang, LANGS[lang][key]);
         if (LANGS[lang] && LANGS[lang][key]) {
-          el.textContent = LANGS[lang][key];
+          // 特殊处理：数据源切换按钮需要根据状态动态设置文本
+          if (key === 'channel-data-source-raw' && el.id === 'channel-data-source-toggle-btn') {
+            if (typeof window._channelDataSourceRaw !== 'undefined') {
+              el.textContent = window._channelDataSourceRaw 
+                ? (LANGS[lang]['channel-data-source-raw'] || '原始数据')
+                : (LANGS[lang]['channel-data-source-output'] || '输出数据');
+            } else {
+              el.textContent = LANGS[lang][key];
+            }
+          } else {
+            el.textContent = LANGS[lang][key];
+          }
         }
       });
     }
@@ -9164,6 +9784,6 @@ window.addEventListener('load', function() {
 });
 
   </script>
-  <div id="app-version" style="position:fixed; bottom:10px; right:14px; color:#6b7a99; font-size:12px; z-index:1000; pointer-events:none;">Version 1.7.0</div>
+  <div id="app-version" style="position:fixed; bottom:10px; right:14px; color:#6b7a99; font-size:12px; z-index:1000; pointer-events:none;">Version 1.7.2</div>
 </body>
 </html> 
