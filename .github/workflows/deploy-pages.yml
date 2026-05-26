@@ -37,8 +37,10 @@ jobs:
           npm ci
           npm run build
 
-      - name: Verify esptool-js lib
-        run: test -f vendor/esptool-js/lib/index.js
+      - name: Verify esptool-js build
+        run: |
+          test -f vendor/esptool-js/lib/index.js
+          test -f vendor/esptool-js/bundle.js
 
       - name: Prepare static site
         run: |

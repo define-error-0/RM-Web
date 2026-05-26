@@ -87,6 +87,53 @@
       background: #fff;
       box-sizing: border-box;
     }
+    .fw-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 6px 0 18px;
+      color: #8899bb;
+      font-size: 0.88em;
+    }
+    .fw-divider::before,
+    .fw-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #dbe4ff;
+    }
+    #fw-drop-area {
+      border: 2px dashed #4f8cff;
+      border-radius: 12px;
+      padding: 22px 16px;
+      text-align: center;
+      background: #f4f8ff;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    #fw-drop-area.drag-over {
+      border-color: #3358e0;
+      background: #e8efff;
+    }
+    #fw-drop-title {
+      color: #3358e0;
+      font-weight: 500;
+      font-size: 0.98em;
+      margin-bottom: 4px;
+    }
+    #fw-drop-hint {
+      color: #8899bb;
+      font-size: 0.85em;
+    }
+    #fw-file-name {
+      margin-top: 10px;
+      text-align: center;
+      color: #3358e0;
+      font-weight: 500;
+      font-size: 0.92em;
+      min-height: 1.2em;
+      word-break: break-all;
+    }
     .info-pill {
       background: #f4f8ff;
       border: 1px solid #e0e7ff;
@@ -200,10 +247,22 @@
       </div>
 
       <div class="field">
-        <label for="fw-select" data-i18n="fw-label">固件文件 (bin/radio)</label>
+        <label for="fw-select" data-i18n="fw-label">云端固件 (bin/radio)</label>
         <select id="fw-select">
           <option value="" data-i18n="fw-loading">正在加载固件列表…</option>
         </select>
+      </div>
+
+      <div class="fw-divider" data-i18n="fw-or">或</div>
+
+      <div class="field">
+        <label data-i18n="fw-local-label">本地固件</label>
+        <div id="fw-drop-area">
+          <div id="fw-drop-title" data-i18n="drag-fw-file">拖拽 .bin 文件到此处</div>
+          <div id="fw-drop-hint" data-i18n="drag-fw-hint">或点击选择本地文件</div>
+        </div>
+        <input type="file" id="fw-file" accept=".bin,.hex" hidden>
+        <div id="fw-file-name"></div>
       </div>
 
       <button type="button" class="connect-btn" id="flash-btn" data-i18n="flash-btn" disabled>连接并烧录</button>

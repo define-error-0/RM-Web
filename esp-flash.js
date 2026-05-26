@@ -1,4 +1,4 @@
-import { ESPLoader, Transport } from './vendor/esptool-js/lib/index.js';
+import { ESPLoader, Transport } from './vendor/esptool-js/bundle.js';
 
 const BAUDRATE = 921600;
 const FLASH_ADDRESS = 0;
@@ -10,7 +10,15 @@ const LANGS = {
     title: 'ESP 固件烧录',
     subtitle: 'ESP8285 · 请选择固件后连接设备并烧录',
     hint: '烧录地址固定为 0x0，波特率 921600，Flash 参数保持芯片原样。请使用 Chrome / Edge。',
-    'fw-label': '固件文件 (bin/radio)',
+    'fw-label': '云端固件 (bin/radio)',
+    'fw-local-label': '本地固件',
+    'fw-or': '或',
+    'drag-fw-file': '拖拽 .bin 文件到此处',
+    'drag-fw-hint': '或点击选择本地文件',
+    'fw-file-selected': '已选择本地固件：',
+    'fw-file-size': '（',
+    'fw-file-bytes': ' 字节）',
+    'fw-invalid-file': '请选择 .bin 或 .hex 固件文件',
     'fw-loading': '正在加载固件列表…',
     'fw-empty': '未找到固件，请确认 bin/radio 目录',
     'flash-btn': '连接并烧录',
@@ -31,7 +39,15 @@ const LANGS = {
     title: 'ESP Firmware Flash',
     subtitle: 'ESP8285 · Select firmware, connect, and flash',
     hint: 'Flash address 0x0, baud 921600, flash params kept. Use Chrome / Edge.',
-    'fw-label': 'Firmware (bin/radio)',
+    'fw-label': 'Cloud firmware (bin/radio)',
+    'fw-local-label': 'Local firmware',
+    'fw-or': 'or',
+    'drag-fw-file': 'Drag a .bin file here',
+    'drag-fw-hint': 'or click to browse',
+    'fw-file-selected': 'Local firmware: ',
+    'fw-file-size': ' (',
+    'fw-file-bytes': ' bytes)',
+    'fw-invalid-file': 'Please select a .bin or .hex firmware file',
     'fw-loading': 'Loading firmware list…',
     'fw-empty': 'No firmware found in bin/radio',
     'flash-btn': 'Connect & Flash',
@@ -55,6 +71,8 @@ let device = null;
 let transport = null;
 let esploader = null;
 let firmwareData = null;
+let firmwareSource = null; // 'cloud' | 'local'
+let localFileName = '';
 let busy = false;
 
 const $ = (id) => document.getElementById(id);
@@ -67,6 +85,51 @@ function getBasePath() {
   const path = window.location.pathname;
   const slash = path.lastIndexOf('/');
   return slash >= 0 ? path.substring(0, slash + 1) : './';
+}
+
+function updateFlashButton() {
+  const ready = firmwareSource === 'local'
+    ? !!firmwareData
+    : !!$('fw-select').value;
+  $('flash-btn').disabled = busy || !ready;
+}
+
+function clearLocalFirmware() {
+  localFileName = '';
+  $('fw-file-name').textContent = '';
+  $('fw-file').value = '';
+  if (firmwareSource === 'local') {
+    firmwareSource = null;
+    firmwareData = null;
+  }
+}
+
+function clearCloudSelection() {
+  $('fw-select').value = '';
+  if (firmwareSource === 'cloud') {
+    firmwareSource = null;
+    firmwareData = null;
+  }
+}
+
+function setLocalFirmware(file, data) {
+  clearCloudSelection();
+  firmwareSource = 'local';
+  firmwareData = data;
+  localFileName = file.name;
+  $('fw-file-name').textContent =
+    t('fw-file-selected') + file.name + t('fw-file-size') + data.length + t('fw-file-bytes');
+  setStatus(t('status-ready'));
+  updateFlashButton();
+}
+
+async function readFirmwareFile(file) {
+  if (!/\.(bin|hex)$/i.test(file.name)) {
+    throw new Error(t('fw-invalid-file'));
+  }
+  const data = new Uint8Array(await file.arrayBuffer());
+  if (!data.length) throw new Error(t('fw-invalid-file'));
+  return data;
 }
 
 function setStatus(msg, type) {
@@ -103,6 +166,10 @@ function applyLang() {
   });
   $('lang-switcher').textContent = currentLang === 'zh' ? '🌐 EN' : '🌐 中文';
   $('back-link').textContent = t('back-link');
+  if (firmwareSource === 'local' && localFileName && firmwareData) {
+    $('fw-file-name').textContent =
+      t('fw-file-selected') + localFileName + t('fw-file-size') + firmwareData.length + t('fw-file-bytes');
+  }
 }
 
 async function loadFirmwareList() {
@@ -126,18 +193,16 @@ async function loadFirmwareList() {
   }
 
   sel.innerHTML = '';
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
   if (!names.length) {
-    const o = document.createElement('option');
-    o.value = '';
-    o.textContent = t('fw-empty');
-    sel.appendChild(o);
-    $('flash-btn').disabled = true;
-    setStatus(t('fw-empty'), 'error');
+    placeholder.textContent = t('fw-empty');
+    sel.appendChild(placeholder);
+    setStatus(t('status-ready'));
+    updateFlashButton();
     return;
   }
 
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
   placeholder.textContent = '— ' + t('fw-label') + ' —';
   sel.appendChild(placeholder);
 
@@ -148,8 +213,8 @@ async function loadFirmwareList() {
     sel.appendChild(o);
   });
 
-  $('flash-btn').disabled = false;
   setStatus(t('status-ready'));
+  updateFlashButton();
 }
 
 async function fetchFirmware(name) {
@@ -208,14 +273,62 @@ async function disconnect() {
 }
 
 $('fw-select').addEventListener('change', () => {
-  firmwareData = null;
-  if ($('fw-select').value) setStatus(t('status-ready'));
+  const name = $('fw-select').value;
+  if (name) {
+    clearLocalFirmware();
+    firmwareSource = 'cloud';
+    firmwareData = null;
+    setStatus(t('status-ready'));
+  } else if (firmwareSource === 'cloud') {
+    firmwareSource = null;
+    firmwareData = null;
+  }
+  updateFlashButton();
+});
+
+const fwDropArea = $('fw-drop-area');
+const fwFileInput = $('fw-file');
+
+fwDropArea.addEventListener('click', () => fwFileInput.click());
+
+fwDropArea.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  fwDropArea.classList.add('drag-over');
+});
+
+fwDropArea.addEventListener('dragleave', (e) => {
+  e.preventDefault();
+  fwDropArea.classList.remove('drag-over');
+});
+
+fwDropArea.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  fwDropArea.classList.remove('drag-over');
+  const file = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (!file) return;
+  try {
+    setLocalFirmware(file, await readFirmwareFile(file));
+  } catch (err) {
+    setStatus(t('err-prefix') + (err.message || err), 'error');
+    updateFlashButton();
+  }
+});
+
+fwFileInput.addEventListener('change', async () => {
+  const file = fwFileInput.files && fwFileInput.files[0];
+  if (!file) return;
+  try {
+    setLocalFirmware(file, await readFirmwareFile(file));
+  } catch (err) {
+    setStatus(t('err-prefix') + (err.message || err), 'error');
+    updateFlashButton();
+  }
 });
 
 $('flash-btn').addEventListener('click', async () => {
   if (busy) return;
   const fwName = $('fw-select').value;
-  if (!fwName) {
+  if (!firmwareSource && !fwName) {
     setStatus(t('status-no-fw'), 'error');
     return;
   }
@@ -226,7 +339,12 @@ $('flash-btn').addEventListener('click', async () => {
 
   try {
     setStatus(t('status-loading-fw'));
-    if (!firmwareData) firmwareData = await fetchFirmware(fwName);
+    if (firmwareSource === 'cloud' || (!firmwareSource && fwName)) {
+      firmwareSource = 'cloud';
+      if (!firmwareData) firmwareData = await fetchFirmware(fwName);
+    } else if (!firmwareData) {
+      throw new Error(t('status-no-fw'));
+    }
 
     setStatus(t('status-connecting'));
     await connectDevice();
@@ -243,7 +361,7 @@ $('flash-btn').addEventListener('click', async () => {
     await disconnect();
   } finally {
     busy = false;
-    $('flash-btn').disabled = !$('fw-select').value;
+    updateFlashButton();
   }
 });
 
