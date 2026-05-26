@@ -1076,6 +1076,38 @@
       transition: all 0.2s;
     }
     
+    .flight-visual-stage {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 300px;
+      background: linear-gradient(165deg, #f8fbff 0%, #e8f0ff 55%, #dce8ff 100%);
+      border-radius: 14px;
+      padding: 24px;
+      border: 2px solid #c5d8ff;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 4px 20px rgba(51,88,224,0.08);
+    }
+    #flight-mode-svg {
+      width: 100%;
+      max-width: 300px;
+      height: auto;
+      filter: drop-shadow(0 6px 16px rgba(51,88,224,0.12));
+    }
+    .flight-surf-group {
+      transition: transform 0.12s ease-out;
+    }
+    .flight-gauge-arc {
+      fill: none;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+    }
+    .flight-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
     .flight-btn-save {
       background: linear-gradient(90deg, #4f8cff 0%, #3358e0 100%);
       color: #fff;
@@ -1496,6 +1528,18 @@
     });
     
     window.addEventListener('unhandledrejection', function(event) {
+      const r = event.reason;
+      const isDeviceLost = r && (
+        r.name === 'NetworkError' ||
+        (r.message && String(r.message).includes('device has been lost'))
+      );
+      if (isDeviceLost) {
+        event.preventDefault();
+        if (typeof handleSerialDisconnect === 'function') {
+          handleSerialDisconnect(r.message || 'device lost');
+        }
+        return;
+      }
       console.error('Unhandled promise rejection:', event.reason);
     });
     
@@ -1614,6 +1658,72 @@
     let isSerialConnected = false;
     let netConfBuffer = [];
     let isReading = false;
+    let _serialDisconnectHandled = false;
+
+    /** USB 拔出 / 设备丢失：停止所有定时写串口，释放 reader/writer，避免 NetworkError 反复弹出 */
+    async function handleSerialDisconnect(reason) {
+      if (_serialDisconnectHandled) return;
+      _serialDisconnectHandled = true;
+
+      const wasConnected = isSerialConnected || !!port;
+      isSerialConnected = false;
+      isReading = false;
+
+      if (typeof stopGlobalChannelTimer === 'function') stopGlobalChannelTimer();
+      if (typeof clearAllTimers === 'function') clearAllTimers();
+      if (_autoDevAttrTimer) { clearTimeout(_autoDevAttrTimer); _autoDevAttrTimer = null; }
+      if (typeof _channelMapTimer !== 'undefined' && _channelMapTimer) {
+        clearTimeout(_channelMapTimer);
+        _channelMapTimer = null;
+      }
+      if (window.expoUpdateInterval) {
+        clearInterval(window.expoUpdateInterval);
+        window.expoUpdateInterval = null;
+      }
+      if (window.flightModeUpdateInterval) {
+        clearInterval(window.flightModeUpdateInterval);
+        window.flightModeUpdateInterval = null;
+      }
+
+      const r = reader;
+      const w = writer;
+      const p = port;
+      reader = null;
+      writer = null;
+      port = null;
+
+      try { if (r) { await r.cancel(); r.releaseLock(); } } catch (e) {}
+      try { if (w) w.releaseLock(); } catch (e) {}
+      try { if (p) await p.close(); } catch (e) {}
+
+      if (typeof updateSignalStrength === 'function') updateSignalStrength(0);
+      if (wasConnected) {
+        console.warn('[串口] 连接已断开:', reason || 'unknown');
+      }
+
+      if (wasConnected && typeof upDataFlag !== 'undefined' && upDataFlag !== 2) {
+        if (typeof showConnectPage === 'function') showConnectPage();
+        if (typeof hideDeviceInfoBar === 'function') hideDeviceInfoBar();
+        if (typeof updateDeviceInfoBar === 'function') updateDeviceInfoBar();
+        if (typeof updateAllLangText === 'function') updateAllLangText();
+      }
+
+      setTimeout(() => { _serialDisconnectHandled = false; }, 300);
+    }
+
+    async function safeSerialWrite(data) {
+      if (!isSerialConnected || !writer) return false;
+      try {
+        const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+        await writer.write(bytes);
+        return true;
+      } catch (e) {
+        const lost = e && (e.name === 'NetworkError' || (e.message && String(e.message).includes('device has been lost')));
+        if (lost) await handleSerialDisconnect(e.message);
+        return false;
+      }
+    }
+
     let ymodem =[];
     let recvMidAdc = [];
     let upDataFlag = 0;
@@ -2107,16 +2217,8 @@
 
     // 断开连接逻辑
     disconnectBtn.onclick = async () => {
-      if (!isSerialConnected) return;
-      try {
-        isSerialConnected = false;
-        if (reader) { await reader.cancel(); reader.releaseLock(); }
-        if (writer) writer.releaseLock();
-        if (port) await port.close();
-      } catch (e) {}
-      port = null; writer = null; reader = null;
-      showConnectPage();
-      hideDeviceInfoBar();
+      if (!isSerialConnected && !port) return;
+      await handleSerialDisconnect('user disconnect');
     };
 
     // 手动选择波特率功能
@@ -2507,7 +2609,15 @@
       
           }
         } catch (error) {
-           console.error('读取数据错误'+error); // 已关闭串口读取错误日志
+          const lost = error && (
+            error.name === 'NetworkError' ||
+            (error.message && String(error.message).includes('device has been lost'))
+          );
+          if (lost) {
+            await handleSerialDisconnect(error.message);
+          } else {
+            console.error('读取数据错误', error);
+          }
           break;
         }
       }
@@ -2519,23 +2629,12 @@
     // 监听串口断开事件
     if (navigator.serial) {
       navigator.serial.addEventListener('disconnect', (event) => {
-        if (isSerialConnected && port === event.target) {
-          updateSignalStrength(0);      //显示断连信号
-          if(upDataFlag==2)
-          {
-            location.reload(true); 
-            //网页刷新
-          }
-          else
-          {
-            isSerialConnected = false;
-            port = null; writer = null; reader = null;
-            showConnectPage();
-            //hideDeviceInfoBar();
-            updateDeviceInfoBar();
-            updateAllLangText();
-          }
+        if (!isSerialConnected && port !== event.target) return;
+        if (upDataFlag == 2) {
+          location.reload(true);
+          return;
         }
+        handleSerialDisconnect('USB disconnected');
       });
 
       // 监听串口连接事件 - 检测新插入的设备
@@ -3038,13 +3137,12 @@
       const INIT_VAL = 1500;
       const INIT_PCT = ((INIT_VAL - MIN_VAL) / (MAX_VAL - MIN_VAL) * 100).toFixed(4);
       const CAR_CALIB_CHANNELS = [
-        { id: 'throttle', recvIndex: 0 },
-        { id: 'steering', recvIndex: 1 },
-        { id: 'p1', recvIndex: 6 },
-        { id: 'p2', recvIndex: 7 }
+        { id: 'throttle', recvIndex: 0, adcIndex: 0 },
+        { id: 'steering', recvIndex: 1, adcIndex: 1 },
+        { id: 'p1', recvIndex: 6, adcIndex: 2 },
+        { id: 'p2', recvIndex: 7, adcIndex: 3 }
       ];
-      const CAR_CALIB_LOW_PCT = 20;
-      const CAR_CALIB_HIGH_PCT = 80;
+      const CAR_CALIB_ADC_RANGE = 400;
 
       calibPage.innerHTML = `
       <style>
@@ -3182,7 +3280,7 @@
             <span class="calib-channel-label" data-i18n="throttle-channel">油门通道 (CH1)</span>
             <div class="calib-progress-bar">
               <div class="calib-progress-fill" id="throttle-fill" style="width: ${INIT_PCT}%"></div>
-              <div class="calib-progress-indicator" id="throttle-ind" style="left: ${INIT_PCT}%"></div>
+              <div class="calib-progress-indicator" id="throttle-ind" style="left: 50%"></div>
             </div>
             <div class="calib-value-display">
               <span id="throttle-value">${INIT_VAL}</span>
@@ -3194,7 +3292,7 @@
             <span class="calib-channel-label" data-i18n="steering-channel">方向通道 (CH2)</span>
             <div class="calib-progress-bar">
               <div class="calib-progress-fill" id="steering-fill" style="width: ${INIT_PCT}%"></div>
-              <div class="calib-progress-indicator" id="steering-ind" style="left: ${INIT_PCT}%"></div>
+              <div class="calib-progress-indicator" id="steering-ind" style="left: 50%"></div>
             </div>
             <div class="calib-value-display">
               <span id="steering-value">${INIT_VAL}</span>
@@ -3206,7 +3304,7 @@
             <span class="calib-channel-label">P1</span>
             <div class="calib-progress-bar">
               <div class="calib-progress-fill" id="p1-fill" style="width: ${INIT_PCT}%"></div>
-              <div class="calib-progress-indicator" id="p1-ind" style="left: ${INIT_PCT}%"></div>
+              <div class="calib-progress-indicator" id="p1-ind" style="left: 50%"></div>
             </div>
             <div class="calib-value-display">
               <span id="p1-value">${INIT_VAL}</span>
@@ -3218,7 +3316,7 @@
             <span class="calib-channel-label">P2</span>
             <div class="calib-progress-bar">
               <div class="calib-progress-fill" id="p2-fill" style="width: ${INIT_PCT}%"></div>
-              <div class="calib-progress-indicator" id="p2-ind" style="left: ${INIT_PCT}%"></div>
+              <div class="calib-progress-indicator" id="p2-ind" style="left: 50%"></div>
             </div>
             <div class="calib-value-display">
               <span id="p2-value">${INIT_VAL}</span>
@@ -3239,7 +3337,7 @@
       window.carAdcMax = Array(CAR_CALIB_CHANNELS.length).fill(0);
       window.carAdcMin = Array(CAR_CALIB_CHANNELS.length).fill(65535);
       window.carMidAdc = Array(CAR_CALIB_CHANNELS.length).fill(0);
-      window.carCalibProgress = CAR_CALIB_CHANNELS.map(() => ({ low: false, high: false }));
+      window.lastCarAdcData = Array(CAR_CALIB_CHANNELS.length).fill(0);
       window.carMidAdcReceived = false;
 
       const calibBtn = document.getElementById('car-calib-action-btn');
@@ -3252,22 +3350,41 @@
         window.carAdcMax = Array(CAR_CALIB_CHANNELS.length).fill(0);
         window.carAdcMin = Array(CAR_CALIB_CHANNELS.length).fill(65535);
         window.carMidAdc = Array(CAR_CALIB_CHANNELS.length).fill(0);
-        window.carCalibProgress = CAR_CALIB_CHANNELS.map(() => ({ low: false, high: false }));
+        window.lastCarAdcData = Array(CAR_CALIB_CHANNELS.length).fill(0);
         window.carMidAdcReceived = false;
       };
       const requestCarChannelData = () => {
         if (writer) writer.write(new Uint8Array([0xA5, 0x55, 0x02, 0x0D, 0x0A]));
       };
-      const startCarChannelPolling = () => {
+      const requestCarAdcData = () => {
+        if (writer) writer.write(new Uint8Array([0xA5, 0x55, 0x04, 0x0D, 0x0A]));
+      };
+      const startCarPolling = requestFn => {
         window._globalChannelTask = {
-          channelRequest: requestCarChannelData,
+          channelRequest: requestFn,
           commandRequest: () => {}
         };
         startGlobalChannelTimer();
       };
-      const isCarAdcValid = val => val > 100 && val < 4000;
+      const startCarChannelPolling = () => startCarPolling(requestCarChannelData);
+      const startCarAdcPolling = () => startCarPolling(requestCarAdcData);
+      // P1/P2 等通道低端 ADC 可小于 100，不能用 >100 过滤
+      const isCarAdcValid = val => typeof val === 'number' && val > 0 && val < 4096;
       const updateCarCalibReadyState = () => {
-        const allChannelsValid = window.carCalibProgress.every(progress => progress.low && progress.high);
+        const validCount = window.carMidAdc.reduce((count, mid, index) => {
+          const valid = mid > 0 &&
+            window.carAdcMax[index] - mid > CAR_CALIB_ADC_RANGE &&
+            mid - window.carAdcMin[index] > CAR_CALIB_ADC_RANGE;
+          return count + (valid ? 1 : 0);
+        }, 0);
+        const allChannelsValid = validCount === CAR_CALIB_CHANNELS.length;
+        if (window.carCalibState === 'calibrating' && window.carMidAdcReceived && !allChannelsValid) {
+          stepLabel.textContent = getCarCalibText(
+            'car-calib-step-label-done',
+            `已获取中立点，请继续来回拨动四个通道 (${validCount}/${CAR_CALIB_CHANNELS.length})`,
+            `Center points received. Keep moving all channels (${validCount}/${CAR_CALIB_CHANNELS.length})`
+          );
+        }
         if (window.carCalibState === 'calibrating' && window.carMidAdcReceived && allChannelsValid) {
           calibBtn.disabled = false;
           stepLabel.textContent = getCarCalibText(
@@ -3301,10 +3418,14 @@
           console.log('[车控校准] 已发送校准数据:', Array.from(buf).map(x=>x.toString(16).padStart(2,'0')).join(' '));
         }
       };
-      window.setCarMidAdcFromPacket = function(values) {
+      window.setCarMidAdcFromPacket = function(values, resetRange = true) {
         if (!Array.isArray(values) || values.length < CAR_CALIB_CHANNELS.length) return;
         for (let i = 0; i < CAR_CALIB_CHANNELS.length; i++) {
           window.carMidAdc[i] = values[i] || 0;
+          if (resetRange) {
+            window.carAdcMax[i] = values[i] || 0;
+            window.carAdcMin[i] = values[i] || 0;
+          }
         }
         window.carMidAdcReceived = window.carMidAdc.every(v => v > 0);
         if (window.carCalibState === 'calibrating') {
@@ -3313,8 +3434,56 @@
             '已获取中立点，请拨动四个通道到最小和最大位置',
             'Center points received. Move all four channels to minimum and maximum'
           );
-          updateCarCalibReadyState();
         }
+      };
+      const normalizeCarAdcPercent = (adc, calibData) => {
+        if (!calibData) return 50;
+        const max = calibData.max;
+        const min = calibData.min;
+        const mid = calibData.mid;
+        if (!isCarAdcValid(adc) || !isCarAdcValid(max) || !isCarAdcValid(min) || !isCarAdcValid(mid) || max <= mid || mid <= min) {
+          return 50;
+        }
+        const pct = adc >= mid
+          ? 50 + (adc - mid) * 50 / (max - mid)
+          : (adc - min) * 50 / (mid - min);
+        return Math.max(0, Math.min(100, pct));
+      };
+      // 校准扫行程：按当前采集到的 min~max 线性映射，避免 mid 分段在 P1/P2 低位 ADC 时乱跳
+      const normalizeCarAdcPercentCalibrating = (adc, min, max) => {
+        if (!isCarAdcValid(adc)) return 50;
+        const lo = Math.min(min, max);
+        const hi = Math.max(min, max);
+        if (hi - lo < 30) return 50;
+        return Math.max(0, Math.min(100, (adc - lo) * 100 / (hi - lo)));
+      };
+      const updateCarAdcDisplay = (values, pctValues) => {
+        CAR_CALIB_CHANNELS.forEach((channel, index) => {
+          const val = values[index] || 0;
+          const pctNum = Array.isArray(pctValues)
+            ? Math.max(0, Math.min(100, pctValues[index] || 0))
+            : Math.max(0, Math.min(100, ((val - MIN_VAL) / (MAX_VAL - MIN_VAL) * 100)));
+          const pct = pctNum.toFixed(2);
+          const fill = document.getElementById(`${channel.id}-fill`);
+          const value = document.getElementById(`${channel.id}-value`);
+          const percent = document.getElementById(`${channel.id}-percent`);
+          
+          if (fill) fill.style.width = pct + '%';
+          if (value) value.textContent = val;
+          if (percent) percent.textContent = pct + '%';
+        });
+      };
+      const collectCarAdcCalibration = values => {
+        if (window.carCalibState !== 'calibrating') return;
+        if (!values.every(isCarAdcValid)) return;
+        
+        if (!window.carMidAdcReceived) return;
+        
+        values.forEach((val, index) => {
+          if (val > window.carAdcMax[index]) window.carAdcMax[index] = val;
+          if (val < window.carAdcMin[index]) window.carAdcMin[index] = val;
+        });
+        updateCarCalibReadyState();
       };
 
       calibBtn.onclick = async function() {
@@ -3330,7 +3499,11 @@
           resetBtn.style.display = '';
           stopGlobalChannelTimer();
         } else if (window.carCalibState === 'calibratMid') {
-          if (writer) writer.write(new Uint8Array([0xA5, 0x55, 0x22, 0x04, 0x0D, 0x0A]));
+          if (window._currentPage === 'calib' && writer) {
+            console.log('[车控校准流程] 发送一次获取中心点指令 0xA5,0x55,0x22,0x04,0x0D,0x0A');
+            writer.write(new Uint8Array([0xA5, 0x55, 0x22, 0x04, 0x0D, 0x0A]));
+          }
+          requestCarAdcData();
           window.carCalibState = 'calibrating';
           calibBtn.disabled = true;
           calibBtn.textContent = LANGS[currentLang]['calib-done'] || '校准完成';
@@ -3339,7 +3512,7 @@
             '正在等待中立点，请稍后拨动四个通道到最小和最大位置',
             'Waiting for center points, then move all four channels to minimum and maximum'
           );
-          startCarChannelPolling();
+          startCarAdcPolling();
         } else if (window.carCalibState === 'calibrating') {
           if (calibBtn.disabled) return;
           sendCarCalibData();
@@ -3364,6 +3537,45 @@
         startCarChannelPolling();
       };
 
+      // 解析车控ADC数据
+      window.tryParseCarAdcPacket = function(buf) {
+        if (!buf || buf.length < 3) return false;
+        if (buf[0] !== 0x33) return false;
+        const len = buf[1];
+        if (buf.length < len + 2) return false;
+        const crc = buf[len+1];
+        const calcCrc = crc8tab_js(buf.slice(2, 2+len-1), len-1);
+        if (crc !== calcCrc) return false;
+        
+        let recvAdc = [];
+        for (let i = 0; i < 4; i++) {
+          let off = 2 + i*2;
+          recvAdc[i] = buf[off] | (buf[off+1]<<8);
+        }
+        
+        let recvAdcCailData = [];
+        for (let i = 0; i < 4; i++) {
+          let base = 21 + i*6;
+          recvAdcCailData[i] = {
+            max: buf[base] | (buf[base+1]<<8),
+            min: buf[base+2] | (buf[base+3]<<8),
+            mid: buf[base+4] | (buf[base+5]<<8)
+          };
+        }
+        
+        const carAdcValues = CAR_CALIB_CHANNELS.map(channel => recvAdc[channel.adcIndex] || 0);
+        window.lastCarAdcData = carAdcValues;
+        collectCarAdcCalibration(carAdcValues);
+        if (window.carCalibState === 'calibrating' && window.carMidAdcReceived) {
+          const pctValues = carAdcValues.map((adc, index) =>
+            normalizeCarAdcPercentCalibrating(adc, window.carAdcMin[index], window.carAdcMax[index])
+          );
+          updateCarAdcDisplay(carAdcValues, pctValues);
+        }
+        
+        return true;
+      };
+
       // 解析车控通道数据
       window.tryParseCarChannelPacket = function(buf) {
         if (!buf || buf.length < 3) return false;
@@ -3385,34 +3597,7 @@
         
         const carCalibValues = CAR_CALIB_CHANNELS.map(channel => recvChannel[channel.recvIndex] || 0);
         window.lastCarCalibValues = carCalibValues;
-        
-        CAR_CALIB_CHANNELS.forEach((channel, index) => {
-          const val = carCalibValues[index];
-          const pctNum = Math.max(0, Math.min(100, ((val - MIN_VAL) / (MAX_VAL - MIN_VAL) * 100)));
-          const pct = pctNum.toFixed(2);
-          const fill = document.getElementById(`${channel.id}-fill`);
-          const ind = document.getElementById(`${channel.id}-ind`);
-          const value = document.getElementById(`${channel.id}-value`);
-          const percent = document.getElementById(`${channel.id}-percent`);
-          
-          if (fill) fill.style.width = pct + '%';
-          if (ind) ind.style.left = pct + '%';
-          if (value) value.textContent = val;
-          if (percent) percent.textContent = pct + '%';
-        });
-        
-        // 记录最大最小值
-        if (window.carCalibState === 'calibrating') {
-          carCalibValues.forEach((val, index) => {
-            if (!isCarAdcValid(val)) return;
-            const pct = Math.max(0, Math.min(100, ((val - MIN_VAL) / (MAX_VAL - MIN_VAL) * 100)));
-            if (val > window.carAdcMax[index]) window.carAdcMax[index] = val;
-            if (val < window.carAdcMin[index]) window.carAdcMin[index] = val;
-            if (pct <= CAR_CALIB_LOW_PCT) window.carCalibProgress[index].low = true;
-            if (pct >= CAR_CALIB_HIGH_PCT) window.carCalibProgress[index].high = true;
-          });
-          updateCarCalibReadyState();
-        }
+        updateCarAdcDisplay(carCalibValues);
         
         return true;
       };
@@ -5582,6 +5767,303 @@ const calibStyle = document.createElement('style');
       return crc;
     }
 
+    // int8 与 UI 中 -100~100 的 Rate/Expo 互转（单字节有符号）
+    function uint8ToSignedInt8(byteVal) {
+      const b = byteVal & 0xFF;
+      return b > 127 ? b - 256 : b;
+    }
+    function signedInt8ToUint8(intVal) {
+      const v = Math.max(-128, Math.min(127, Math.round(intVal)));
+      return v & 0xFF;
+    }
+    function clampDrExpoValue(v) {
+      return Math.max(-100, Math.min(100, Math.round(parseFloat(v) || 0)));
+    }
+
+    /**
+     * Dual Rate 通道（M8L / T8L 统一）
+     * - 界面下拉 value：0 基。M8L: 0=THR, 1=STE；T8L: 0=AIL, 1=ELE, 2=THR, 3=RUD
+     * - 线协议 0x2D 查询 / 0x2C 保存 data[3] / 0x89 回包 buf[2]：1 基，wire = ui + 1
+     */
+    function isExpoM8LDevice() {
+      return !!(window._deviceInfo && window._deviceInfo.devName === 'RadioMaster M8L');
+    }
+    function getExpoChannelCount() {
+      return isExpoM8LDevice() ? 2 : 4;
+    }
+    function expoUiIndexToWire(uiIndex) {
+      const ui = Math.max(0, parseInt(uiIndex, 10) || 0);
+      return (ui + 1) & 0xFF;
+    }
+    function expoWireToUiIndex(wireByte) {
+      const w = wireByte & 0xFF;
+      return w >= 1 ? w - 1 : 0;
+    }
+    function expoResponseMatchesQuery(responseWire, queryWire) {
+      return (responseWire & 0xFF) === (queryWire & 0xFF);
+    }
+    window.expoUiIndexToWire = expoUiIndexToWire;
+    window.expoWireToUiIndex = expoWireToUiIndex;
+
+    const CONFIG_PAGE_QUERY_RETRY_COUNT = 4;
+    const CONFIG_PAGE_QUERY_RETRY_INTERVAL_MS = 300;
+
+    window.stopExpoQueryBurst = function() {
+      window._expoQuerySeq = (window._expoQuerySeq || 0) + 1;
+      if (window._expoQueryRetryTimer) {
+        clearTimeout(window._expoQueryRetryTimer);
+        window._expoQueryRetryTimer = null;
+      }
+    };
+
+    window.sendExpoQueryBurst = function() {
+      window.stopExpoQueryBurst();
+      const seq = window._expoQuerySeq;
+      if (typeof window.setExpoPageDataReady === 'function') {
+        window.setExpoPageDataReady(false);
+      } else {
+        window._expoDataReady = false;
+      }
+      let sent = 0;
+      const tick = () => {
+        if (seq !== window._expoQuerySeq) return;
+        if (window._expoDataReady) return;
+        const channelSelect = document.getElementById('expo-channel-select');
+        const ui = channelSelect ? parseInt(channelSelect.value, 10) : 0;
+        const wire = expoUiIndexToWire(ui);
+        window._expoPendingQueryChannel = wire;
+        if (typeof writer !== 'undefined' && writer) {
+          writer.write(new Uint8Array([0xA5, 0x55, 0x2D, wire, 0x0D, 0x0A]));
+          console.log('[Dual Rate] 查询', sent + 1, '/', CONFIG_PAGE_QUERY_RETRY_COUNT, 'wire=', wire, 'ui=', wire - 1);
+        } else {
+          console.warn('[Dual Rate] 串口未连接');
+          return;
+        }
+        sent++;
+        if (sent < CONFIG_PAGE_QUERY_RETRY_COUNT && !window._expoDataReady) {
+          window._expoQueryRetryTimer = setTimeout(tick, CONFIG_PAGE_QUERY_RETRY_INTERVAL_MS);
+        }
+      };
+      tick();
+    };
+
+    /** 飞行模式 DeviceDeltaVData_t：DevSwitch + channelCtl[2][16][2] */
+    function getFlightModeChannelCount() {
+      const n = window.channelMap && window.channelMap.channelMapNum;
+      return Math.min(typeof n === 'number' ? n : 10, 10);
+    }
+    function createEmptyFlightChannelRow() {
+      const row = [];
+      for (let i = 0; i < 16; i++) row.push([0, 0]);
+      return row;
+    }
+    function ensureFlightVData() {
+      if (!window.deviceFlightVData) {
+        window.deviceFlightVData = {
+          devSwitch: 0,
+          channelCtl: [createEmptyFlightChannelRow(), createEmptyFlightChannelRow()]
+        };
+      }
+      return window.deviceFlightVData;
+    }
+    function flightTypeToSurfaceIndex(flightType) {
+      return flightType === 'delta' ? 1 : 0;
+    }
+    function devSwitchToFlightType(devSwitch) {
+      if (devSwitch === 1) return 'vtail';
+      if (devSwitch === 2) return 'delta';
+      return 'none';
+    }
+    function flightTypeToDevSwitch(flightType) {
+      if (flightType === 'vtail') return 1;
+      if (flightType === 'delta') return 2;
+      return 0;
+    }
+    function langText(key, fallback) {
+      const lang = typeof getLang === 'function' ? getLang() : (typeof currentLang !== 'undefined' ? currentLang : 'zh');
+      if (typeof LANGS !== 'undefined' && LANGS[lang] && LANGS[lang][key]) return LANGS[lang][key];
+      return fallback != null ? fallback : key;
+    }
+    window.langText = langText;
+
+    function getFlightDirFromBtn(btn) {
+      if (!btn) return 0;
+      if (btn.dataset.rev !== undefined && btn.dataset.rev !== '') {
+        return parseInt(btn.dataset.rev, 10) ? 1 : 0;
+      }
+      return btn.textContent.trim() === langText('flight-dir-rev', 'REV') ? 1 : 0;
+    }
+    function setFlightDirBtn(btn, rev) {
+      if (!btn) return;
+      const r = rev ? 1 : 0;
+      btn.dataset.rev = String(r);
+      btn.textContent = r ? langText('flight-dir-rev', 'REV') : langText('flight-dir-nor', 'NOR');
+      btn.style.background = r ? '#ffe066' : '#fff';
+      btn.style.color = r ? '#e74c3c' : '#3358e0';
+    }
+    window.refreshFlightModeChannelI18n = function() {
+      const chCount = typeof getFlightModeChannelCount === 'function' ? getFlightModeChannelCount() : 10;
+      const optKeys = ['flight-ch-off', 'flight-ch-left', 'flight-ch-right'];
+      const optFallbacks = ['关闭', '左', '右'];
+      for (let i = 0; i < chCount; i++) {
+        const sel = document.getElementById(`flight-mode-ch-${i}`);
+        if (sel && sel.options.length >= 3) {
+          const val = sel.value;
+          for (let o = 0; o < 3; o++) {
+            sel.options[o].textContent = langText(optKeys[o], optFallbacks[o]);
+          }
+          sel.value = val;
+        }
+        const dirBtn = document.getElementById(`flight-mode-dir-${i}`);
+        if (dirBtn) setFlightDirBtn(dirBtn, getFlightDirFromBtn(dirBtn));
+      }
+    };
+    function applyFlightModeChannelsToUi(surfaceIdx) {
+      const data = ensureFlightVData();
+      const chCount = getFlightModeChannelCount();
+      for (let ch = 0; ch < chCount; ch++) {
+        const ctl = data.channelCtl[surfaceIdx][ch] || [0, 0];
+        const chSelect = document.getElementById(`flight-mode-ch-${ch}`);
+        const dirBtn = document.getElementById(`flight-mode-dir-${ch}`);
+        if (chSelect) chSelect.value = String(ctl[0] & 0xFF);
+        if (dirBtn) setFlightDirBtn(dirBtn, ctl[1] & 0xFF);
+      }
+    }
+    window.applyFlightModeDataToUi = function() {
+      const data = ensureFlightVData();
+      const flightType = devSwitchToFlightType(data.devSwitch & 0xFF);
+      const radio = document.querySelector(`input[name="flight-type"][value="${flightType}"]`);
+      if (radio) radio.checked = true;
+      const container = document.getElementById('flight-mode-channels-container');
+      const visualContainer = document.getElementById('flight-mode-visual-container');
+      if (flightType === 'none') {
+        if (container) container.style.display = 'none';
+        if (visualContainer) visualContainer.style.display = 'none';
+      } else {
+        if (container) container.style.display = 'flex';
+        if (visualContainer) visualContainer.style.display = 'block';
+        window.updateFlightModeVisual(flightType);
+      }
+      applyFlightModeChannelsToUi(flightTypeToSurfaceIndex(flightType));
+    };
+    window.applyFlightModeUiForType = function(flightType) {
+      const container = document.getElementById('flight-mode-channels-container');
+      const visualContainer = document.getElementById('flight-mode-visual-container');
+      if (flightType === 'none') {
+        if (container) container.style.display = 'none';
+        if (visualContainer) visualContainer.style.display = 'none';
+      } else {
+        if (container) container.style.display = 'flex';
+        if (visualContainer) visualContainer.style.display = 'block';
+        window.updateFlightModeVisual(flightType);
+      }
+      applyFlightModeChannelsToUi(flightTypeToSurfaceIndex(flightType));
+    };
+    window.collectFlightModeUiToData = function() {
+      const data = ensureFlightVData();
+      const flightType = document.querySelector('input[name="flight-type"]:checked')?.value || 'none';
+      data.devSwitch = flightTypeToDevSwitch(flightType);
+      const surfaceIdx = flightTypeToSurfaceIndex(flightType);
+      const chCount = getFlightModeChannelCount();
+      for (let ch = 0; ch < chCount; ch++) {
+        const chSelect = document.getElementById(`flight-mode-ch-${ch}`);
+        const dirBtn = document.getElementById(`flight-mode-dir-${ch}`);
+        data.channelCtl[surfaceIdx][ch] = [
+          chSelect ? (parseInt(chSelect.value, 10) || 0) : 0,
+          getFlightDirFromBtn(dirBtn)
+        ];
+      }
+      return data;
+    };
+    window.setFlightModePageDataReady = function(ready) {
+      window._flightModeDataReady = !!ready;
+      const panel = document.getElementById('flight-mode-edit-panel');
+      const hint = document.getElementById('flight-mode-query-hint');
+      const status = document.getElementById('flight-mode-query-status');
+      if (panel) panel.style.display = ready ? 'flex' : 'none';
+      if (hint) hint.style.display = ready ? 'none' : 'block';
+      if (ready && typeof window.stopFlightModeQueryBurst === 'function') {
+        window.stopFlightModeQueryBurst();
+      }
+      if (ready && typeof window.syncFlightModeVisualFromRadio === 'function') {
+        window.syncFlightModeVisualFromRadio();
+      }
+      if (status) {
+        const lang = typeof getLang === 'function' ? getLang() : (typeof currentLang !== 'undefined' ? currentLang : 'zh');
+        const waiting = (typeof LANGS !== 'undefined' && LANGS[lang] && LANGS[lang]['flight-mode-query-waiting']) || '等待下位机数据…';
+        const ok = (typeof LANGS !== 'undefined' && LANGS[lang] && LANGS[lang]['flight-mode-query-ok']) || '数据已就绪';
+        status.textContent = ready ? ok : waiting;
+        status.style.color = ready ? '#27ae60' : '#888';
+      }
+    };
+    window.stopFlightModeQueryBurst = function() {
+      window._flightModeQuerySeq = (window._flightModeQuerySeq || 0) + 1;
+      if (window._flightModeQueryRetryTimer) {
+        clearTimeout(window._flightModeQueryRetryTimer);
+        window._flightModeQueryRetryTimer = null;
+      }
+    };
+
+    window.sendFlightModeQuery = function() {
+      window.stopFlightModeQueryBurst();
+      const seq = window._flightModeQuerySeq;
+      window.setFlightModePageDataReady(false);
+      let sent = 0;
+      const tick = () => {
+        if (seq !== window._flightModeQuerySeq) return;
+        if (window._flightModeDataReady) return;
+        if (typeof writer !== 'undefined' && writer) {
+          writer.write(new Uint8Array([0xA5, 0x55, 0x32, 0x0D, 0x0A]));
+          console.log('[飞行模式] 查询', sent + 1, '/', CONFIG_PAGE_QUERY_RETRY_COUNT, '0x32 → 等待 0xAB');
+        } else {
+          console.warn('[飞行模式] 串口未连接');
+          return;
+        }
+        sent++;
+        if (sent < CONFIG_PAGE_QUERY_RETRY_COUNT && !window._flightModeDataReady) {
+          window._flightModeQueryRetryTimer = setTimeout(tick, CONFIG_PAGE_QUERY_RETRY_INTERVAL_MS);
+        }
+      };
+      tick();
+    };
+    window.updateFlightModeVisual = function(mode) {
+      const vtailPlane = document.getElementById('vtail-plane');
+      const deltaPlane = document.getElementById('delta-plane');
+      if (!vtailPlane || !deltaPlane) return;
+      // SVG <g> 用 inline/none，不能用 block
+      vtailPlane.style.display = mode === 'vtail' ? 'inline' : 'none';
+      deltaPlane.style.display = mode === 'delta' ? 'inline' : 'none';
+    };
+    window.syncFlightModeVisualFromRadio = function() {
+      const mode = document.querySelector('input[name="flight-type"]:checked')?.value || 'vtail';
+      window.updateFlightModeVisual(mode);
+    };
+    function tryParseFlightModePacket(buf) {
+      if (!buf || buf.length < 37 || buf[0] !== 0xAB) return false;
+      const calcCrc = crc8tab_js(buf.slice(2, 36), 34);
+      if (buf[36] !== calcCrc) {
+        console.warn('[飞行模式] CRC 失败', '期望', calcCrc, '实际', buf[36]);
+        return false;
+      }
+      const data = ensureFlightVData();
+      const devSwitch = buf[3] & 0xFF;
+      data.devSwitch = devSwitch;
+      const surfaceIdx = devSwitch === 2 ? 1 : 0;
+      for (let ch = 0; ch < 16; ch++) {
+        const off = 4 + ch * 2;
+        data.channelCtl[surfaceIdx][ch] = [buf[off] & 0xFF, buf[off + 1] & 0xFF];
+      }
+      console.log('[飞行模式] 0xAB 解析成功', {
+        devSwitch: devSwitch,
+        surfaceIdx: surfaceIdx,
+        channels: data.channelCtl[surfaceIdx].slice(0, getFlightModeChannelCount()),
+        raw: Array.from(buf).map(x => '0x' + x.toString(16).padStart(2, '0').toUpperCase()).join(' ')
+      });
+      if (typeof window.applyFlightModeDataToUi === 'function') window.applyFlightModeDataToUi();
+      if (typeof window.setFlightModePageDataReady === 'function') window.setFlightModePageDataReady(true);
+      return true;
+    }
+
     // ========== 设备信息包解析 ==========
     function parseDeviceInfoPacket(buf) {
       // buf: Uint8Array, 已经确认 buf[0]==0xFF
@@ -6049,7 +6531,7 @@ const calibStyle = document.createElement('style');
             <button class="config-menu-btn" data-page="channel-map" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="channel-map">通道映射</button>
             <button class="config-menu-btn" data-page="trim-center" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="trim-center">Trim和Center</button>
             <button class="config-menu-btn" data-page="mode" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="mode">摇杆模式</button>
-            <button class="config-menu-btn" data-page="expo" ;" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="dual-rate-title">大小舵</button>
+            <button class="config-menu-btn" data-page="expo" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="dual-rate-title">大小舵</button>
             <button class="config-menu-btn" data-page="flight-mode" style="padding:18px 0;border:none;background:none;font-size:1.13em;color:#3358e0;font-weight:bold;cursor:pointer;transition:background 0.2s;" data-i18n="flight-mode">飞行模式</button>
           </div>
           <div id="config-stack" style="flex:1 1 0;background:#fff;border-radius:0 12px 12px 0;box-shadow:0 2px 8px #e0e7ff;padding:32px 36px;min-height:900px;position:relative;">
@@ -6176,11 +6658,16 @@ const calibStyle = document.createElement('style');
                 ${(() => {
                   let html = '';
                   const channelCount = channeLNumFlag;//window.channelMap ? window.channelMap.channelMapNum : 10;
+                  const isM8LAttr = window._deviceInfo.devName === 'RadioMaster M8L';
                   for (let i = 0; i < channelCount; i++) {
+        const hideM8LReverse = isM8LAttr && i < 4;
+        const chDirBtnHtml = hideM8LReverse
+          ? `<span class="ch-dir-placeholder" style="display:inline-block;min-width:54px;padding:8px 18px;box-sizing:border-box;visibility:hidden;user-select:none;" aria-hidden="true">NOR</span>`
+          : `<button id="ch-dir-btn-${i}" style="min-width:54px;padding:8px 18px;border-radius:10px;border:2px solid #b3cfff;background:#fff;color:#3358e0;font-weight:bold;cursor:pointer;font-size:1.08em;box-shadow:0 1px 6px #e0e7ff;transition:all 0.2s;box-sizing:border-box;">NOR</button>`;
         html += `<div style="display:flex;align-items:center;gap:32px;background:linear-gradient(90deg,#f4f8ff 60%,#eaf1ff 100%);border-radius:16px;padding:8px 18px;box-shadow:0 2px 16px #e0e7ff;min-height:32px;">
           <span style="color:#3358e0;font-weight:bold;font-size:1.25em;min-width:70px;letter-spacing:2px;">CH${i+1}</span>
           <div style='display:flex;align-items:center;gap:24px;flex:1;'>
-            <button id="ch-dir-btn-${i}" style="min-width:54px;padding:8px 18px;border-radius:10px;border:2px solid #b3cfff;background:#fff;color:#3358e0;font-weight:bold;cursor:pointer;font-size:1.08em;box-shadow:0 1px 6px #e0e7ff;transition:all 0.2s;">NOR</button>
+            ${chDirBtnHtml}
             <span style='font-size:1.08em;color:#888;' data-i18n="channel-attr-negative-travel">负行程</span><input type="number" id="ch-left-input-${i}" value="0" min="0" max="100" style="width:90px;text-align:center;border:2px solid #b3cfff;border-radius:8px;font-size:1.08em;padding:6px 0;box-shadow:0 1px 6px #e0e7ff;" />
             <span style='font-size:1.08em;color:#888;' data-i18n="channel-attr-positive-travel">正行程</span><input type="number" id="ch-right-input-${i}" value="0" min="0" max="100" style="width:90px;text-align:center;border:2px solid #b3cfff;border-radius:8px;font-size:1.08em;padding:6px 0;box-shadow:0 1px 6px #e0e7ff;" />
             <div id="ch-bar-attr-${i}" style="flex:1;height:22px;background:#e0e7ff;border-radius:12px;overflow:hidden;position:relative;box-shadow:0 1px 8px #b3cfff;">
@@ -6265,10 +6752,13 @@ const calibStyle = document.createElement('style');
               </div>
             </div>
             <div class="config-stack-page" data-page="expo" style="display:none;">
-              <div style="font-weight:bold;color:#3358e0;margin-bottom:24px;font-size:1.22em;" data-i18n="dual-rate-title-text">Dual Rate</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+                <div style="font-weight:bold;color:#3358e0;font-size:1.22em;" data-i18n="dual-rate-title-text">Dual Rate</div>
+                <button id="expo-data-source-toggle-btn" style="background:linear-gradient(90deg,#3358e0 0%,#4f8cff 100%);color:#fff;border:none;border-radius:8px;padding:8px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;transition:all 0.2s;" data-i18n="channel-data-source-raw">原始数据</button>
+              </div>
               <div style="display:flex;flex-direction:column;gap:24px;">
-                <!-- 通道选择和开关选择 -->
-                <div style="display:flex;align-items:center;gap:16px;padding:16px;background:#f4f8ff;border-radius:12px;box-shadow:0 2px 8px #e0e7ff;">
+                <!-- 查询区：始终可见 -->
+                <div id="expo-query-bar" style="display:flex;align-items:center;gap:16px;padding:16px;background:#f4f8ff;border-radius:12px;box-shadow:0 2px 8px #e0e7ff;">
                   <label style="color:#3358e0;font-weight:500;min-width:100px;" data-i18n="channel-select">通道选择:</label>
                   <select id="expo-channel-select" style="flex:1;max-width:200px;padding:8px 12px;border:2px solid #e0e7ff;border-radius:8px;background:#fff;color:#3358e0;font-size:1em;outline:none;cursor:pointer;">
                     ${window._deviceInfo.devName === 'RadioMaster M8L' ? `
@@ -6281,12 +6771,18 @@ const calibStyle = document.createElement('style');
                     <option value="3">RUD</option>
                     `}
                   </select>
-                  <!-- 查询按钮 -->
-                  <div style="display:flex;justify-content:center;padding:16px;">
-                    <button id="expo-query-btn" style="width:150px;padding:10px 20px;background:linear-gradient(135deg, #4f8cff 0%, #3358e0 100%);color:#fff;border:none;border-radius:8px;font-size:1.1em;font-weight:500;cursor:pointer;box-shadow:0 2px 8px rgba(51,88,224,0.3);transition:all 0.3s;" data-i18n="confirm">通道查询</button>
-                  </div>                  
-                  <label style="color:#3358e0;font-weight:500;min-width:100px;" data-i18n="switch-channel-select">开关选择:</label>
-                  <select id="expo-switch-channel-select"  style="flex:1;max-width:200px;padding:8px 12px;border:2px solid #e0e7ff;border-radius:8px;background:#fff;color:#3358e0;font-size:1em;outline:none;cursor:pointer;">
+                  <button id="expo-query-btn" style="width:150px;padding:10px 20px;background:linear-gradient(135deg, #4f8cff 0%, #3358e0 100%);color:#fff;border:none;border-radius:8px;font-size:1.1em;font-weight:500;cursor:pointer;box-shadow:0 2px 8px rgba(51,88,224,0.3);transition:all 0.3s;" data-i18n="expo-query-btn">通道查询</button>
+                  <span id="expo-query-status" style="color:#888;font-size:0.95em;" data-i18n="expo-query-waiting">等待下位机数据…</span>
+                </div>
+                <div id="expo-query-hint" style="display:block;padding:14px 18px;background:#fff8e6;border-radius:10px;border:1.5px solid #f1c40f;color:#9a7b0a;font-size:0.98em;text-align:center;" data-i18n="expo-query-hint">请先完成通道查询（进入页面会自动查询一次），成功后再设置下方参数</div>
+                <div id="expo-edit-panel" style="display:none;flex-direction:column;gap:16px;">
+                <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:#f4f8ff;border-radius:12px;box-shadow:0 2px 8px #e0e7ff;flex-wrap:wrap;">
+                  <label style="color:#3358e0;font-weight:500;white-space:nowrap;" data-i18n="${window._deviceInfo.devName === 'RadioMaster M8L' ? 'm8l-switch-label' : 'switch-channel-select'}">${window._deviceInfo.devName === 'RadioMaster M8L' ? '开关' : '开关选择:'}</label>
+                  <select id="expo-switch-channel-select" style="width:120px;padding:6px 10px;border:2px solid #e0e7ff;border-radius:8px;background:#fff;color:#3358e0;font-size:0.95em;outline:none;cursor:pointer;">
+                    ${window._deviceInfo.devName === 'RadioMaster M8L' ? `
+                    <option value="0" data-i18n="switch-close">Close</option>
+                    <option value="1" data-i18n="switch-open">Open</option>
+                    ` : `
                     <option value="0">None</option>
                     <option value="6">SA</option>
                     <option value="7">SB</option>
@@ -6294,29 +6790,33 @@ const calibStyle = document.createElement('style');
                     <option value="9">SD</option>
                     <option value="5">SE</option>
                     <option value="10">S1</option>
+                    `}
                   </select>
-                  <!-- 反正向按钮 -->
-                  <div style="display:flex;justify-content:center;padding:16px;">
-                    <button id="expo-reverse-btn" style="width:150px;padding:10px 20px;background:linear-gradient(135deg, #4f8cff 0%, #3358e0 100%);color:#fff;border:none;border-radius:8px;font-size:1.1em;font-weight:500;cursor:pointer;box-shadow:0 2px 8px rgba(51,88,224,0.3);transition:all 0.3s;" data-i18n="confirm">NOR</button>
-                  </div>
-                </div>
-                <!-- 坐标图 -->
-                <div style="display:flex;flex-direction:column;gap:16px;padding:20px;background:#f4f8ff;border-radius:12px;box-shadow:0 2px 8px #e0e7ff;">
-                  <!-- 测试输入框和坐标显示 -->
-                  <div style="display:flex;align-items:center;gap:16px;padding:12px;background:#fff;border-radius:8px;border:2px solid #3358e0;">
-                    <label style="color:#3358e0;font-weight:600;font-size:1em;min-width:80px;">测试输入 X:</label>
-                    <input type="number" id="expo-test-x" min="-100" max="100" step="0.1" value="0" style="width:120px;padding:8px 12px;border:2px solid #e0e7ff;border-radius:6px;background:#fff;color:#3358e0;font-size:1em;text-align:center;outline:none;">
-                    <div style="flex:1;display:flex;align-items:center;gap:12px;">
-                      <span style="color:#3358e0;font-weight:600;font-size:1em;">坐标:</span>
-                      <span id="expo-test-coord" style="color:#e74c3c;font-weight:bold;font-size:1.1em;font-family:'Roboto',monospace;padding:6px 16px;background:#fff3f0;border-radius:6px;border:2px solid #e74c3c;min-width:200px;text-align:center;">(0, 0)</span>
+                  <div id="expo-dir-wrap" style="display:${window._deviceInfo.devName === 'RadioMaster M8L' ? 'none' : 'flex'};align-items:center;gap:8px;">
+                    <label style="color:#3358e0;font-weight:500;white-space:nowrap;font-size:0.95em;" data-i18n="expo-dir-label">方向挡位:</label>
+                    <div id="expo-dir-segment" style="display:flex;border-radius:8px;overflow:hidden;border:2px solid #b3cfff;">
+                      <button type="button" class="expo-dir-opt" data-val="1" style="min-width:44px;padding:8px 12px;border:none;background:#fff;color:#3358e0;font-weight:bold;font-size:0.95em;cursor:pointer;" data-i18n="expo-dir-up">上</button>
+                      <button type="button" class="expo-dir-opt active" data-val="2" style="min-width:44px;padding:8px 12px;border:none;border-left:1px solid #b3cfff;border-right:1px solid #b3cfff;background:linear-gradient(135deg,#4f8cff,#3358e0);color:#fff;font-weight:bold;font-size:0.95em;cursor:pointer;" data-i18n="expo-dir-mid">中</button>
+                      <button type="button" class="expo-dir-opt" data-val="3" style="min-width:44px;padding:8px 12px;border:none;background:#fff;color:#3358e0;font-weight:bold;font-size:0.95em;cursor:pointer;" data-i18n="expo-dir-down">下</button>
                     </div>
                   </div>
-                  <div style="display:flex;flex-direction:row;align-items:flex-start;gap:20px;">
+                  <div style="display:flex;align-items:center;gap:10px;margin-left:auto;flex-wrap:wrap;">
+                    <label style="color:#3358e0;font-weight:500;font-size:0.95em;white-space:nowrap;" data-i18n="expo-test-input-label">测试输入 X:</label>
+                    <input type="number" id="expo-test-x" min="-100" max="100" step="0.1" value="0" style="width:72px;padding:6px 8px;border:2px solid #e0e7ff;border-radius:6px;background:#fff;color:#3358e0;font-size:0.95em;text-align:center;outline:none;">
+                    <span style="color:#3358e0;font-weight:500;font-size:0.95em;white-space:nowrap;" data-i18n="expo-test-coord-label">测试坐标</span>
+                    <span id="expo-test-coord" style="color:#e74c3c;font-weight:bold;font-size:1em;font-family:'Roboto',monospace;padding:4px 12px;background:#fff;border-radius:6px;border:2px solid #e74c3c;min-width:110px;text-align:center;">(0, 0)</span>
+                    <span style="color:#3358e0;font-weight:500;font-size:0.95em;white-space:nowrap;" data-i18n="expo-real-coord-label">实际坐标</span>
+                    <span id="expo-real-coord" style="color:#27ae60;font-weight:bold;font-size:1em;font-family:'Roboto',monospace;padding:4px 12px;background:#fff;border-radius:6px;border:2px solid #27ae60;min-width:110px;text-align:center;">—</span>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:12px;padding:16px;background:#f4f8ff;border-radius:12px;box-shadow:0 2px 8px #e0e7ff;">
+                  <div style="font-size:0.92em;color:#5a6f9e;text-align:center;" data-i18n="expo-graph-hint">图表：横轴为输入 X，纵轴为输出 Y；红色为测试输入点，绿色为摇杆实际输入点</div>
+                  <div style="display:flex;flex-direction:row;align-items:flex-start;gap:16px;">
                     <canvas id="expo-graph-canvas" width="600" height="600" style="background:#fff;border-radius:8px;box-shadow:0 1px 4px #d0d7e6;"></canvas>
                   <div style="display:flex;flex-direction:row;gap:20px;flex:1;">
-                    <!-- 左侧参数 -->
+                    <!-- X&lt;0 半轴曲线参数 -->
                     <div style="display:flex;flex-direction:column;gap:16px;min-width:224px;padding:16px;background:#fff;border-radius:8px;border:2px solid #4f8cff;">
-                      <div style="color:#4f8cff;font-weight:600;font-size:1em;text-align:center;margin-bottom:8px;" data-i18n="left-params">左侧参数</div>
+                      <div style="color:#4f8cff;font-weight:600;font-size:1em;text-align:center;margin-bottom:8px;" data-i18n="expo-params-neg">X &lt; 0 曲线参数</div>
                       <div style="display:flex;flex-direction:column;gap:8px;">
                         <label style="color:#3358e0;font-weight:500;font-size:0.95em;" data-i18n="rate-value">Rate值:</label>
                         <input type="range" id="k-slider-left" min="-100" max="100" value="0" style="width:100%;height:6px;border-radius:4px;background:linear-gradient(90deg, #e0e7ff 0%, #4f8cff 50%, #e0e7ff 100%);outline:none;accent-color:#4f8cff;">
@@ -6328,9 +6828,9 @@ const calibStyle = document.createElement('style');
                         <input type="number" id="expo-input-left" min="-100" max="100" step="1" value="0" style="width:100%;padding:6px 8px;border:2px solid #e0e7ff;border-radius:6px;background:#fff;color:#3358e0;font-size:1em;text-align:center;outline:none;">
                       </div>
                     </div>
-                    <!-- 右侧参数 -->
+                    <!-- X≥0 半轴曲线参数 -->
                     <div style="display:flex;flex-direction:column;gap:16px;min-width:224px;padding:16px;background:#fff;border-radius:8px;border:2px solid #e74c3c;">
-                      <div style="color:#e74c3c;font-weight:600;font-size:1em;text-align:center;margin-bottom:8px;" data-i18n="right-params">右侧参数</div>
+                      <div style="color:#e74c3c;font-weight:600;font-size:1em;text-align:center;margin-bottom:8px;" data-i18n="expo-params-pos">X ≥ 0 曲线参数</div>
                       <div style="display:flex;flex-direction:column;gap:8px;">
                         <label style="color:#3358e0;font-weight:500;font-size:0.95em;" data-i18n="rate-value">Rate值:</label>
                         <input type="range" id="k-slider-right" min="-100" max="100" value="0" style="width:100%;height:6px;border-radius:4px;background:linear-gradient(90deg, #e0e7ff 0%, #e74c3c 50%, #e0e7ff 100%);outline:none;accent-color:#e74c3c;">
@@ -6362,7 +6862,8 @@ const calibStyle = document.createElement('style');
                             box-shadow:none;
                             opacity:0.7;
                           }" 
-                    data-i18n="confirm">确认</button>
+                    data-i18n="expo-save">确认保存</button>
+                </div>
                 </div>
               </div>
             </div>
@@ -6378,91 +6879,136 @@ const calibStyle = document.createElement('style');
                   <button id="flight-mode-restore-btn" style="background:linear-gradient(90deg,#aaa 0%,#e0e7ff 100%);color:#3358e0;border:none;border-radius:8px;padding:10px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;" data-i18n="flight-mode-restore">模式还原</button>
                 </div>
               </div>
+              <div id="flight-mode-query-hint" style="display:block;padding:14px 18px;background:#fff8e6;border-radius:10px;border:1.5px solid #f1c40f;color:#9a7b0a;font-size:0.98em;text-align:center;margin-bottom:16px;" data-i18n="flight-mode-query-hint">请先完成模式查询（进入页面会自动查询一次），成功后再配置下方参数</div>
+              <div id="flight-mode-query-status" style="color:#888;font-size:0.95em;margin-bottom:12px;" data-i18n="flight-mode-query-waiting">等待下位机数据…</div>
+              <div id="flight-mode-edit-panel" style="display:none;flex-direction:column;">
               
               <!-- 飞行模式类型选择 V尾/三角翼 -->
               <div style="background:#eaf1ff;border-radius:12px;padding:18px 22px;margin-bottom:20px;border:1.5px solid #d0d7e6;">
-                <div style="font-size:1.1em;color:#3358e0;font-weight:500;margin-bottom:14px;">飞行模式类型</div>
+                <div style="font-size:1.1em;color:#3358e0;font-weight:500;margin-bottom:14px;" data-i18n="flight-mode-type">飞行模式类型</div>
                 <div style="display:flex;gap:32px;">
                   <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
                     <input type="radio" name="flight-type" value="none" style="width:20px;height:20px;">
-                    <span style="font-size:1.05em;color:#3358e0;font-weight:500;">无模式</span>
+                    <span style="font-size:1.05em;color:#3358e0;font-weight:500;" data-i18n="flight-mode-none">无模式</span>
                   </label>
                   <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
                     <input type="radio" name="flight-type" value="vtail" checked style="width:20px;height:20px;">
-                    <span style="font-size:1.05em;color:#3358e0;font-weight:500;">V尾混控</span>
+                    <span style="font-size:1.05em;color:#3358e0;font-weight:500;" data-i18n="flight-vtail">V尾混控</span>
                   </label>
                   <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
                     <input type="radio" name="flight-type" value="delta" style="width:20px;height:20px;">
-                    <span style="font-size:1.05em;color:#3358e0;font-weight:500;">三角翼混控</span>
+                    <span style="font-size:1.05em;color:#3358e0;font-weight:500;" data-i18n="flight-delta">三角翼混控</span>
                   </label>
                 </div>
               </div>
               
               <!-- 飞行模式可视化区域 -->
               <div id="flight-mode-visual-container" style="background:#eaf1ff;border-radius:12px;padding:18px 22px;margin-bottom:20px;border:1.5px solid #d0d7e6;">
-                <div style="font-size:1.1em;color:#3358e0;font-weight:500;margin-bottom:14px;">飞行模式可视化</div>
+                <div style="font-size:1.1em;color:#3358e0;font-weight:500;margin-bottom:14px;" data-i18n="flight-mode-visual">飞行模式可视化</div>
                 <div style="display:flex;gap:20px;align-items:flex-start;">
                   <!-- 飞机动画区域 -->
-                  <div style="flex:1;display:flex;justify-content:center;align-items:center;min-height:250px;background:#fff;border-radius:10px;padding:20px;border:2px solid #b3cfff;">
-                    <svg id="flight-mode-svg" width="220" height="220" viewBox="0 0 220 220">
-                      <!-- V尾飞机俯视图 -->
-                      <g id="vtail-plane" style="display:none;">
-                        <!-- 机身 -->
-                        <rect x="95" y="40" width="10" height="120" fill="#3358e0" stroke="#2a4bc2" stroke-width="2" rx="2"/>
-                        <!-- 机头 -->
-                        <polygon points="100,20 95,40 105,40" fill="#3358e0" stroke="#2a4bc2" stroke-width="2"/>
-                        <!-- 机翼 -->
-                        <polygon points="100,80 30,110 100,100 170,110" fill="#4f8cff" stroke="#3358e0" stroke-width="2"/>
-                        <!-- V尾左舵面 -->
-                        <polygon points="100,160 70,190 100,175" fill="#e74c3c" stroke="#c0392b" stroke-width="2" opacity="0.8"/>
-                        <!-- V尾左舵机转速表 -->
-                        <g id="vtail-left-gauge" transform="translate(85, 175)">
-                          <circle cx="0" cy="0" r="10" fill="none" stroke="#e0e7ff" stroke-width="2"/>
-                          <line id="vtail-left-needle" x1="0" y1="0" x2="0" y2="-8" stroke="#e74c3c" stroke-width="2" stroke-linecap="round" style="transition: transform 0.1s ease-out;"/>
+                  <div class="flight-visual-stage">
+                    <svg id="flight-mode-svg" viewBox="0 0 280 280" aria-label="飞行模式示意图">
+                      <defs>
+                        <linearGradient id="fm-fuselage" x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stop-color="#5a9aff"/>
+                          <stop offset="100%" stop-color="#2a4bc2"/>
+                        </linearGradient>
+                        <linearGradient id="fm-wing" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stop-color="#7eb3ff"/>
+                          <stop offset="100%" stop-color="#3d6fd9"/>
+                        </linearGradient>
+                        <linearGradient id="fm-wing-delta" x1="50%" y1="0%" x2="50%" y2="100%">
+                          <stop offset="0%" stop-color="#8ec0ff"/>
+                          <stop offset="100%" stop-color="#3358e0"/>
+                        </linearGradient>
+                        <linearGradient id="fm-surf-l" x1="0%" y1="0%" x2="100%" y2="0%">
+                          <stop offset="0%" stop-color="#ff8a7a"/>
+                          <stop offset="100%" stop-color="#e74c3c"/>
+                        </linearGradient>
+                        <linearGradient id="fm-surf-r" x1="0%" y1="0%" x2="100%" y2="0%">
+                          <stop offset="0%" stop-color="#5fd89a"/>
+                          <stop offset="100%" stop-color="#27ae60"/>
+                        </linearGradient>
+                        <filter id="fm-soft-shadow" x="-20%" y="-20%" width="140%" height="140%">
+                          <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#3358e0" flood-opacity="0.18"/>
+                        </filter>
+                        <marker id="fm-arrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+                          <path d="M0,0 L8,4 L0,8 Z" fill="#94a8d8"/>
+                        </marker>
+                      </defs>
+                      <!-- 背景与方向 -->
+                      <circle cx="140" cy="140" r="118" fill="#f0f5ff" stroke="#d4e2ff" stroke-width="1.5"/>
+                      <circle cx="140" cy="140" r="88" fill="none" stroke="#e2ebff" stroke-width="1" stroke-dasharray="4 6"/>
+                      <line x1="140" y1="28" x2="140" y2="48" stroke="#94a8d8" stroke-width="2" marker-end="url(#fm-arrow)"/>
+                      <text x="140" y="22" text-anchor="middle" class="flight-label" fill="#7a8fb8" data-i18n="flight-nose">机头</text>
+
+                      <!-- V尾混控 -->
+                      <g id="vtail-plane" style="display:none;" filter="url(#fm-soft-shadow)">
+                        <path d="M140,52 L132,58 L128,195 Q140,208 152,195 L148,58 Z" fill="url(#fm-fuselage)" stroke="#254a9e" stroke-width="1.5" stroke-linejoin="round"/>
+                        <ellipse cx="140" cy="72" rx="6" ry="10" fill="rgba(255,255,255,0.35)"/>
+                        <path d="M140,108 L58,128 L140,118 L222,128 Z" fill="url(#fm-wing)" stroke="#2a4bc2" stroke-width="1.5" stroke-linejoin="round"/>
+                        <path d="M140,118 L72,132 L140,126 L208,132 Z" fill="rgba(255,255,255,0.12)" stroke="none"/>
+                        <!-- 左 V 尾舵面 + 表盘 -->
+                        <g id="vtail-left-surf" class="flight-surf-group" transform="translate(98,198)">
+                          <path d="M0,0 L-28,32 L8,18 Z" fill="url(#fm-surf-l)" stroke="#c0392b" stroke-width="1.5" stroke-linejoin="round"/>
+                          <g id="vtail-left-gauge" transform="translate(-6,10)">
+                            <path class="flight-gauge-arc" d="M-14,0 A14,14 0 0 1 14,0" stroke="#ffd4cf"/>
+                            <path class="flight-gauge-arc" d="M-14,0 A14,14 0 0 1 0,-14" stroke="#e0e7ff"/>
+                            <circle cx="0" cy="0" r="3" fill="#fff" stroke="#e74c3c" stroke-width="1.5"/>
+                            <line id="vtail-left-needle" x1="0" y1="0" x2="0" y2="-12" stroke="#e74c3c" stroke-width="2.5" stroke-linecap="round"/>
+                          </g>
                         </g>
-                        <!-- V尾右舵面 -->
-                        <polygon points="100,160 150,190 100,175" fill="#27ae60" stroke="#229954" stroke-width="2" opacity="0.8"/>
-                        <!-- V尾右舵机转速表 -->
-                        <g id="vtail-right-gauge" transform="translate(115, 175)">
-                          <circle cx="0" cy="0" r="10" fill="none" stroke="#e0e7ff" stroke-width="2"/>
-                          <line id="vtail-right-needle" x1="0" y1="0" x2="0" y2="-8" stroke="#27ae60" stroke-width="2" stroke-linecap="round" style="transition: transform 0.1s ease-out;"/>
+                        <!-- 右 V 尾舵面 + 表盘 -->
+                        <g id="vtail-right-surf" class="flight-surf-group" transform="translate(182,198)">
+                          <path d="M0,0 L28,32 L-8,18 Z" fill="url(#fm-surf-r)" stroke="#1e8449" stroke-width="1.5" stroke-linejoin="round"/>
+                          <g id="vtail-right-gauge" transform="translate(6,10)">
+                            <path class="flight-gauge-arc" d="M-14,0 A14,14 0 0 1 14,0" stroke="#c8f5dc"/>
+                            <path class="flight-gauge-arc" d="M0,-14 A14,14 0 0 1 14,0" stroke="#e0e7ff"/>
+                            <circle cx="0" cy="0" r="3" fill="#fff" stroke="#27ae60" stroke-width="1.5"/>
+                            <line id="vtail-right-needle" x1="0" y1="0" x2="0" y2="-12" stroke="#27ae60" stroke-width="2.5" stroke-linecap="round"/>
+                          </g>
                         </g>
-                        <!-- 标签 -->
-                        <text x="60" y="205" font-size="10" fill="#e74c3c" font-weight="bold">左舵机</text>
-                        <text x="130" y="205" font-size="10" fill="#27ae60" font-weight="bold">右舵机</text>
+                        <text x="52" y="252" class="flight-label" fill="#e74c3c" data-i18n="flight-servo-left">左舵机</text>
+                        <text x="198" y="252" class="flight-label" fill="#27ae60" text-anchor="end" data-i18n="flight-servo-right">右舵机</text>
+                        <text x="140" y="268" text-anchor="middle" class="flight-label" fill="#5a6f9e" data-i18n="flight-vtail-caption">V 尾混控 · ELE ± RUD</text>
                       </g>
-                      <!-- 三角翼飞机俯视图 -->
-                      <g id="delta-plane" style="display:none;">
-                        <!-- 机身 -->
-                        <rect x="95" y="40" width="10" height="120" fill="#3358e0" stroke="#2a4bc2" stroke-width="2" rx="2"/>
-                        <!-- 机头 -->
-                        <polygon points="100,20 95,40 105,40" fill="#3358e0" stroke="#2a4bc2" stroke-width="2"/>
-                        <!-- 三角翼 -->
-                        <polygon points="100,50 20,140 100,120 180,140" fill="#4f8cff" stroke="#3358e0" stroke-width="2"/>
-                        <!-- 左舵面 -->
-                        <polygon points="40,140 20,180 60,180" fill="#e74c3c" stroke="#c0392b" stroke-width="2" opacity="0.8"/>
-                        <!-- 左舵机转速表 -->
-                        <g id="delta-left-gauge" transform="translate(40, 165)">
-                          <circle cx="0" cy="0" r="10" fill="none" stroke="#e0e7ff" stroke-width="2"/>
-                          <line id="delta-left-needle" x1="0" y1="0" x2="0" y2="-8" stroke="#e74c3c" stroke-width="2" stroke-linecap="round" style="transition: transform 0.1s ease-out;"/>
+
+                      <!-- 三角翼混控 -->
+                      <g id="delta-plane" style="display:none;" filter="url(#fm-soft-shadow)">
+                        <path d="M140,58 L132,68 L134,175 Q140,188 146,175 L148,68 Z" fill="url(#fm-fuselage)" stroke="#254a9e" stroke-width="1.5"/>
+                        <path d="M140,68 L38,210 L242,210 Z" fill="url(#fm-wing-delta)" stroke="#2a4bc2" stroke-width="1.5" stroke-linejoin="round"/>
+                        <path d="M140,95 L72,205 L140,185 L208,205 Z" fill="rgba(255,255,255,0.1)" stroke="none"/>
+                        <!-- 左升降舵 + 表盘 -->
+                        <g id="delta-left-surf" class="flight-surf-group" transform="translate(62,208)">
+                          <path d="M0,0 L-22,28 L18,8 Z" fill="url(#fm-surf-l)" stroke="#c0392b" stroke-width="1.5" stroke-linejoin="round"/>
+                          <g id="delta-left-gauge" transform="translate(0,6)">
+                            <path class="flight-gauge-arc" d="M-14,0 A14,14 0 0 1 14,0" stroke="#ffd4cf"/>
+                            <path class="flight-gauge-arc" d="M-14,0 A14,14 0 0 1 0,-14" stroke="#e0e7ff"/>
+                            <circle cx="0" cy="0" r="3" fill="#fff" stroke="#e74c3c" stroke-width="1.5"/>
+                            <line id="delta-left-needle" x1="0" y1="0" x2="0" y2="-12" stroke="#e74c3c" stroke-width="2.5" stroke-linecap="round"/>
+                          </g>
                         </g>
-                        <!-- 右舵面 -->
-                        <polygon points="160,140 180,180 140,180" fill="#27ae60" stroke="#229954" stroke-width="2" opacity="0.8"/>
-                        <!-- 右舵机转速表 -->
-                        <g id="delta-right-gauge" transform="translate(160, 165)">
-                          <circle cx="0" cy="0" r="10" fill="none" stroke="#e0e7ff" stroke-width="2"/>
-                          <line id="delta-right-needle" x1="0" y1="0" x2="0" y2="-8" stroke="#27ae60" stroke-width="2" stroke-linecap="round" style="transition: transform 0.1s ease-out;"/>
+                        <!-- 右升降舵 + 表盘 -->
+                        <g id="delta-right-surf" class="flight-surf-group" transform="translate(218,208)">
+                          <path d="M0,0 L22,28 L-18,8 Z" fill="url(#fm-surf-r)" stroke="#1e8449" stroke-width="1.5" stroke-linejoin="round"/>
+                          <g id="delta-right-gauge" transform="translate(0,6)">
+                            <path class="flight-gauge-arc" d="M-14,0 A14,14 0 0 1 14,0" stroke="#c8f5dc"/>
+                            <path class="flight-gauge-arc" d="M0,-14 A14,14 0 0 1 14,0" stroke="#e0e7ff"/>
+                            <circle cx="0" cy="0" r="3" fill="#fff" stroke="#27ae60" stroke-width="1.5"/>
+                            <line id="delta-right-needle" x1="0" y1="0" x2="0" y2="-12" stroke="#27ae60" stroke-width="2.5" stroke-linecap="round"/>
+                          </g>
                         </g>
-                        <!-- 标签 -->
-                        <text x="25" y="195" font-size="10" fill="#e74c3c" font-weight="bold">左舵机</text>
-                        <text x="145" y="195" font-size="10" fill="#27ae60" font-weight="bold">右舵机</text>
+                        <text x="38" y="252" class="flight-label" fill="#e74c3c" data-i18n="flight-servo-left">左舵机</text>
+                        <text x="242" y="252" class="flight-label" fill="#27ae60" text-anchor="end" data-i18n="flight-servo-right">右舵机</text>
+                        <text x="140" y="268" text-anchor="middle" class="flight-label" fill="#5a6f9e" data-i18n="flight-delta-caption">三角翼混控 · ELE ± AIL</text>
                       </g>
                     </svg>
                   </div>
                   <!-- 左右输出数据显示 -->
                   <div style="flex:1;display:flex;flex-direction:column;gap:12px;">
                     <div style="background:#fff;border-radius:10px;padding:16px;border:2px solid #b3cfff;">
-                      <div style="font-size:1em;color:#3358e0;font-weight:600;margin-bottom:8px;">左输出</div>
+                      <div style="font-size:1em;color:#3358e0;font-weight:600;margin-bottom:8px;" data-i18n="flight-left-output">左输出</div>
                       <div style="display:flex;align-items:center;gap:10px;">
                         <div style="flex:1;height:20px;background:#e0e7ff;border-radius:10px;overflow:hidden;">
                           <div id="left-output-bar" style="width:50%;height:100%;background:linear-gradient(90deg,#e74c3c,#ff6b6b);transition:width 0.1s;"></div>
@@ -6471,7 +7017,7 @@ const calibStyle = document.createElement('style');
                       </div>
                     </div>
                     <div style="background:#fff;border-radius:10px;padding:16px;border:2px solid #b3cfff;">
-                      <div style="font-size:1em;color:#3358e0;font-weight:600;margin-bottom:8px;">右输出</div>
+                      <div style="font-size:1em;color:#3358e0;font-weight:600;margin-bottom:8px;" data-i18n="flight-right-output">右输出</div>
                       <div style="display:flex;align-items:center;gap:10px;">
                         <div style="flex:1;height:20px;background:#e0e7ff;border-radius:10px;overflow:hidden;">
                           <div id="right-output-bar" style="width:50%;height:100%;background:linear-gradient(90deg,#27ae60,#2ecc71);transition:width 0.1s;"></div>
@@ -6503,13 +7049,88 @@ const calibStyle = document.createElement('style');
               <!-- 飞行模式通道配置 -->
               <div id="flight-mode-channels-container" style="display:flex;flex-direction:column;gap:12px;">
               </div>
+              </div>
             </div>
             </div>
           </div>
         </div>
       </div>`;
       configPage.innerHTML = html;
-      
+
+      // 数据源模式：须在菜单绑定前同步初始化，进入 Dual Rate / 飞行模式时强制原始数据
+      if (typeof window._channelDataSourceRaw === 'undefined') {
+        window._channelDataSourceRaw = 0;
+      }
+      const CONFIG_RAW_DATA_PAGES = ['expo', 'flight-mode'];
+      const CONFIG_OUTPUT_DATA_PAGES = ['channel', 'channel-attr', 'channel-map', 'trim-center', 'mode'];
+
+      window.updateDataSourceButtonText = function(btn) {
+        if (!btn) return;
+        const lang = typeof getLang === 'function' ? getLang() : currentLang;
+        btn.textContent = window._channelDataSourceRaw == 1
+          ? (LANGS[lang]['channel-data-source-raw'] || '原始数据')
+          : (LANGS[lang]['channel-data-source-output'] || '输出数据');
+      };
+
+      window.updateAllDataSourceButtons = function() {
+        ['channel-data-source-toggle-btn', 'expo-data-source-toggle-btn', 'attr-data-source-toggle-btn', 'flight-data-source-toggle-btn'].forEach((id) => {
+          window.updateDataSourceButtonText(document.getElementById(id));
+        });
+      };
+
+      window.refreshConfigPageOnDataSourceChange = function() {
+        if (window._globalChannelTask && window._globalChannelTask.channelRequest) {
+          window._globalChannelTask.channelRequest();
+        }
+        const activeBtn = document.querySelector('.config-menu-btn.active');
+        const page = activeBtn && activeBtn.dataset.page;
+        if (page === 'expo' && typeof window.drawExpoGraph === 'function') {
+          window.drawExpoGraph();
+        }
+        if (page === 'flight-mode' && typeof window.updateFlightModeOutputs === 'function') {
+          window.updateFlightModeOutputs();
+        }
+      };
+
+      window.applyConfigPageDataSourceDefaults = function(page) {
+        if (CONFIG_RAW_DATA_PAGES.includes(page)) {
+          window._channelDataSourceRaw = 1;
+          channelFlag = 1;
+        } else if (CONFIG_OUTPUT_DATA_PAGES.includes(page)) {
+          window._channelDataSourceRaw = 0;
+          channelFlag = 0;
+        } else {
+          return;
+        }
+        window.updateAllDataSourceButtons();
+        window.refreshConfigPageOnDataSourceChange();
+        console.log('[数据源] 进入', page, '→', window._channelDataSourceRaw == 1 ? '原始数据(0x02)' : '输出数据(0x1B)');
+      };
+
+      window.toggleConfigDataSourceMode = function() {
+        window._channelDataSourceRaw = window._channelDataSourceRaw == 1 ? 0 : 1;
+        channelFlag = window._channelDataSourceRaw;
+        window.updateAllDataSourceButtons();
+        window.refreshConfigPageOnDataSourceChange();
+      };
+
+      window.setConfigDataSourceMode = function(mode) {
+        window._channelDataSourceRaw = mode === 'raw' ? 1 : 0;
+        channelFlag = window._channelDataSourceRaw;
+        window.updateAllDataSourceButtons();
+        window.refreshConfigPageOnDataSourceChange();
+      };
+
+      ['channel-data-source-toggle-btn', 'expo-data-source-toggle-btn', 'attr-data-source-toggle-btn', 'flight-data-source-toggle-btn'].forEach((id) => {
+        const btn = document.getElementById(id);
+        if (btn) {
+          window.updateDataSourceButtonText(btn);
+          btn.onclick = function() {
+            window.toggleConfigDataSourceMode();
+          };
+        }
+      });
+      window.updateAllDataSourceButtons();
 
       if(window._deviceInfo.devName=="RadioMaster M8L")
       {
@@ -6521,44 +7142,11 @@ const calibStyle = document.createElement('style');
       {
         //document.querySelector('.config-menu-btn[data-page="channel-map"]').style.display = 'none';
         //document.querySelector('.config-menu-btn[data-page="mode"]').style.display = 'none';
-        document.querySelector('.config-menu-btn[data-page="flight-mode"]').style.display = 'none';
-        document.querySelector('.config-menu-btn[data-page="expo"]').style.display = 'none';
+        //document.querySelector('.config-menu-btn[data-page="flight-mode"]').style.display = 'none';
+        //document.querySelector('.config-menu-btn[data-page="expo"]').style.display = 'none';
       }
 
 
-      // 飞行模式菜单按钮点击事件
-      const flightModeBtn = document.querySelector('.config-menu-btn[data-page="flight-mode"]');
-      if (flightModeBtn) {
-        flightModeBtn.onclick = function() {
-          console.log('[Flight] 飞行模式按钮被点击');
-          // 先隐藏所有config-stack-page
-          document.querySelectorAll('.config-stack-page').forEach(p => {
-            p.style.display = 'none';
-          });
-          // 显示飞行模式页面
-          const flightPage = document.querySelector('.config-stack-page[data-page="flight-mode"]');
-          if (flightPage) {
-            flightPage.style.display = 'block';
-            console.log('[Flight] 飞行模式页面已显示, container:', document.getElementById('flight-mode-channels-container'));
-          } else {
-            console.error('[Flight] 未找到飞行模式页面元素');
-          }
-          // 更新菜单按钮状态
-          document.querySelectorAll('.config-menu-btn').forEach(b => b.classList.remove('active'));
-          flightModeBtn.classList.add('active');
-          // 调用初始化函数
-          if (typeof initFlightModePage === 'function') {
-            try {
-              initFlightModePage();
-            } catch(e) {
-              console.error('[Flight] initFlightModePage执行错误:', e);
-            }
-          } else {
-            console.error('[Flight] initFlightModePage函数未定义');
-          }
-        };
-      }
-      
       // 菜单切换逻辑
       const btns = document.querySelectorAll('.config-menu-btn');
       {
@@ -6566,6 +7154,9 @@ const calibStyle = document.createElement('style');
         btns.forEach(btn => {
           btn.onclick = function() {
             console.log("btn:",btn.dataset.page);
+            const pageId = btn.dataset.page;
+            // 进入页面时按页面类型强制切换数据源（Dual Rate/飞行模式→原始，其余→输出）
+            window.applyConfigPageDataSourceDefaults(pageId);
 
             //按键刷新Tirm和Center事件
             if (btn.dataset.page === 'trim-center') {
@@ -6610,20 +7201,17 @@ const calibStyle = document.createElement('style');
               }
           }
 
-          // Expo平滑算法页面初始化
           if (btn.dataset.page === 'expo') {
-            //channelFlag = window._channelDataSourceRaw;
-            //window._channelDataSourceRaw = 0;
             setTimeout(initExpoPage, 0);
           }
-          else
+          else if (btn.dataset.page !== 'expo')
           {
+            window._expoDataReady = false;
             // 离开expo页面时清除定时器
             if (window.expoUpdateInterval) {
               clearInterval(window.expoUpdateInterval);
               window.expoUpdateInterval = null;
             }
-            //window._channelDataSourceRaw = 1;
           }
 
 
@@ -6633,7 +7221,6 @@ const calibStyle = document.createElement('style');
           // 飞行模式页面初始化
           if (btn.dataset.page === 'flight-mode') {
             console.log('飞行模式按钮被点击');
-            //window._channelDataSourceRaw = 0;
             // 先确保飞行模式页面显示
             const flightModePage = document.querySelector('.config-stack-page[data-page="flight-mode"]');
             if (flightModePage) {
@@ -7126,7 +7713,7 @@ const calibStyle = document.createElement('style');
               ctx.beginPath();
               ctx.arc(testPx, testPy, 6, 0, 2 * Math.PI);
               ctx.stroke();
-            } else {
+            } else if (testCoordDisplay) {
               testCoordDisplay.textContent = '(无效输入)';
             }
           }
@@ -7141,27 +7728,32 @@ const calibStyle = document.createElement('style');
           ctx.stroke();
           ctx.setLineDash([]);
           
-          // 绘制图例
-          ctx.fillStyle = '#e74c3c';
-          ctx.fillRect(width - padding - 120, padding + 10, 15, 2);
-          ctx.fillStyle = '#222';
+          const legendSeg = (LANGS[currentLang] && LANGS[currentLang]['expo-legend-segment']) || '分段函数曲线';
+          const legendReal = (LANGS[currentLang] && LANGS[currentLang]['expo-legend-real']) || '实际坐标输入';
+          const legendTest = (LANGS[currentLang] && LANGS[currentLang]['expo-legend-test']) || '测试输入';
           ctx.font = '12px Arial';
           ctx.textAlign = 'left';
-          ctx.fillText('分段函数曲线', width - padding - 100, padding + 5);
-          
-          // 绘制左右参数说明
-          ctx.fillStyle = '#4f8cff';
-          ctx.fillRect(width - padding - 120, padding + 30, 15, 2);
-          ctx.fillStyle = '#222';
-          ctx.fillText('左侧参数', width - padding - 100, padding + 25);
-          
           ctx.fillStyle = '#e74c3c';
-          ctx.fillRect(width - padding - 120, padding + 50, 15, 2);
+          ctx.fillRect(width - padding - 130, padding + 8, 15, 2);
           ctx.fillStyle = '#222';
-          ctx.fillText('右侧参数', width - padding - 100, padding + 45);
+          ctx.fillText(legendSeg, width - padding - 110, padding + 3);
+          ctx.fillStyle = '#27ae60';
+          ctx.beginPath();
+          ctx.arc(width - padding - 122, padding + 28, 5, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.fillStyle = '#222';
+          ctx.fillText(legendReal, width - padding - 110, padding + 23);
+          ctx.fillStyle = '#e74c3c';
+          ctx.beginPath();
+          ctx.arc(width - padding - 122, padding + 48, 5, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.fillStyle = '#222';
+          ctx.fillText(legendTest, width - padding - 110, padding + 43);
           
-          // 绘制实时输入数据点（如果选择了通道且有数据）
-          const realTimeInput = getCurrentChannelInput();
+          // 绘制实时输入数据点（原始/输出数据源由全局切换决定）
+          const realTimeInput = window._channelDataSourceRaw == 1
+            ? getCurrentChannelInput()
+            : getChangeCurrentChannelInput();
           if (realTimeInput !== null) {
             // 将输入值从-500到500转换为-100到100（图表范围）
             const normalizedInput = realTimeInput / 5; // -500到500 -> -100到100
@@ -7253,11 +7845,9 @@ const calibStyle = document.createElement('style');
             ctx.arc(realTimePx, realTimePy, 8, 0, 2 * Math.PI);
             ctx.stroke();
             
-            // 更新坐标显示（如果有测试坐标显示区域）
-            const testCoordDisplay = document.getElementById('expo-test-coord');
-            if (testCoordDisplay) {
-              testCoordDisplay.textContent = `(${normalizedInput.toFixed(1)}, ${outputY.toFixed(2)}) [实时]`;
-              testCoordDisplay.style.color = '#2ecc71';
+            const realCoordDisplay = document.getElementById('expo-real-coord');
+            if (realCoordDisplay) {
+              realCoordDisplay.textContent = `(${normalizedInput.toFixed(1)}, ${outputY.toFixed(2)})`;
             }
             
             // ========== 新增：将expo计算后的数据应用到Channel Monitor ==========
@@ -7307,11 +7897,15 @@ const calibStyle = document.createElement('style');
             //   }
             // }
             // ========== 结束：Channel Monitor更新 ==========
+          } else {
+            const realCoordDisplay = document.getElementById('expo-real-coord');
+            if (realCoordDisplay) realCoordDisplay.textContent = '—';
           }
         };
         
         // Expo页面事件绑定
         const initExpoPage = () => {
+          window.applyConfigPageDataSourceDefaults('expo');
           // 左侧参数元素
           const kSliderLeft = document.getElementById('k-slider-left');
           const kInputLeft = document.getElementById('k-input-left');
@@ -7330,82 +7924,90 @@ const calibStyle = document.createElement('style');
           const confirmExpoBtn = document.getElementById('expo-confirm-btn');
           //confirmExpoBtn.disabled = true;
           const queryBtn = document.getElementById('expo-query-btn');
-          const reverseBtn = document.getElementById('expo-reverse-btn');
           
+          const isM8LExpo = isExpoM8LDevice();
+          const applyExpoDirGearStyle = (btn, active) => {
+            if (!btn) return;
+            if (active) {
+              btn.style.background = 'linear-gradient(135deg, #4f8cff 0%, #3358e0 100%)';
+              btn.style.color = '#fff';
+            } else {
+              btn.style.background = '#fff';
+              btn.style.color = '#3358e0';
+            }
+          };
+          window.getExpoDirGear = () => {
+            const active = document.querySelector('#expo-dir-segment .expo-dir-opt.active');
+            const v = active ? parseInt(active.dataset.val, 10) : 2;
+            return (v >= 1 && v <= 3) ? v : 2;
+          };
+          window.setExpoDirGear = (val) => {
+            let v = parseInt(val, 10);
+            if (v < 1 || v > 3) v = 2;
+            document.querySelectorAll('#expo-dir-segment .expo-dir-opt').forEach(btn => {
+              const on = parseInt(btn.dataset.val, 10) === v;
+              btn.classList.toggle('active', on);
+              applyExpoDirGearStyle(btn, on);
+            });
+          };
+          document.querySelectorAll('#expo-dir-segment .expo-dir-opt').forEach(btn => {
+            btn.onclick = function() {
+              window.setExpoDirGear(parseInt(this.dataset.val, 10));
+            };
+          });
+          /** UI 下标(0基) → 线协议通道(1基) */
+          const getExpoQueryWire = () => {
+            const ui = channelSelect ? parseInt(channelSelect.value, 10) : 0;
+            return ((Math.max(0, ui) + 1) & 0xFF);
+          };
+          window.setExpoPageDataReady = (ready) => {
+            window._expoDataReady = !!ready;
+            const panel = document.getElementById('expo-edit-panel');
+            const hint = document.getElementById('expo-query-hint');
+            const status = document.getElementById('expo-query-status');
+            if (panel) {
+              panel.style.display = ready ? 'flex' : 'none';
+            }
+            if (hint) {
+              hint.style.display = ready ? 'none' : 'block';
+            }
+            if (status) {
+              const waiting = (LANGS[currentLang] && LANGS[currentLang]['expo-query-waiting']) || '等待下位机数据…';
+              const ok = (LANGS[currentLang] && LANGS[currentLang]['expo-query-ok']) || '数据已就绪';
+              status.textContent = ready ? ok : waiting;
+              status.style.color = ready ? '#27ae60' : '#888';
+            }
+            if (ready && typeof window.stopExpoQueryBurst === 'function') {
+              window.stopExpoQueryBurst();
+            }
+          };
+          window.resetExpoPageQueryState = (autoQuery) => {
+            if (autoQuery && typeof window.sendExpoQueryBurst === 'function') {
+              window.sendExpoQueryBurst();
+            } else if (!autoQuery) {
+              window.setExpoPageDataReady(false);
+            }
+          };
+
           // 通道查询按钮事件
           if (queryBtn) {
             queryBtn.onclick = function() {
-              const channel = channelSelect ? parseInt(channelSelect.value) : 0;
-              const channelNames = ['AIL', 'ELE', 'THR', 'RUD'];
-              const channelNum = channel + 1; // 从1开始计数 (1,2,3,4)
+              const channelUi = channelSelect ? parseInt(channelSelect.value, 10) : 0;
+              const channelWire = getExpoQueryWire();
+              const channelNames = isM8LExpo ? ['THR', 'STE'] : ['AIL', 'ELE', 'THR', 'RUD'];
               console.log('通道查询:', {
-                channel: channelNum,
-                channelName: channelNames[channel] || 'Unknown',
+                channelUi: channelUi,
+                channelWire: channelWire,
+                channelName: channelNames[channelUi] || 'Unknown',
                 action: '查询通道'
               });
-              
-              // 发送查询指令 {0xA5,0x55,0x2D,channel,'\r','\n'}
-              if (typeof writer !== 'undefined' && writer) {
-                const queryCmd = new Uint8Array([0xA5, 0x55, 0x2D, channelNum, 0x0D, 0x0A]);
-                writer.write(queryCmd);
-                console.log('[查询指令] 发送通道查询:', channelNum, Array.from(queryCmd).map(x => '0x' + x.toString(16).padStart(2, '0').toUpperCase()).join(' '));
-              } else {
-                console.warn('[查询指令] 串口未连接');
+              if (typeof window.sendExpoQueryBurst === 'function') {
+                window.sendExpoQueryBurst();
               }
-              
-              // 按钮反馈效果
               this.style.transform = 'scale(0.95)';
               setTimeout(() => {
                 this.style.transform = 'scale(1)';
               }, 100);
-            };
-          }
-          
-          // 正反方向按钮事件
-          if (reverseBtn) {
-            reverseBtn.onclick = function() {
-              const channel = channelSelect ? parseInt(channelSelect.value) : 0;
-              const switchChannel = switchChannelSelect ? parseInt(switchChannelSelect.value) : 0;
-              const channelNames = ['AIL', 'ELE', 'THR', 'RUD'];
-              const switchNames = ['SA', 'SB', 'SC', 'SD', 'SE', 'S1'];
-             
-
-              // 切换按钮文本
-              const currentText = this.textContent;
-              const newText = currentText === 'NOR' ? 'REV' : 'NOR';
-              this.textContent = newText;
-              if(newText === 'NOR'){
-                data[5] = 0;
-              }else{
-                data[5] = 1;
-              }
-
-              console.log('正反方向切换:', {
-                channel: channel + 1,
-                channelName: channelNames[channel] || 'Unknown',
-                switchChannel: switchChannel + 1,
-                switchName: switchNames[switchChannel] || 'Unknown',
-                direction: newText,
-                action: '切换正反方向'
-              });
-              
-              // TODO: 发送正反方向指令
-              // if (typeof writer !== 'undefined' && writer) {
-              //   // 发送正反方向指令
-              // }
-              
-              // 按钮反馈效果
-              this.style.transform = 'scale(0.95)';
-              setTimeout(() => {
-                this.style.transform = 'scale(1)';
-              }, 100);
-            };
-          }
-          
-          // 通道选择变化时重新绘制图表
-          if (channelSelect) {
-            channelSelect.onchange = function() {
-              drawExpoGraph();
             };
           }
           
@@ -7536,11 +8138,12 @@ const calibStyle = document.createElement('style');
             console.log('Right Expo initialized:', expoSliderRight.value);
           }
           
-          // 通道选择事件
+          // 通道选择：自动查询当前通道
           if (channelSelect) {
             channelSelect.onchange = function() {
-              // 可以在这里加载对应通道的保存值
-              drawExpoGraph();
+              if (typeof window.resetExpoPageQueryState === 'function') {
+                window.resetExpoPageQueryState(true);
+              }
             };
           }
           
@@ -7552,44 +8155,50 @@ const calibStyle = document.createElement('style');
           }
           
           // 确认按钮事件
+          window.resetExpoPageQueryState(true);
+
           if (confirmExpoBtn) {
             confirmExpoBtn.onclick = function() {
+              if (!window._expoDataReady) {
+                const msg = (LANGS[currentLang] && LANGS[currentLang]['expo-query-hint']) ||
+                  '请先完成通道查询，成功后再保存';
+                alert(msg);
+                return;
+              }
 
-              const channel = channelSelect ? parseInt(channelSelect.value) : 0;
+              const channelUi = channelSelect ? parseInt(channelSelect.value, 10) : 0;
               const switchChannel = switchChannelSelect ? parseInt(switchChannelSelect.value) : 0;
-              const kLeft = kInputLeft ? parseFloat(kInputLeft.value) : 0;
-              const expoLeft = expoInputLeft ? parseFloat(expoInputLeft.value) : 0;
-              const kRight = kInputRight ? parseFloat(kInputRight.value) : 0;
-              const expoRight = expoInputRight ? parseFloat(expoInputRight.value) : 0;
+              const kLeft = clampDrExpoValue(kInputLeft ? kInputLeft.value : 0);
+              const expoLeft = clampDrExpoValue(expoInputLeft ? expoInputLeft.value : 0);
+              const kRight = clampDrExpoValue(kInputRight ? kInputRight.value : 0);
+              const expoRight = clampDrExpoValue(expoInputRight ? expoInputRight.value : 0);
               
-              // 这里可以发送数据到设备
-              console.log('确认设置:', {
-                channel: channel + 1,
-                switchChannel: switchChannel ,
-                left: {
-                  rate: kLeft,
-                  expo: expoLeft
-                },
-                right: {
-                  rate: kRight,
-                  expo: expoRight
-                }
-              });
-              
+              const dirGear = isM8LExpo ? 0 : (typeof window.getExpoDirGear === 'function' ? window.getExpoDirGear() : 2);
 
               let data = new Uint8Array(12);  
               data[0] = 0xA5;
               data[1] = 0x55;
               data[2] = 0x2C;
-              data[3] = channel+1;
+              data[3] = ((Math.max(0, channelUi) + 1) & 0xFF);
               data[4] = switchChannel;
-              data[5] = 0;
-              data[6] = kLeft;
-              data[7] = kRight;
-              data[8] = expoLeft;
-              data[9] = expoRight;
+              data[5] = dirGear;
+              data[6] = signedInt8ToUint8(kLeft);
+              data[7] = signedInt8ToUint8(kRight);
+              data[8] = signedInt8ToUint8(expoLeft);
+              data[9] = signedInt8ToUint8(expoRight);
               data[10] = 0x0D;
               data[11] = 0x0A;
+
+              console.log('确认设置:', {
+                channelUi: channelUi,
+                channelWire: data[3],
+                switchChannel: data[4],
+                dirGear: data[5],
+                rateLeft: data[6],
+                rateRight: data[7],
+                expoLeft: data[8],
+                expoRight: data[9]
+              });
 
               if(writer){
                 writer.write(data);
@@ -7616,6 +8225,7 @@ const calibStyle = document.createElement('style');
             };
           }
           
+          window.drawExpoGraph = drawExpoGraph;
           // 确保绘制函数被调用
           console.log('initExpoPage: Drawing graph');
           drawExpoGraph();
@@ -7633,38 +8243,21 @@ const calibStyle = document.createElement('style');
         // 飞行模式页面初始化函数
         function initFlightModePage() {
           console.log('initFlightModePage: 初始化飞行模式页面');
-          
+          window.applyConfigPageDataSourceDefaults('flight-mode');
+
           // 监听飞行模式类型radio按钮变化
           const radioButtons = document.querySelectorAll('input[name="flight-type"]');
           radioButtons.forEach(radio => {
             radio.onchange = function() {
-              const selectedMode = this.value;
-              const container = document.getElementById('flight-mode-channels-container');
-              const visualContainer = document.getElementById('flight-mode-visual-container');
-              
-              if (selectedMode === 'none') {
-                container.style.display = 'none';
-                visualContainer.style.display = 'none';
-              } else {
-                container.style.display = 'flex';
-                visualContainer.style.display = 'block';
-                updateFlightModeVisual(selectedMode);
+              if (window._flightModeDataReady && typeof window.applyFlightModeUiForType === 'function') {
+                window.applyFlightModeUiForType(this.value);
+              } else if (typeof window.updateFlightModeVisual === 'function') {
+                window.updateFlightModeVisual(this.value);
               }
             };
           });
           
-          // 根据当前选择的模式显示/隐藏通道容器和可视化区域
-          const currentMode = document.querySelector('input[name="flight-type"]:checked')?.value;
           const container = document.getElementById('flight-mode-channels-container');
-          const visualContainer = document.getElementById('flight-mode-visual-container');
-          if (currentMode === 'none') {
-            container.style.display = 'none';
-            visualContainer.style.display = 'none';
-          } else {
-            container.style.display = 'flex';
-            visualContainer.style.display = 'block';
-            updateFlightModeVisual(currentMode);
-          }
 
           // // 暂时使用模拟的recvChannel数据（后期替换为真实数据）
           // window.flightModeRecvChannel = [1500, 1500, 1500, 1500]; // ELE, RUD, AIL, THR
@@ -7696,16 +8289,8 @@ const calibStyle = document.createElement('style');
           // 动态生成10个通道配置行的HTML（2行，每行5个）
           console.log('[Flight] 容器元素:', container);
           console.log('[Flight] 容器内容长度:', container ? container.innerHTML.length : 0);
-          if (container) {
+          if (container && !container.dataset.built) {
             let html = '';
-            // 表头
-            // html += `<div style="display:flex;align-items:center;gap:8px;background:#e0e7ff;padding:10px 16px;border-radius:8px;font-weight:bold;color:#3358e0;font-size:1em;">
-            //   <span style="min-width:60px;">通道</span>
-            //   <span style="min-width:100px;">受控通道</span>
-            //   <span style="min-width:60px;">正反</span>
-            // </div>`;
-            
-            // 2行，每行5个通道配置
             for (let row = 0; row < 2; row++) {
               html += `<div style="display:flex;gap:12px;margin-bottom:12px;">`;
               for (let col = 0; col < 5; col++) {
@@ -7713,37 +8298,33 @@ const calibStyle = document.createElement('style');
                 html += `<div style="flex:1;display:flex;flex-direction:column;gap:6px;background:linear-gradient(90deg,#f4f8ff 60%,#eaf1ff 100%);border-radius:10px;padding:12px;box-shadow:0 1px 6px #e0e7ff;">
                   <span style="font-weight:bold;color:#3358e0;font-size:1.1em;">CH${i+1}</span>
                   <select id="flight-mode-ch-${i}" style="width:100%;padding:6px 8px;border-radius:6px;border:2px solid #b3cfff;background:#fff;color:#3358e0;font-size:0.9em;font-weight:500;">
-                    <option value="0">关闭</option>
-                    <option value="1">左</option>
-                    <option value="2">右</option>
+                    <option value="0">${typeof langText === 'function' ? langText('flight-ch-off', '关闭') : '关闭'}</option>
+                    <option value="1">${typeof langText === 'function' ? langText('flight-ch-left', '左') : '左'}</option>
+                    <option value="2">${typeof langText === 'function' ? langText('flight-ch-right', '右') : '右'}</option>
                   </select>
-                  <button id="flight-mode-dir-${i}" style="width:100%;padding:6px 8px;border-radius:6px;border:2px solid #b3cfff;background:#fff;color:#3358e0;font-weight:bold;cursor:pointer;font-size:0.9em;">NOR</button>
+                  <button type="button" id="flight-mode-dir-${i}" data-rev="0" style="width:100%;padding:6px 8px;border-radius:6px;border:2px solid #b3cfff;background:#fff;color:#3358e0;font-weight:bold;cursor:pointer;font-size:0.9em;">${typeof langText === 'function' ? langText('flight-dir-nor', 'NOR') : 'NOR'}</button>
                 </div>`;
               }
               html += `</div>`;
             }
-            console.log('[Flight] 生成的HTML长度:', html.length);
             container.innerHTML = html;
-            console.log('[Flight] 已写入HTML到容器');
+            container.dataset.built = '1';
+            if (typeof window.refreshFlightModeChannelI18n === 'function') {
+              window.refreshFlightModeChannelI18n();
+            }
           }
-          
-          // 初始化10个通道的方向按钮和比例滑块
-          for (let i = 0; i < 10; i++) {
-            // 方向按钮 - 正反切换
+
+          const chCount = getFlightModeChannelCount();
+          for (let i = 0; i < chCount; i++) {
             const dirBtn = document.getElementById(`flight-mode-dir-${i}`);
-            if (dirBtn) {
+            if (dirBtn && !dirBtn.dataset.bound) {
+              dirBtn.dataset.bound = '1';
               dirBtn.onclick = function() {
-                if (!window.flightModeData) window.flightModeData = {};
-                if (!window.flightModeData.channels) window.flightModeData.channels = [];
-                window.flightModeData.channels[i] = window.flightModeData.channels[i] || {};
-                window.flightModeData.channels[i].dir = window.flightModeData.channels[i].dir ? 0 : 1;
-                this.textContent = window.flightModeData.channels[i].dir ? 'REV' : 'NOR';
-                this.style.background = window.flightModeData.channels[i].dir ? '#ffe066' : '#fff';
-                this.style.color = window.flightModeData.channels[i].dir ? '#e74c3c' : '#3358e0';
+                setFlightDirBtn(this, getFlightDirFromBtn(this) ? 0 : 1);
               };
             }
             
-            // 左控制比例滑块
+            // 左控制比例滑块（保留占位，当前协议无比例字段）
             const leftSlider = document.getElementById(`flight-mode-left-${i}`);
             const leftVal = document.getElementById(`flight-mode-left-val-${i}`);
             if (leftSlider && leftVal) {
@@ -7774,23 +8355,9 @@ const calibStyle = document.createElement('style');
           const queryBtn = document.getElementById('flight-mode-query-btn');
           if (queryBtn) {
             queryBtn.onclick = function() {
-              console.log('飞行模式: 查询配置');
-              
-              // 发送查询指令到设备
-              // 协议格式: 0xA5, 0x55, 0x32, 0x0D, 0x0A
-              if (typeof writer !== 'undefined' && writer) {
-                const queryData = new Uint8Array([0xA5, 0x55, 0x32, 0x0D, 0x0A]);
-                writer.write(queryData);
-                console.log('[飞行模式] 已发送查询指令:', Array.from(queryData).map(x => '0x' + x.toString(16).padStart(2, '0').toUpperCase()).join(' '));
-              } else {
-                console.warn('[飞行模式] 串口未连接');
-              }
-              
-              // 按钮反馈效果
+              window.sendFlightModeQuery();
               this.style.transform = 'scale(0.95)';
-              setTimeout(() => {
-                this.style.transform = 'scale(1)';
-              }, 100);
+              setTimeout(() => { this.style.transform = 'scale(1)'; }, 100);
             };
           }
           
@@ -7798,65 +8365,35 @@ const calibStyle = document.createElement('style');
           const saveBtn = document.getElementById('flight-mode-save-btn');
           if (saveBtn) {
             saveBtn.onclick = function() {
-              console.log('飞行模式: 保存配置');
-              
-              // 收集10个通道的配置数据
-              let flightModeConfig = [];
-              for (let i = 0; i < 10; i++) {
-                const chSelect = document.getElementById(`flight-mode-ch-${i}`);
-                const dirBtn = document.getElementById(`flight-mode-dir-${i}`);
-                const leftSlider = document.getElementById(`flight-mode-left-${i}`);
-                const rightSlider = document.getElementById(`flight-mode-right-${i}`);
-                
-                flightModeConfig.push({
-                  channel: chSelect ? parseInt(chSelect.value) : 0,
-                  direction: dirBtn && dirBtn.textContent === 'REV' ? 1 : 0,
-                  left: leftSlider ? parseInt(leftSlider.value) : 100,
-                  right: rightSlider ? parseInt(rightSlider.value) : 100
-                });
+              if (!window._flightModeDataReady) {
+                alert((LANGS[currentLang] && LANGS[currentLang]['flight-mode-query-hint']) ||
+                  '请先完成模式查询，成功后再保存');
+                return;
               }
-              
-              // 保存到全局变量
-            if (!window.flightModeData) window.flightModeData = {};
-              window.flightModeData.channels = flightModeConfig;
-              
-              console.log('飞行模式配置数据:', JSON.stringify(flightModeConfig));
-              
-              // 发送保存指令到设备
-              // 协议格式: 0xA5, 0x55, 0x30, [数据...], 0x0D, 0x0A
+              const data = window.collectFlightModeUiToData();
+              const surfaceIdx = data.devSwitch === 2 ? 1 : 0;
+              const chN = getFlightModeChannelCount();
+              const chLog = [];
+              for (let i = 0; i < chN; i++) {
+                const ctl = data.channelCtl[surfaceIdx][i] || [0, 0];
+                chLog.push(`CH${i + 1}:左/右=${ctl[0]} 正/反=${ctl[1]}`);
+              }
+              console.log('飞行模式配置数据:', data.devSwitch, chLog.join(', '));
               if (typeof writer !== 'undefined' && writer) {
-                // 组包发送 - 这里需要根据实际协议格式调整
-                // 数据格式: 每个通道4字节 (受控通道, 方向, 左比例, 右比例) * 10通道 = 40字节
-                let dataLen = 4 + 20 + 1; // cmd + 40字节数据 + \r\n
-
-                let saveData = new Uint8Array(dataLen);
+                const saveData = new Uint8Array(4 + 1 + chN * 2 + 2);
                 saveData[0] = 0xA5;
                 saveData[1] = 0x55;
-                saveData[2] = 0x30; // 保存命令
-
-                // 获取当前飞行模式：无=0, V尾=1, 三角=2
-                const flightTypeRadio = document.querySelector('input[name="flight-type"]:checked');
-                let flightMode = 0;
-                if (flightTypeRadio) {
-                  const type = flightTypeRadio.value;
-                  if (type === 'vtail') flightMode = 1;
-                  else if (type === 'delta') flightMode = 2;
-                  else flightMode = 0; // none
+                saveData[2] = 0x33;
+                saveData[3] = data.devSwitch & 0xFF;
+                for (let i = 0; i < chN; i++) {
+                  const ctl = data.channelCtl[surfaceIdx][i] || [0, 0];
+                  saveData[4 + i * 2] = ctl[0] & 0xFF;
+                  saveData[4 + i * 2 + 1] = ctl[1] & 0xFF;
                 }
-                saveData[3] = flightMode;
-                for (let i = 0; i < 10; i++) {
-                  let idx = 4 + i * 2;
-                  saveData[idx] = flightModeConfig[i].channel;
-                  saveData[idx + 1] = flightModeConfig[i].direction;
-                  //saveData[idx + 2] = flightModeConfig[i].left;
-                  //saveData[idx + 3] = flightModeConfig[i].right;
-                }
-                
-                saveData[dataLen - 2] = 0x0D;
-                saveData[dataLen - 1] = 0x0A;
-                
+                saveData[saveData.length - 2] = 0x0D;
+                saveData[saveData.length - 1] = 0x0A;
                 writer.write(saveData);
-                console.log('[飞行模式] 已发送保存指令:', Array.from(saveData).map(x => '0x' + x.toString(16).padStart(2, '0').toUpperCase()).join(' '));
+                console.log('[飞行模式] 已发送保存 0x33', Array.from(saveData).map(x => '0x' + x.toString(16).padStart(2, '0').toUpperCase()).join(' '));
               }
               
               // 按钮反馈效果
@@ -7865,7 +8402,7 @@ const calibStyle = document.createElement('style');
                 this.style.transform = 'scale(1)';
               }, 100);
               
-              alert('飞行模式配置已保存');
+              alert(langText('flight-mode-save-ok', '飞行模式配置已保存'));
             };
           }
           
@@ -7873,15 +8410,7 @@ const calibStyle = document.createElement('style');
           const restoreBtn = document.getElementById('flight-mode-restore-btn');
           if (restoreBtn) {
             restoreBtn.onclick = function() {
-              console.log('飞行模式: 还原配置');
-              
-              // 发送查询指令获取设备配置
-              if (typeof writer !== 'undefined' && writer) {
-                let queryData = new Uint8Array([0xA5, 0x55, 0x31, 0x0D, 0x0A]);
-                writer.write(queryData);
-                console.log('[飞行模式] 已发送查询指令');
-              }
-              
+              window.sendFlightModeQuery();
               // 按钮反馈效果
               this.style.transform = 'scale(0.95)';
               setTimeout(() => {
@@ -7890,21 +8419,16 @@ const calibStyle = document.createElement('style');
             };
           }
           
+          startFlightModeVisualUpdate();
+          window.syncFlightModeVisualFromRadio();
           console.log('initFlightModePage: 飞行模式页面初始化完成');
+          window.setFlightModePageDataReady(false);
+          window.sendFlightModeQuery();
         }
         
-        // 更新飞行模式可视化（切换飞机动画）
+        // 更新飞行模式可视化（切换飞机动画，委托全局实现）
         function updateFlightModeVisual(mode) {
-          const vtailPlane = document.getElementById('vtail-plane');
-          const deltaPlane = document.getElementById('delta-plane');
-          
-          if (mode === 'vtail') {
-            vtailPlane.style.display = 'block';
-            deltaPlane.style.display = 'none';
-          } else if (mode === 'delta') {
-            vtailPlane.style.display = 'none';
-            deltaPlane.style.display = 'block';
-          }
+          window.updateFlightModeVisual(mode);
         }
         
         // 启动飞行模式可视化更新定时器
@@ -7949,10 +8473,10 @@ const calibStyle = document.createElement('style');
           // const rud = (rudIdx >= 0) ? window.origChannelData[rudIdx] : 1500;
           // const ail = (ailIdx >= 0) ? window.origChannelData[ailIdx] : 1500;
       
-          //console.log("origChannelData:",window.origChannelData);
-          const ele = window.origChannelData[1] || 1500;
-          const rud = window.origChannelData[3] || 1500;
-          const ail = window.origChannelData[0] || 1500;
+          const mixSrc = window._channelDataSourceRaw == 1 ? window.origChannelData : changeChannelData;
+          const ele = (mixSrc && mixSrc[1]) || 1500;
+          const rud = (mixSrc && mixSrc[3]) || 1500;
+          const ail = (mixSrc && mixSrc[0]) || 1500;
 
           // 转换为-100到100范围
           const eleNorm = ((ele - 1500) / 5);
@@ -8002,41 +8526,24 @@ const calibStyle = document.createElement('style');
           // 更新飞机动画线条
           updatePlaneAnimation(currentMode, leftOutput, rightOutput);
         }
+        window.updateFlightModeOutputs = updateFlightModeOutputs;
         
         // 更新飞机动画线条
+        function setFlightSurfRotation(groupId, baseTransform, deg) {
+          const group = document.getElementById(groupId);
+          if (!group) return;
+          group.setAttribute('transform', `${baseTransform} rotate(${deg})`);
+        }
+
         function updatePlaneAnimation(mode, leftOutput, rightOutput) {
+          const leftDeg = leftOutput * 1.35;
+          const rightDeg = rightOutput * 1.35;
           if (mode === 'vtail') {
-            const vtailLeftNeedle = document.getElementById('vtail-left-needle');
-            const vtailRightNeedle = document.getElementById('vtail-right-needle');
-
-            // V尾：左右舵机偏转方向一致
-            // 垂直为常态，负值向左偏转，正值向右偏转
-            const leftRotation = leftOutput * 1.5; // -150到150度
-            const rightRotation = rightOutput * 1.5;
-
-            if (vtailLeftNeedle) {
-              vtailLeftNeedle.style.transform = `rotate(${leftRotation}deg)`;
-            }
-
-            if (vtailRightNeedle) {
-              vtailRightNeedle.style.transform = `rotate(${rightRotation}deg)`;
-            }
+            setFlightSurfRotation('vtail-left-surf', 'translate(98,198)', leftDeg);
+            setFlightSurfRotation('vtail-right-surf', 'translate(182,198)', rightDeg);
           } else if (mode === 'delta') {
-            const deltaLeftNeedle = document.getElementById('delta-left-needle');
-            const deltaRightNeedle = document.getElementById('delta-right-needle');
-
-            // 三角翼：左右舵机偏转方向一致
-            // 垂直为常态，负值向左偏转，正值向右偏转
-            const leftRotation = leftOutput * 1.5;
-            const rightRotation = rightOutput * 1.5;
-
-            if (deltaLeftNeedle) {
-              deltaLeftNeedle.style.transform = `rotate(${leftRotation}deg)`;
-            }
-
-            if (deltaRightNeedle) {
-              deltaRightNeedle.style.transform = `rotate(${rightRotation}deg)`;
-            }
+            setFlightSurfRotation('delta-left-surf', 'translate(62,208)', leftDeg);
+            setFlightSurfRotation('delta-right-surf', 'translate(218,208)', rightDeg);
           }
         }
 
@@ -8044,7 +8551,8 @@ const calibStyle = document.createElement('style');
         setTimeout(drawModePage, 0);
         // --- 通道属性页面事件绑定 ---
         setTimeout(() => {
-          for (let i = 0; i < 10; i++) {
+          const attrChannelCount = typeof channeLNumFlag === 'number' ? channeLNumFlag : 10;
+          for (let i = 0; i < attrChannelCount; i++) {
             const btn = document.getElementById(`ch-dir-btn-${i}`);
             if (btn) {
               btn.onclick = function() {
@@ -8259,113 +8767,7 @@ const calibStyle = document.createElement('style');
             }
           }
 
-          // 数据源切换按钮事件
-          const dataSourceToggleBtn = document.getElementById('channel-data-source-toggle-btn');
-          const expoDataSourceBtn = document.getElementById('expo-data-source-toggle-btn');
-          const attrDataSourceBtn = document.getElementById('attr-data-source-toggle-btn');
-          const flightDataSourceBtn = document.getElementById('flight-data-source-toggle-btn');
-
-          // 初始化按钮状态
-          if (typeof window._channelDataSourceRaw === 'undefined') {
-            window._channelDataSourceRaw = 0;
-          }
-
-          // 更新所有数据源按钮文本
-          function updateAllDataSourceButtons() {
-            if (dataSourceToggleBtn) updateDataSourceButtonText(dataSourceToggleBtn);
-            if (expoDataSourceBtn) updateDataSourceButtonText(expoDataSourceBtn);
-            if (attrDataSourceBtn) updateDataSourceButtonText(attrDataSourceBtn);
-            if (flightDataSourceBtn) updateDataSourceButtonText(flightDataSourceBtn);
-          }
-
-          // 初始化所有按钮状态
-          updateAllDataSourceButtons();
-
-          if (dataSourceToggleBtn) {
-            updateDataSourceButtonText(dataSourceToggleBtn);
-            dataSourceToggleBtn.onclick = function() {
-              // 切换数据源状态
-              if(window._channelDataSourceRaw==1)
-              {
-                window._channelDataSourceRaw = 0;
-                channelFlag = 0;
-              }
-              else
-              {
-                window._channelDataSourceRaw = 1;
-                channelFlag = 1;
-              }
-              updateAllDataSourceButtons();
-              console.log('[数据源切换] 当前数据源:', window._channelDataSourceRaw ? '原始数据' : '输出数据');
-            };
-          }
-
-          // 大小舵页面数据源切换按钮
-          if (expoDataSourceBtn) {
-            updateDataSourceButtonText(expoDataSourceBtn);
-            expoDataSourceBtn.onclick = function() {
-              if(window._channelDataSourceRaw==1)
-              {
-                window._channelDataSourceRaw = 0;
-                channelFlag = 0;
-              }
-              else
-              {
-                window._channelDataSourceRaw = 1;
-                channelFlag = 1;
-              }
-              updateAllDataSourceButtons();
-              console.log('[数据源切换-大小舵] 当前数据源:', window._channelDataSourceRaw ? '原始数据' : '输出数据');
-            };
-          }
-
-          // 通道属性页面数据源切换按钮
-          if (attrDataSourceBtn) {
-            updateDataSourceButtonText(attrDataSourceBtn);
-            attrDataSourceBtn.onclick = function() {
-              if(window._channelDataSourceRaw==1)
-              {
-                window._channelDataSourceRaw = 0;
-                channelFlag = 0;
-              }
-              else
-              {
-                window._channelDataSourceRaw = 1;
-                channelFlag = 1;
-              }
-              updateAllDataSourceButtons();
-              console.log('[数据源切换-通道属性] 当前数据源:', window._channelDataSourceRaw ? '原始数据' : '输出数据');
-            };
-          }
-
-          // 飞行模式页面数据源切换按钮
-          if (flightDataSourceBtn) {
-            updateDataSourceButtonText(flightDataSourceBtn);
-            flightDataSourceBtn.onclick = function() {
-              if(window._channelDataSourceRaw==1)
-              {
-                window._channelDataSourceRaw = 0;
-                channelFlag = 0;
-              }
-              else
-              {
-                window._channelDataSourceRaw = 1;
-                channelFlag = 1;
-              }
-              updateAllDataSourceButtons();
-              console.log('[数据源切换-飞行模式] 当前数据源:', window._channelDataSourceRaw ? '原始数据' : '输出数据');
-            };
-          }
-          
-          // 更新数据源按钮文本的辅助函数
-          function updateDataSourceButtonText(btn) {
-            const lang = typeof getLang === 'function' ? getLang() : currentLang;
-            if (window._channelDataSourceRaw) {
-              btn.textContent = LANGS[lang]['channel-data-source-raw'] || '原始数据';
-            } else {
-              btn.textContent = LANGS[lang]['channel-data-source-output'] || '输出数据';
-            }
-          }
+          window.updateAllDataSourceButtons();
         }, 0);
 
       // 在renderConfigPage渲染后添加如下JS逻辑，确保圆点始终居中在线段上
@@ -8503,11 +8905,11 @@ const calibStyle = document.createElement('style');
     let _autoDevAttrTimer = null;
     async function autoSendDevAttr() {
       //console.log('[ATTR] 自动发送设备属性指令');
-      if (!writer) return;
+      if (!writer || !isSerialConnected) return;
       if (_autoDevAttrTries >= _autoDevAttrMaxTries) return;
       _autoDevAttrTries++;
       const devAttrCmd = new Uint8Array([0xA5, 0x55, 0x1D, 0x0D, 0x0A]);
-      await writer.write(devAttrCmd);
+      if (!(await safeSerialWrite(devAttrCmd))) return;
       // 等待2秒，如果window._deviceInfo还没被赋值则重试
       _autoDevAttrTimer = setTimeout(() => {
         if (!window._deviceInfo && _autoDevAttrTries < _autoDevAttrMaxTries) {
@@ -8993,6 +9395,9 @@ const calibStyle = document.createElement('style');
         }
       }
       window.origChannelData = recvChannel;
+      for (let i = 0; i < 10; i++) {
+        changeChannelData[i] = processedCH[i];
+      }
       // 新增：保存最新原始包
       window._lastOrigChannelBuf = buf;
       //console.log('原始通道数据:', recvChannel);
@@ -9102,6 +9507,9 @@ const calibStyle = document.createElement('style');
         }
       }
       window.origChannelData = recvChannel;
+      for (let i = 0; i < 10; i++) {
+        changeChannelData[i] = processedCH[i];
+      }
       // 新增：保存最新原始包
       window._lastOrigChannelBuf = buf;
       //console.log('原始通道数据:', recvChannel);
@@ -9211,8 +9619,13 @@ const calibStyle = document.createElement('style');
               if (this.length >= i + len + 2 && len >0) {
                 const buf = this.slice(i, i+len+2);
                 let parsed = false;
-                if (window._currentPage === 'calib' && typeof tryParseAdcPacketCalib === 'function') {
-                  parsed = tryParseAdcPacketCalib(buf);
+                if (window._currentPage === 'calib') {
+                  const deviceName = window._deviceInfo ? window._deviceInfo.devName : '';
+                  if (deviceName === 'RadioMaster M8L' && typeof tryParseCarAdcPacket === 'function') {
+                    parsed = tryParseCarAdcPacket(buf);
+                  } else if (typeof tryParseAdcPacketCalib === 'function') {
+                    parsed = tryParseAdcPacketCalib(buf);
+                  }
                 }
                 if (parsed) {
                   this.splice(i, len+2);
@@ -9259,6 +9672,21 @@ const calibStyle = document.createElement('style');
                 }
                 if (parsed) {
                   this.splice(i, len+2);
+                  found = true;
+                  break;
+                }
+              }
+            }
+
+            if(this[i] === 0xAB) {
+              if (this.length >= i + 37) {
+                const buf = this.slice(i, i + 37);
+                let parsed = false;
+                if (typeof tryParseFlightModePacket === 'function') {
+                  parsed = tryParseFlightModePacket(buf);
+                }
+                if (parsed) {
+                  this.splice(i, 37);
                   found = true;
                   break;
                 }
@@ -10531,6 +10959,7 @@ const calibStyle = document.createElement('style');
       if (!window._globalChannelTimer) {
         console.log('[定时器] 启动全局通道定时器');
         window._globalChannelTimer = setInterval(() => {
+          if (!isSerialConnected || !writer) return;
           if (typeof window._globalChannelTask === 'function') {
             window._globalChannelTask();
           } else if (window._globalChannelTask && window._globalChannelTask.channelRequest) {
@@ -10755,9 +11184,9 @@ const calibStyle = document.createElement('style');
 
       const channelSelect = document.getElementById('expo-channel-select');
       if (!channelSelect) return null;
-      
-      channelSelect.index = buf[2]-1;
-      const selectedChannel = buf[2]-1; // 0-3 (AIL/ELE/THR/RUD)
+
+      const selectedChannel = expoWireToUiIndex(buf[2]);
+      channelSelect.value = String(selectedChannel);
       
 
       // 根据map找到对应的输入通道
@@ -10819,7 +11248,7 @@ const calibStyle = document.createElement('style');
       // 解析数据包
       // buf[0] = 0x89 (包类型)
       // buf[1] = 7 (数据长度)
-      // buf[2] = channel (当前通道，从1开始: 1,2,3,4)
+      // buf[2] = channel（1 基：1=第一通道，见 expoWireToUiIndex）
       // buf[3] = channelCtl[channel-1][0] (控制位低字节)
       // buf[4] = channelCtl[channel-1][1] (控制位高字节)
       // buf[5] = channelDR[channel-1][0] (DR低字节)
@@ -10828,62 +11257,59 @@ const calibStyle = document.createElement('style');
       // buf[8] = channelEXPO[channel-1][1] (EXPO高字节)
       // buf[9] = CRC
       
-      function uint8ToInt8(uint8Value) {
-          // 核心转换逻辑：超过127则减256
-          return uint8Value > 127 ? uint8Value - 256 : uint8Value;
-      }
-
-      const channel = uint8ToInt8(buf[2]); // 通道号 (1-4)
-      const channelCtl = uint8ToInt8(buf[3]) | (uint8ToInt8(buf[4]) << 8); // 控制位 (16位)
-      const channelDR = uint8ToInt8(buf[5]) | (uint8ToInt8(buf[6]) << 8); // DR值 (16位)
-      const channelEXPO = uint8ToInt8(buf[7]) | (uint8ToInt8(buf[8]) << 8); // EXPO值 (16位)
+      const isM8LDevice = isExpoM8LDevice();
+      const channelWire = buf[2] & 0xFF;
+      const channel = expoWireToUiIndex(channelWire);
+      const channelCtl = (buf[3] & 0xFF) | ((buf[4] & 0xFF) << 8);
+      // Rate/Expo 各占一字节有符号：buf[5]=左Rate buf[6]=右Rate buf[7]=左Expo buf[8]=右Expo
+      const drLeft = uint8ToSignedInt8(buf[5]);
+      const drRight = uint8ToSignedInt8(buf[6]);
+      const expoLeft = uint8ToSignedInt8(buf[7]);
+      const expoRight = uint8ToSignedInt8(buf[8]);
       
       console.log('[DR包] 解析成功:', {
-        channel: channel,
+        channelWire: channelWire,
+        channelUi: channel,
         channelCtl: channelCtl,
-        channelDR: channelDR,
-        channelEXPO: channelEXPO,
+        drLeft: drLeft,
+        drRight: drRight,
+        expoLeft: expoLeft,
+        expoRight: expoRight,
         raw: Array.from(buf).map(x => '0x' + x.toString(16).padStart(2, '0').toUpperCase()).join(' ')
       });
       
-      // 更新大小舵页面的参数
-      // channelCtl可能包含开关选择和正反方向信息
-      // channelDR可能是左右两侧的Rate值组合
-      // channelEXPO可能是左右两侧的Expo值组合
-      
-      // 假设数据格式：
-      // channelCtl: 低8位可能是开关选择(0-5)，高8位可能是正反方向(0或1)
-      // channelDR: 低8位是左侧Rate值(-100到100映射到0-200)，高8位是右侧Rate值
-      // channelEXPO: 低8位是左侧Expo值(-100到100映射到0-200)，高8位是右侧Expo值
-      
-      const switchChannel = channelCtl & 0xFF; // 开关选择 (0-5)
-      const reverse = (channelCtl >> 8) & 0xFF; // 正反方向 (0=NOR, 1=REV)
-      
-      // 将0-200映射回-100到100
-      const drLeft = ((channelDR & 0xFF)); // 左侧Rate值
-      const drRight = ((channelDR >> 8)); // 右侧Rate值
-      const expoLeft = ((channelEXPO & 0xFF)); // 左侧Expo值
-      const expoRight = ((channelEXPO >> 8) ); // 右侧Expo值
-      
-      // 更新页面控件 (通道索引从0开始，所以channel-1)
-      const channelIndex = channel - 1;
-      if (channelIndex >= 0 && channelIndex < 4) {
-        // 更新通道选择
+      const switchChannel = isM8LDevice ? (channelCtl & 0xFF ? 1 : 0) : (channelCtl & 0xFF);
+      const reverse = (channelCtl >> 8) & 0xFF;
+
+      if (typeof window._expoPendingQueryChannel === 'number' &&
+          !expoResponseMatchesQuery(channelWire, window._expoPendingQueryChannel)) {
+        console.warn('[DR包] 通道与查询不一致，忽略。查询wire=', window._expoPendingQueryChannel,
+          '回包wire=', channelWire, '回包ui=', channel,
+          'raw=', Array.from(buf).map(x => '0x' + x.toString(16).padStart(2, '0').toUpperCase()).join(' '));
+        return true;
+      }
+
+      const channelIndex = channel;
+      const maxChannelIndex = getExpoChannelCount();
+      if (channelIndex >= 0 && channelIndex < maxChannelIndex) {
         const channelSelect = document.getElementById('expo-channel-select');
         if (channelSelect) {
           channelSelect.value = channelIndex;
         }
         
-        // 更新开关选择
         const switchChannelSelect = document.getElementById('expo-switch-channel-select');
-        if (switchChannelSelect && switchChannel >= 0 && switchChannel <= 15) {
-          switchChannelSelect.value = switchChannel;
+        if (switchChannelSelect) {
+          if (isM8LDevice) {
+            switchChannelSelect.value = switchChannel ? '1' : '0';
+          } else if (switchChannel >= 0 && switchChannel <= 15) {
+            switchChannelSelect.value = switchChannel;
+          }
         }
         
-        // 更新正反方向按钮
-        const reverseBtn = document.getElementById('expo-reverse-btn');
-        if (reverseBtn) {
-          reverseBtn.textContent = reverse ? 'REV' : 'NOR';
+        if (!isM8LDevice && typeof window.setExpoDirGear === 'function') {
+          let dirGear = reverse;
+          if (dirGear < 1 || dirGear > 3) dirGear = 2;
+          window.setExpoDirGear(dirGear);
         }
         
         // 更新左侧Rate值
@@ -10922,9 +11348,14 @@ const calibStyle = document.createElement('style');
         if (typeof drawExpoGraph === 'function') {
           drawExpoGraph();
         }
+
+        if (typeof window.setExpoPageDataReady === 'function') {
+          window.setExpoPageDataReady(true);
+        }
         
         console.log('[DR包] 页面参数已更新:', {
-          channel: channel,
+          channelWire: channelWire,
+          channelUi: channel,
           switchChannel: switchChannel,
           reverse: reverse ? 'REV' : 'NOR',
           drLeft: drLeft,
@@ -11051,6 +11482,7 @@ const calibStyle = document.createElement('style');
       // 通道数据请求定时器 - 20ms
       if (task && task.channelRequest) {
         window._globalChannelTimer = setInterval(() => {
+          if (!isSerialConnected || !writer) return;
           if (window._globalChannelTask && window._globalChannelTask.channelRequest) {
             window._globalChannelTask.channelRequest();
           }
@@ -11060,6 +11492,7 @@ const calibStyle = document.createElement('style');
       // 其他指令请求定时器 - 1000ms
       if (task && task.commandRequest) {
         window._globalCommandTimer = setInterval(() => {
+          if (!isSerialConnected || !writer) return;
           if (window._globalChannelTask && window._globalChannelTask.commandRequest) {
             window._globalChannelTask.commandRequest();
           }
@@ -11536,7 +11969,29 @@ const calibStyle = document.createElement('style');
         'attr-dev': '设备概况',
         'config-channel': '通道配置',
         'flight-mode': '飞行模式',
-        'flight-mode-title': '飞行模式',
+        'flight-mode-title': '飞行模式配置',
+        'flight-mode-query': '模式查询',
+        'flight-mode-save': '模式保存',
+        'flight-mode-restore': '模式还原',
+        'flight-mode-type': '飞行模式类型',
+        'flight-mode-none': '无模式',
+        'flight-mode-visual': '飞行模式可视化',
+        'flight-nose': '机头',
+        'flight-servo-left': '左舵机',
+        'flight-servo-right': '右舵机',
+        'flight-vtail-caption': 'V 尾混控 · ELE ± RUD',
+        'flight-delta-caption': '三角翼混控 · ELE ± AIL',
+        'flight-left-output': '左输出',
+        'flight-right-output': '右输出',
+        'flight-ch-off': '关闭',
+        'flight-ch-left': '左',
+        'flight-ch-right': '右',
+        'flight-dir-nor': 'NOR',
+        'flight-dir-rev': 'REV',
+        'flight-mode-save-ok': '飞行模式配置已保存',
+        'flight-mode-query-hint': '请先完成模式查询（进入页面会自动查询一次），成功后再配置下方参数',
+        'flight-mode-query-waiting': '等待下位机数据…',
+        'flight-mode-query-ok': '数据已就绪',
         'flight-vtail': 'V尾混控',
         'flight-delta': '三角翼混控',
         'net-config': '无线配置',
@@ -11556,6 +12011,7 @@ const calibStyle = document.createElement('style');
         'trim-center-title': '微调',
         'trim-center-center-title': '舵机中立点',
         'mode-title': '摇杆模式',
+        'save-mode': '模式保存',
         'config-dev': '设备配置',
         'channel-attr-confirm-btn': '通道保存',
         'channel-attr-restore-btn': '通道还原',
@@ -11652,6 +12108,31 @@ const calibStyle = document.createElement('style');
         'trim-right-reset-test':'右Trim复位功能',
         'dual-rate-title':'大小舵',
         'dual-rate-title-text':'大小舵',
+        'channel-select': '通道选择:',
+        'switch-channel-select': '开关选择:',
+        'rate-value': 'Rate值:',
+        'expo-value': 'Expo值:',
+        'expo-save': '确认保存',
+        'm8l-switch-label': '开关',
+        'switch-close': '关闭',
+        'switch-open': '开启',
+        'expo-dir-label': '方向挡位',
+        'expo-dir-up': '上',
+        'expo-dir-mid': '中',
+        'expo-dir-down': '下',
+        'expo-query-btn': '通道查询',
+        'expo-query-hint': '请先完成通道查询（进入页面会自动查询一次），成功后再设置下方参数',
+        'expo-query-waiting': '等待下位机数据…',
+        'expo-query-ok': '数据已就绪',
+        'expo-test-input-label': '测试输入 X:',
+        'expo-test-coord-label': '测试坐标',
+        'expo-real-coord-label': '实际坐标',
+        'expo-params-neg': 'X < 0 曲线参数',
+        'expo-params-pos': 'X ≥ 0 曲线参数',
+        'expo-graph-hint': '图表：横轴为输入 X，纵轴为输出 Y；红色为测试输入点，绿色为摇杆实际输入点',
+        'expo-legend-segment': '分段函数曲线',
+        'expo-legend-real': '实际坐标输入',
+        'expo-legend-test': '测试输入',
         'enter-passthrough': '进入透传模式',
         'exit-passthrough': '退出透传模式',
         'open-wifi': '开启WiFi模式',
@@ -11722,7 +12203,29 @@ const calibStyle = document.createElement('style');
         'attr-dev': 'Device',
         'config-channel': 'Channels',
         'flight-mode': 'Flight Mode',
-        'flight-mode-title': 'Flight Mode',
+        'flight-mode-title': 'Flight Mode Setup',
+        'flight-mode-query': 'Query',
+        'flight-mode-save': 'Save',
+        'flight-mode-restore': 'Restore',
+        'flight-mode-type': 'Flight mode type',
+        'flight-mode-none': 'None',
+        'flight-mode-visual': 'Flight mode diagram',
+        'flight-nose': 'Nose',
+        'flight-servo-left': 'Left servo',
+        'flight-servo-right': 'Right servo',
+        'flight-vtail-caption': 'V-tail mix · ELE ± RUD',
+        'flight-delta-caption': 'Delta mix · ELE ± AIL',
+        'flight-left-output': 'Left output',
+        'flight-right-output': 'Right output',
+        'flight-ch-off': 'Off',
+        'flight-ch-left': 'Left',
+        'flight-ch-right': 'Right',
+        'flight-dir-nor': 'NOR',
+        'flight-dir-rev': 'REV',
+        'flight-mode-save-ok': 'Flight mode settings saved',
+        'flight-mode-query-hint': 'Query flight mode first (auto on enter). Configure below after data is ready.',
+        'flight-mode-query-waiting': 'Waiting for device data…',
+        'flight-mode-query-ok': 'Data ready',
         'flight-vtail': 'V-Tail Mix',
         'flight-delta': 'Delta Wing Mix',
         'net-config': 'RF Settings',
@@ -11741,7 +12244,8 @@ const calibStyle = document.createElement('style');
         'channel-attr-positive-travel': 'Positive Travel',
         'trim-center-title': 'Trim',
         'trim-center-center-title': 'Sub Trim',
-        'mode-title': 'Mode',
+        'mode-title': 'Stick Mode',
+        'save-mode': 'Save Mode',
         'config-dev': 'Channels',
         'channel-attr-confirm-btn': 'Save',
         'channel-attr-restore-btn': 'Restore',
@@ -11846,6 +12350,31 @@ const calibStyle = document.createElement('style');
         'serial-permission-denied': 'User has denied serial port access permission, or the browser environment does not support serial port access.',
         'dual-rate-title': 'Dual Rate',
         'dual-rate-title-text': 'Dual Rate',
+        'channel-select': 'Channel:',
+        'switch-channel-select': 'Switch:',
+        'rate-value': 'Rate:',
+        'expo-value': 'Expo:',
+        'expo-save': 'Save',
+        'm8l-switch-label': 'Switch',
+        'switch-close': 'Off',
+        'switch-open': 'On',
+        'expo-dir-label': 'Direction',
+        'expo-dir-up': 'Up',
+        'expo-dir-mid': 'Mid',
+        'expo-dir-down': 'Down',
+        'expo-query-btn': 'Query Channel',
+        'expo-query-hint': 'Query the channel first (auto-query on entry). Then edit parameters below.',
+        'expo-query-waiting': 'Waiting for device…',
+        'expo-query-ok': 'Data ready',
+        'expo-test-input-label': 'Test input X:',
+        'expo-test-coord-label': 'Test coord',
+        'expo-real-coord-label': 'Live coord',
+        'expo-params-neg': 'Curve params (X < 0)',
+        'expo-params-pos': 'Curve params (X ≥ 0)',
+        'expo-graph-hint': 'X = input, Y = output. Red = test point, green = live stick input.',
+        'expo-legend-segment': 'Piecewise curve',
+        'expo-legend-real': 'Live input',
+        'expo-legend-test': 'Test input',
         'enter-passthrough': 'Enter Passthrough',
         'exit-passthrough': 'Exit Passthrough',
         'open-wifi': 'Open WiFi',
@@ -11903,7 +12432,7 @@ const calibStyle = document.createElement('style');
         //console.log('[ATTR] 更新语言:', key, lang, LANGS[lang][key]);
         if (LANGS[lang] && LANGS[lang][key]) {
           // 特殊处理：数据源切换按钮需要根据状态动态设置文本
-          if (key === 'channel-data-source-raw' && el.id === 'channel-data-source-toggle-btn') {
+          if (key === 'channel-data-source-raw' && /-data-source-toggle-btn$/.test(el.id)) {
             if (typeof window._channelDataSourceRaw !== 'undefined') {
               el.textContent = window._channelDataSourceRaw 
                 ? (LANGS[lang]['channel-data-source-raw'] || '原始数据')
@@ -11916,6 +12445,9 @@ const calibStyle = document.createElement('style');
           }
         }
       });
+      if (typeof window.refreshFlightModeChannelI18n === 'function') {
+        window.refreshFlightModeChannelI18n();
+      }
     }
 
 
@@ -11964,9 +12496,8 @@ const calibStyle = document.createElement('style');
           if (page === 'fw') return; // ymodem固件更新页面不发
         }
         // 发送指令
-        if (window._currentPage != 'net' && window._currentPage != 'fw' &&  window._currentPage != 'calib' &&writer ) {
-          writer.write(new Uint8Array([0xA5,0x55,0x01,0x0D,0x0A]));
-          //console.log('[全局] 已发送状态查询指令');
+        if (window._currentPage != 'net' && window._currentPage != 'fw' && window._currentPage != 'calib' && isSerialConnected && writer) {
+          safeSerialWrite(new Uint8Array([0xA5,0x55,0x01,0x0D,0x0A]));
         }
       }, 2000);
     }
@@ -12113,6 +12644,6 @@ window.addEventListener('load', function() {
 });
 
   </script>
-  <div id="app-version" style="position:fixed; bottom:10px; right:14px; color:#6b7a99; font-size:12px; z-index:1000; pointer-events:none;">Version 1.7.7</div>
+  <div id="app-version" style="position:fixed; bottom:10px; right:14px; color:#6b7a99; font-size:12px; z-index:1000; pointer-events:none;">Version 1.7.8</div>
 </body>
 </html> 

@@ -1,14 +1,13 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    // 使用 ${workspaceFolder} 指向当前工作区，避免项目移动后路径失效
+    // type 为 chrome 时会用 Chrome 打开；若要用 Edge，改为 "type": "msedge"
     "version": "0.2.0",
     "configurations": [
         {
             "type": "chrome",
             "request": "launch",
             "name": "Open Connection.html",
-            "file": "c:\\Users\\11868\\Desktop\\project\\Web\\Connection.html"
+            "file": "${workspaceFolder}/Connection.html"
         }
     ]
 }
