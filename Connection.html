@@ -1729,8 +1729,7 @@
 
     async function navigateToEspFlashPage() {
       const lang = typeof getLang === 'function' ? getLang() : currentLang;
-      const devName = (window._deviceInfo && window._deviceInfo.devName)
-        ? encodeURIComponent(window._deviceInfo.devName) : '';
+      const devName = (window._deviceInfo && window._deviceInfo.devName) || '';
       const qs = new URLSearchParams({ from: 'connection' });
       if (devName) qs.set('device', devName);
       await releaseSerialForEspFlash();

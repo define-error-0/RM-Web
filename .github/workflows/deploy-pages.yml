@@ -43,12 +43,17 @@ jobs:
         working-directory: vendor/esptool-js/examples/typescript
         run: |
           npm ci
-          npm run parcel:build
+          npm run build
+
+      - name: Verify ESP flash dist
+        run: |
+          test -f vendor/esptool-js/examples/typescript/dist/index.html
+          ls -la vendor/esptool-js/examples/typescript/dist/ | head -20
 
       - name: Prepare static site
         run: |
           mkdir -p _site
-          cp Connection.html EspFlash.html serve.json .nojekyll _site/
+          cp index.html 404.html Connection.html EspFlash.html serve.json .nojekyll _site/
           cp -r vendor _site/vendor
           rm -rf _site/vendor/esptool-js/node_modules
           rm -rf _site/vendor/esptool-js/examples/typescript/node_modules
