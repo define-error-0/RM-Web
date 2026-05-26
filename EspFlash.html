@@ -3,68 +3,223 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ESP 固件烧录</title>
+  <title>ESP 固件烧录 · RadioMaster</title>
+  <link href="https://fonts.googleapis.com/css?family=Roboto:400,700&display=swap" rel="stylesheet">
   <style>
     body {
       margin: 0;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      font-family: "Segoe UI", system-ui, sans-serif;
+      font-family: 'Roboto', sans-serif;
       background: linear-gradient(135deg, #e0e7ff 0%, #f4f6fb 100%);
+      color: #222;
+      min-height: 100vh;
+    }
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 24px;
+      background: #fff;
+      box-shadow: 0 2px 12px rgba(51, 88, 224, 0.08);
+    }
+    .top-bar .brand {
+      font-weight: 700;
       color: #3358e0;
+      font-size: 1.05em;
+    }
+    .top-bar a, .top-bar button {
+      color: #3358e0;
+      text-decoration: none;
+      font-weight: 500;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1em;
+    }
+    .page-wrap {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 32px 16px 48px;
+      min-height: calc(100vh - 56px);
     }
     .card {
       background: #fff;
-      border-radius: 16px;
-      padding: 32px 40px;
-      box-shadow: 0 8px 32px rgba(51, 88, 224, 0.12);
+      border-radius: 22px;
+      box-shadow: 0 8px 36px rgba(79, 140, 255, 0.15);
+      padding: 40px 48px 36px;
+      width: 100%;
       max-width: 480px;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .comm-title {
+      font-size: 1.35em;
+      font-weight: 700;
+      color: #3358e0;
       text-align: center;
+      margin-bottom: 8px;
     }
-    h1 { font-size: 1.25em; margin: 0 0 12px; }
-    p { color: #555; line-height: 1.6; margin: 0 0 20px; }
-    a.btn {
-      display: inline-block;
-      padding: 10px 24px;
+    .subtitle {
+      text-align: center;
+      color: #666;
+      font-size: 0.95em;
+      margin-bottom: 28px;
+      line-height: 1.5;
+    }
+    .field {
+      margin-bottom: 18px;
+    }
+    .field label {
+      display: block;
+      color: #3358e0;
+      font-weight: 500;
+      margin-bottom: 8px;
+      font-size: 0.98em;
+    }
+    .field select {
+      width: 100%;
+      padding: 10px 12px;
       border-radius: 8px;
-      text-decoration: none;
+      border: 1.5px solid #4f8cff;
+      font-size: 1em;
+      color: #3358e0;
+      background: #fff;
+      box-sizing: border-box;
+    }
+    .info-pill {
+      background: #f4f8ff;
+      border: 1px solid #e0e7ff;
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 0.9em;
+      color: #5a6f9e;
+      line-height: 1.55;
+      margin-bottom: 20px;
+    }
+    .info-pill strong { color: #3358e0; }
+    .connect-btn {
+      width: 100%;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1.1em;
       font-weight: 600;
-      margin: 6px;
-    }
-    .primary {
-      background: linear-gradient(90deg, #4f8cff, #3358e0);
+      cursor: pointer;
       color: #fff;
+      background: linear-gradient(135deg, #4f8cff 0%, #3358e0 100%);
+      box-shadow: 0 2px 8px rgba(51, 88, 224, 0.3);
+      transition: transform 0.15s, opacity 0.2s;
     }
-    .secondary {
+    .connect-btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    .connect-btn:not(:disabled):active {
+      transform: scale(0.98);
+    }
+    .btn-secondary {
+      margin-top: 10px;
       background: #e0e7ff;
       color: #3358e0;
+      box-shadow: none;
+    }
+    #progress-wrap {
+      display: none;
+      margin: 18px 0 8px;
+    }
+    #progress-bar-wrap {
+      width: 100%;
+      height: 22px;
+      background: #e0e7ff;
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+    }
+    #progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #4f8cff 0%, #3358e0 100%);
+      transition: width 0.2s;
+    }
+    #progress-text {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      font-weight: bold;
+      color: #3358e0;
+      font-size: 0.95em;
+    }
+    #status {
+      min-height: 28px;
+      text-align: center;
+      font-weight: 600;
+      margin-top: 12px;
+      color: #3358e0;
+      font-size: 0.95em;
+    }
+    #status.error { color: #e74c3c; }
+    #status.ok { color: #27ae60; }
+    #chip-info {
+      text-align: center;
+      color: #888;
+      font-size: 0.9em;
+      margin-top: 4px;
+    }
+    #log-panel {
+      display: none;
+      margin-top: 16px;
+      max-height: 120px;
+      overflow-y: auto;
+      background: #1e1e1e;
+      color: #ccc;
+      font-family: monospace;
+      font-size: 11px;
+      padding: 8px 10px;
+      border-radius: 8px;
     }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>正在打开 ESP 烧录工具…</h1>
-    <p id="hint">若未自动跳转，请点击下方按钮。</p>
-    <a id="open-flash" class="btn primary" href="#">打开烧录页面</a>
-    <a class="btn secondary" href="Connection.html">返回配置工具</a>
+  <div class="top-bar">
+    <span class="brand">RadioMaster · ESP</span>
+    <div>
+      <button type="button" id="lang-switcher">🌐 EN</button>
+      &nbsp;|&nbsp;
+      <a href="Connection.html" id="back-link">返回配置工具</a>
+    </div>
   </div>
-  <script>
-    (function () {
-      /* 必须带 dist/ 尾斜杠，否则 serve 去掉 index.html 后相对路径会 404 */
-      var qs = window.location.search || '';
-      var target = 'vendor/esptool-js/examples/typescript/dist/' + qs;
-      var openLink = document.getElementById('open-flash');
-      openLink.href = target;
-      try {
-        window.location.replace(target);
-      } catch (e) {
-        document.getElementById('hint').textContent =
-          '自动跳转失败，请手动点击「打开烧录页面」。请使用 Chrome/Edge，并从 Web 根目录启动本地服务器（不要只打开 dist 目录）。';
-      }
-    })();
-  </script>
+  <div class="page-wrap">
+    <div class="card">
+      <div class="comm-title" data-i18n="title">ESP 固件烧录</div>
+      <div class="subtitle" data-i18n="subtitle">ESP8285 · 请选择固件后连接设备并烧录</div>
+
+      <div class="info-pill" data-i18n="hint">
+        烧录地址固定为 <strong>0x0</strong>，波特率 <strong>921600</strong>，Flash 参数保持芯片原样。请使用 Chrome / Edge。
+      </div>
+
+      <div class="field">
+        <label for="fw-select" data-i18n="fw-label">固件文件 (bin/radio)</label>
+        <select id="fw-select">
+          <option value="" data-i18n="fw-loading">正在加载固件列表…</option>
+        </select>
+      </div>
+
+      <button type="button" class="connect-btn" id="flash-btn" data-i18n="flash-btn" disabled>连接并烧录</button>
+      <button type="button" class="connect-btn btn-secondary" id="disconnect-btn" data-i18n="disconnect-btn" style="display:none;">断开连接</button>
+
+      <div id="progress-wrap">
+        <div id="progress-bar-wrap">
+          <div id="progress-bar"></div>
+          <span id="progress-text">0%</span>
+        </div>
+      </div>
+      <div id="status"></div>
+      <div id="chip-info"></div>
+      <pre id="log-panel"></pre>
+    </div>
+  </div>
+  <script type="module" src="esp-flash.js"></script>
 </body>
 </html>

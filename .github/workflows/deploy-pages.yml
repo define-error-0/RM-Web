@@ -1,5 +1,5 @@
-# 构建 esptool-js 示例并部署到 GitHub Pages
-# 站点地址: https://<user>.github.io/RM-Web/
+# 构建 esptool-js 库并部署到 GitHub Pages
+# 站点地址: https://define-error-0.github.io/RM-Web/
 
 name: Deploy GitHub Pages
 
@@ -29,9 +29,7 @@ jobs:
         with:
           node-version: "20"
           cache: npm
-          cache-dependency-path: |
-            vendor/esptool-js/package-lock.json
-            vendor/esptool-js/examples/typescript/package-lock.json
+          cache-dependency-path: vendor/esptool-js/package-lock.json
 
       - name: Build esptool-js library
         working-directory: vendor/esptool-js
@@ -39,26 +37,17 @@ jobs:
           npm ci
           npm run build
 
-      - name: Build ESP flash UI (dist)
-        working-directory: vendor/esptool-js/examples/typescript
-        run: |
-          npm ci
-          npm run build
-
-      - name: Verify ESP flash dist
-        run: |
-          test -f vendor/esptool-js/examples/typescript/dist/index.html
-          ls -la vendor/esptool-js/examples/typescript/dist/ | head -20
+      - name: Verify esptool-js lib
+        run: test -f vendor/esptool-js/lib/index.js
 
       - name: Prepare static site
         run: |
           mkdir -p _site
-          cp index.html 404.html Connection.html EspFlash.html serve.json .nojekyll _site/
+          cp index.html 404.html Connection.html EspFlash.html esp-flash.js serve.json .nojekyll _site/
+          cp -r bin _site/bin
           cp -r vendor _site/vendor
           rm -rf _site/vendor/esptool-js/node_modules
-          rm -rf _site/vendor/esptool-js/examples/typescript/node_modules
           rm -rf _site/vendor/esptool-js/.parcel-cache
-          rm -rf _site/vendor/esptool-js/examples/typescript/.parcel-cache
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
