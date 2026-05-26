@@ -1,0 +1,74 @@
+# 构建 esptool-js 示例并部署到 GitHub Pages
+# 站点地址: https://<user>.github.io/RM-Web/
+
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            vendor/esptool-js/package-lock.json
+            vendor/esptool-js/examples/typescript/package-lock.json
+
+      - name: Build esptool-js library
+        working-directory: vendor/esptool-js
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build ESP flash UI (dist)
+        working-directory: vendor/esptool-js/examples/typescript
+        run: |
+          npm ci
+          npm run parcel:build
+
+      - name: Prepare static site
+        run: |
+          mkdir -p _site
+          cp Connection.html EspFlash.html serve.json .nojekyll _site/
+          cp -r vendor _site/vendor
+          rm -rf _site/vendor/esptool-js/node_modules
+          rm -rf _site/vendor/esptool-js/examples/typescript/node_modules
+          rm -rf _site/vendor/esptool-js/.parcel-cache
+          rm -rf _site/vendor/esptool-js/examples/typescript/.parcel-cache
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

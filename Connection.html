@@ -1711,6 +1711,97 @@
       setTimeout(() => { _serialDisconnectHandled = false; }, 300);
     }
 
+    /** ESP 烧录页（esptool-js dist；须 Web 根目录 serve，见 serve.json） */
+    window.ESP_FLASH_ENTRY = 'EspFlash.html';
+    window.ESP_FLASH_DIST_URL = 'vendor/esptool-js/examples/typescript/dist/';
+
+    async function releaseSerialForEspFlash() {
+      if (typeof writer !== 'undefined' && writer) {
+        try {
+          await writer.write(new Uint8Array([0xA5, 0x66, 0x02, 0x0D, 0x0A]));
+          await new Promise(r => setTimeout(r, 400));
+        } catch (e) {
+          console.warn('[FW] 发送 ESP 更新模式指令失败:', e);
+        }
+      }
+      await handleSerialDisconnect('navigate to ESP flash');
+    }
+
+    async function navigateToEspFlashPage() {
+      const lang = typeof getLang === 'function' ? getLang() : currentLang;
+      const devName = (window._deviceInfo && window._deviceInfo.devName)
+        ? encodeURIComponent(window._deviceInfo.devName) : '';
+      const qs = new URLSearchParams({ from: 'connection' });
+      if (devName) qs.set('device', devName);
+      await releaseSerialForEspFlash();
+      window.location.href = window.ESP_FLASH_ENTRY + '?' + qs.toString();
+    }
+
+    function showTransmitterFirmwareDialog() {
+      let dialog = document.createElement('div');
+      dialog.style.position = 'fixed';
+      dialog.style.left = '0';
+      dialog.style.top = '0';
+      dialog.style.width = '100vw';
+      dialog.style.height = '100vh';
+      dialog.style.background = 'rgba(0,0,0,0.18)';
+      dialog.style.display = 'flex';
+      dialog.style.alignItems = 'center';
+      dialog.style.justifyContent = 'center';
+      dialog.style.zIndex = '9999';
+
+      let inner = document.createElement('div');
+      inner.style.background = '#fff';
+      inner.style.borderRadius = '18px';
+      inner.style.boxShadow = '0 4px 24px rgba(79,140,255,0.18)';
+      inner.style.padding = '38px 48px 32px 48px';
+      inner.style.display = 'flex';
+      inner.style.flexDirection = 'column';
+      inner.style.alignItems = 'center';
+      inner.style.minWidth = '320px';
+      inner.style.maxWidth = '90vw';
+
+      inner.innerHTML = `
+        <div style="font-size:1.18em;color:#3358e0;font-weight:bold;margin-bottom:18px;">${LANGS[currentLang]['select-firmware-update-method']}</div>
+        <div style="font-size:1.08em;color:#222;margin-bottom:24px;text-align:center;">${LANGS[currentLang]['select-firmware-update-method-desc']}</div>
+      `;
+
+      let btnWeb = document.createElement('button');
+      btnWeb.textContent = LANGS[currentLang]['jump-to-elrs-website'];
+      btnWeb.style.background = 'linear-gradient(90deg,#4f8cff 0%,#3358e0 100%)';
+      btnWeb.style.color = '#fff';
+      btnWeb.style.border = 'none';
+      btnWeb.style.borderRadius = '8px';
+      btnWeb.style.padding = '12px 32px';
+      btnWeb.style.fontSize = '1.08em';
+      btnWeb.style.fontWeight = 'bold';
+      btnWeb.style.cursor = 'pointer';
+      btnWeb.style.marginBottom = '16px';
+      btnWeb.onclick = async () => {
+        document.body.removeChild(dialog);
+        await navigateToEspFlashPage();
+      };
+
+      let btnCancel = document.createElement('button');
+      btnCancel.textContent = LANGS[currentLang]['cancel'];
+      btnCancel.style.background = '#e0e7ff';
+      btnCancel.style.color = '#3358e0';
+      btnCancel.style.border = 'none';
+      btnCancel.style.borderRadius = '8px';
+      btnCancel.style.padding = '10px 32px';
+      btnCancel.style.fontSize = '1.08em';
+      btnCancel.style.fontWeight = 'bold';
+      btnCancel.style.cursor = 'pointer';
+      btnCancel.onclick = () => {
+        document.body.removeChild(dialog);
+      };
+
+      inner.appendChild(btnWeb);
+      inner.appendChild(btnCancel);
+      dialog.appendChild(inner);
+      document.body.appendChild(dialog);
+    }
+
     async function safeSerialWrite(data) {
       if (!isSerialConnected || !writer) return false;
       try {
@@ -4843,108 +4934,9 @@ const calibStyle = document.createElement('style');
         else if(upDataDev=="transmitter")
         {
           await writer.write(new Uint8Array([0xA5, 0x66, 0x02, 0x0D, 0x0A]));
-          // showConnectPage();
-          // hideDeviceInfoBar();
-            // //await port.close(); 
-          // isSerialConnected = false;
-          // await reader.cancel(); // 中断读取
-          // reader.releaseLock();   // 释放读锁
-
-          // await writer.cancel(); // 中断写
-          // writer.releaseLock();   // 释放写锁
-
-          // await navigator.serial.requestPort().close();
-          // port = null; writer = null; reader = null;
-          setTimeout(() => {
-            //location.reload(true); 
-          }, 1500);          
-          // location.href = "https://expresslrs.github.io/web-flasher/";
-          // 弹窗选择跳转方式
-          let dialog = document.createElement('div');
-          dialog.style.position = 'fixed';
-          dialog.style.left = '0';
-          dialog.style.top = '0';
-          dialog.style.width = '100vw';
-          dialog.style.height = '100vh';
-          dialog.style.background = 'rgba(0,0,0,0.18)';
-          dialog.style.display = 'flex';
-          dialog.style.alignItems = 'center';
-          dialog.style.justifyContent = 'center';
-          dialog.style.zIndex = '9999';
-
-          let inner = document.createElement('div');
-          inner.style.background = '#fff';
-          inner.style.borderRadius = '18px';
-          inner.style.boxShadow = '0 4px 24px rgba(79,140,255,0.18)';
-          inner.style.padding = '38px 48px 32px 48px';
-          inner.style.display = 'flex';
-          inner.style.flexDirection = 'column';
-          inner.style.alignItems = 'center';
-          inner.style.minWidth = '320px';
-          inner.style.maxWidth = '90vw';
-
-          inner.innerHTML = `
-            <div style="font-size:1.18em;color:#3358e0;font-weight:bold;margin-bottom:18px;">${LANGS[currentLang]['select-firmware-update-method']}</div>
-            <div style="font-size:1.08em;color:#222;margin-bottom:24px;text-align:center;">${LANGS[currentLang]['select-firmware-update-method-desc']}</div>
-          `;
-
-          let btnWeb = document.createElement('button');
-          btnWeb.textContent = LANGS[currentLang]['jump-to-elrs-website'];
-          btnWeb.style.background = 'linear-gradient(90deg,#4f8cff 0%,#3358e0 100%)';
-          btnWeb.style.color = '#fff';
-          btnWeb.style.border = 'none';
-          btnWeb.style.borderRadius = '8px';
-          btnWeb.style.padding = '12px 32px';
-          btnWeb.style.fontSize = '1.08em';
-          btnWeb.style.fontWeight = 'bold';
-          btnWeb.style.cursor = 'pointer';
-          btnWeb.style.marginBottom = '16px';
-          btnWeb.onclick = () => {
-            document.body.removeChild(dialog);
-            setTimeout(() => {
-              location.reload(true);
-            }, 1500);
-            setTimeout(() => {
-              location.href = "https://expresslrs.github.io/web-flasher/";
-            }, 500);
-          };
-
-          let btnApp = document.createElement('button');
-          btnApp.textContent = LANGS[currentLang]['update-esp-firmware'];
-          btnApp.style.background = 'linear-gradient(90deg,#2ecc71 0%,#27ae60 100%)';
-          btnApp.style.color = '#fff';
-          btnApp.style.border = 'none';
-          btnApp.style.borderRadius = '8px';
-          btnApp.style.padding = '12px 32px';
-          btnApp.style.fontSize = '1.08em';
-          btnApp.style.fontWeight = 'bold';
-          btnApp.style.cursor = 'pointer';
-          btnApp.style.marginBottom = '8px';
-          btnApp.onclick = () => {
-            document.body.removeChild(dialog);
-            alert(LANGS[currentLang]['jump-to-elrs-website-desc']);
-            location.reload(true);
-          };
-
-          let btnCancel = document.createElement('button');
-          btnCancel.textContent = LANGS[currentLang]['cancel'];
-          btnCancel.style.background = '#e0e7ff';
-          btnCancel.style.color = '#3358e0';
-          btnCancel.style.border = 'none';
-          btnCancel.style.borderRadius = '8px';
-          btnCancel.style.padding = '10px 32px';
-          btnCancel.style.fontSize = '1.08em';
-          btnCancel.style.fontWeight = 'bold';
-          btnCancel.style.cursor = 'pointer';
-          btnCancel.onclick = () => {
-            document.body.removeChild(dialog);
-          };
-
-          inner.appendChild(btnWeb);
-          inner.appendChild(btnApp);
-          inner.appendChild(btnCancel);
-          dialog.appendChild(inner);
-          document.body.appendChild(dialog);
+          showTransmitterFirmwareDialog();
+          fwStatus.textContent = LANGS[currentLang]['fw-send-update-cmd'];
+          return;
         }
         upDataFlag = 1;
         fwStatus.textContent = LANGS[currentLang]['fw-send-update-cmd'];
@@ -12092,9 +12084,9 @@ const calibStyle = document.createElement('style');
         'update-over': '更新完毕',
 
         'elrs-missing-alert': '未检测到ELRS固件，请检查设备或重启',
-        'jump-to-elrs-website': '跳转到ELRS官网网页进行固件更新',
-        'update-esp-firmware': '使用本地App更新ESP固件',
-        'jump-to-elrs-website-desc': '已经开启了ESP固件更新模式,点击确认就会断开连接,直接打开RadioMaster提供的ESPTool工具选择USB更新即可',
+        'jump-to-elrs-website': '打开 ESP 固件烧录',
+        'update-esp-firmware': '本地网页烧录 ESP',
+        'jump-to-elrs-website-desc': '将断开当前串口连接并打开 ESP 烧录页面，请使用 Chrome/Edge 选择串口并选择固件文件。',
         'select-firmware-update-method': '请选择您要使用的固件更新方式：',
         'select-firmware-update-method-desc': '选择固件更新方式',
         'cancel': '取消',
@@ -12331,9 +12323,9 @@ const calibStyle = document.createElement('style');
 
 
         'elrs-missing-alert': 'ELRS firmware not detected. Please check the device or restart.',
-        'jump-to-elrs-website': 'Jump to ELRS website for firmware update',
-        'update-esp-firmware': 'Update ESP firmware with local App',
-        'jump-to-elrs-website-desc': 'ESP firmware update mode has been enabled, clicking confirm will disconnect the connection, and directly open the ESPTool tool provided by RadioMaster to select USB update.',
+        'jump-to-elrs-website': 'Open ESP firmware flash',
+        'update-esp-firmware': 'Flash ESP (local web tool)',
+        'jump-to-elrs-website-desc': 'Serial will disconnect and the ESP flash page will open. Use Chrome/Edge to select the port and firmware file.',
         'select-firmware-update-method': 'Please select the firmware update method you want to use:',
         'select-firmware-update-method-desc': 'Select firmware update method',
         'cancel': 'Cancel',
