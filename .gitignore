@@ -5,7 +5,6 @@ node_modules/
 # esptool-js build caches
 **/.parcel-cache/
 vendor/esptool-js/lib/
-vendor/esptool-js/bundle.js
 vendor/esptool-js/docs/
 
 # Keep examples dist for local dev; CI rebuilds on deploy

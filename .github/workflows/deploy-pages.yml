@@ -41,6 +41,7 @@ jobs:
         run: |
           test -f vendor/esptool-js/lib/index.js
           test -f vendor/esptool-js/bundle.js
+          test -f vendor/pako/pako.esm.mjs
 
       - name: Prepare static site
         run: |
