@@ -67,6 +67,23 @@ const LANGS = {
 };
 
 let currentLang = 'zh';
+
+function initLang() {
+  const params = new URLSearchParams(window.location.search);
+  const q = params.get('lang');
+  if (q === 'zh' || q === 'en') {
+    currentLang = q;
+  } else {
+    const stored = localStorage.getItem('lang');
+    if (stored === 'zh' || stored === 'en') currentLang = stored;
+    else currentLang = 'zh';
+  }
+  document.documentElement.lang = currentLang === 'zh' ? 'zh-CN' : 'en';
+}
+
+function updateLangSwitcher() {
+  $('lang-switcher').textContent = currentLang === 'en' ? '🌐 EN' : '🌐 中文';
+}
 let device = null;
 let transport = null;
 let esploader = null;
@@ -164,7 +181,7 @@ function applyLang() {
       }
     }
   });
-  $('lang-switcher').textContent = currentLang === 'zh' ? '🌐 EN' : '🌐 中文';
+  updateLangSwitcher();
   $('back-link').textContent = t('back-link');
   if (firmwareSource === 'local' && localFileName && firmwareData) {
     $('fw-file-name').textContent =
@@ -370,13 +387,28 @@ $('disconnect-btn').addEventListener('click', async () => {
   setStatus(t('status-ready'));
 });
 
-$('lang-switcher').addEventListener('click', () => {
+$('lang-switcher').addEventListener('click', async () => {
   currentLang = currentLang === 'zh' ? 'en' : 'zh';
+  localStorage.setItem('lang', currentLang);
+  document.documentElement.lang = currentLang === 'zh' ? 'zh-CN' : 'en';
+  const prevSelect = $('fw-select').value;
   applyLang();
+  await loadFirmwareList();
+  if (prevSelect) $('fw-select').value = prevSelect;
+  if (firmwareSource === 'local' && localFileName && firmwareData) {
+    $('fw-file-name').textContent =
+      t('fw-file-selected') + localFileName + t('fw-file-size') + firmwareData.length + t('fw-file-bytes');
+  }
   if (!$('status').classList.contains('ok') && !$('status').classList.contains('error')) {
     setStatus(t('status-ready'));
   }
+  const chipText = $('chip-info').textContent;
+  if (chipText && (chipText.startsWith('已识别芯片') || chipText.startsWith('Chip'))) {
+    const chip = chipText.replace(/^已识别芯片：|^Chip: /, '');
+    $('chip-info').textContent = t('chip-detected') + chip;
+  }
 });
 
+initLang();
 applyLang();
 loadFirmwareList();
