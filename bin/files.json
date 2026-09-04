@@ -1,6 +1,12 @@
 { 
   "remote": [ 
-    "M8L.bin" 
+    "MT8 - 副本 (2).bin" 
+, 
+    "MT8 - 副本 (3).bin" 
+, 
+    "MT8 - 副本.bin" 
+, 
+    "MT8.bin" 
   ] 
 , 
   "transmitter": [ 
@@ -8,6 +14,8 @@
   ] 
 , 
   "sensor": [ 
+    "Project.bin" 
+, 
     "RM_ERS_Sensor-v1.4-updata-2026.04.16.bin" 
   ] 
 } 
