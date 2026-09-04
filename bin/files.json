@@ -14,8 +14,6 @@
   ] 
 , 
   "sensor": [ 
-    "Project.bin" 
-, 
     "RM_ERS_Sensor-v1.4-updata-2026.04.16.bin" 
   ] 
 } 
