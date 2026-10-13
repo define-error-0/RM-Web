@@ -1305,6 +1305,14 @@
     
     .flight-range-label { color: #888; font-size: 0.9em; }
     
+    .ch-row{display:flex;align-items:center;gap:32px;background:linear-gradient(90deg,#f4f8ff 60%,#eaf1ff 100%);border-radius:16px;padding:8px 18px;box-shadow:0 2px 16px #e0e7ff;min-height:32px}
+    .ch-label{color:#3358e0;font-weight:700;font-size:1.25em;min-width:70px;letter-spacing:2px}
+    .ch-track{flex:1;display:flex;align-items:center;gap:18px}
+    .ch-bar{flex:1;height:22px;background:#e0e7ff;border-radius:12px;overflow:hidden;position:relative;box-shadow:0 1px 8px #b3cfff;transition:width .05s}
+    .ch-fill{height:100%;width:calc(var(--pct) * 1%);background:linear-gradient(90deg,#4f8cff 0%,#3358e0 100%)}
+    .ch-marker{position:absolute;top:0;bottom:0;left:calc(var(--pct) * 1%);width:3px;background:#e74c3c;opacity:.7}
+    .ch-val{font-family:'Roboto',monospace;font-size:1.35em;color:#222;background:#fff;border-radius:8px;padding:4px 18px;box-shadow:0 1px 4px #e0e7ff;min-width:4.5em;display:inline-block;text-align:center}
+
   </style>
 </head>
 update over<body style="margin:0;">
@@ -4042,6 +4050,7 @@ update over<body style="margin:0;">
           sendCarCalibData();
           sendCarCalibData();
           window.alert(LANGS[currentLang]['calib-over'] || '校准完成');
+          startTimers(window._globalChannelTask);
           calibBtn.disabled = false;
           calibBtn.textContent = LANGS[currentLang]['calib-start'] || '开始校准';
           stepLabel.textContent = LANGS[currentLang]['calib-start-step-label'] || '点击"开始校准"按键进行校准操作';
@@ -5183,13 +5192,6 @@ const calibStyle = document.createElement('style');
 
     // 加载本地bin文件夹
     fwLoadLocalBinBtn.onclick = async function() {
-      const deviceType = fwDeviceTypeSelect.value;
-      const folderName = deviceTypeToFolderName[deviceType];
-      if (!folderName) {
-        fwStatus.textContent = LANGS[currentLang]['fw-load-error'];
-        return;
-      }
-
       fwLoadLocalBinBtn.textContent = LANGS[currentLang]['fw-loading'];
       fwLoadLocalBinBtn.disabled = true;
       fwBinFileList.innerHTML = '';
@@ -5199,34 +5201,158 @@ const calibStyle = document.createElement('style');
       try {
         // 获取当前目录路径
         const basePath = getCurrentDirectoryPath();
-        const binPath = basePath + 'bin/' + folderName + '/';
         const jsonPath = basePath + 'bin/files.json';
 
-        // 读取JSON文件获取文件列表
+        // 获取当前连接的设备名称
+        const deviceName = window._deviceInfo ? window._deviceInfo.devName : '';
+        console.log('[DEBUG] 当前设备名称:', deviceName);
+
+        // 读取JSON文件
+        let jsonData = null;
         let fileNames = [];
+        let deviceType = '';
+        let deviceModel = '';
+        let useManualMode = false;
+
         try {
           const jsonResponse = await fetch(jsonPath);
           if (jsonResponse.ok) {
-            const jsonData = await jsonResponse.json();
-            fileNames = jsonData[deviceType] || [];
+            jsonData = await jsonResponse.json();
             console.log('[DEBUG] JSON文件内容:', jsonData);
-            console.log('[DEBUG] 设备类型:', deviceType, '文件列表:', fileNames);
+
+            // 模式1：自动模式 - 已连接设备，根据设备名称自动识别
+            if (deviceName && jsonData.devices && jsonData.devices[deviceName]) {
+              const deviceConfig = jsonData.devices[deviceName];
+              deviceType = deviceConfig.type;
+              deviceModel = deviceConfig.model;
+              fileNames = deviceConfig.files || [];
+              console.log('[DEBUG] [自动模式] 找到设备配置:', deviceName);
+              console.log('[DEBUG] 固件类型:', deviceType, '设备型号:', deviceModel);
+              console.log('[DEBUG] 固件文件列表:', fileNames);
+            }
+            // 模式2：手动模式 - 未连接设备或未找到设备配置，使用设备类型选择器
+            else {
+              useManualMode = true;
+              const selectedType = fwDeviceTypeSelect.value; // 'remote', 'transmitter', 'sensor'
+              const folderName = deviceTypeToFolderName[selectedType]; // 'ctl', 'radio', 'sensor'
+
+              console.log('[DEBUG] [手动模式] 未找到设备配置，使用设备类型选择:', selectedType, '->', folderName);
+
+              // 扫描该类型文件夹下的所有子文件夹
+              // 由于浏览器无法直接列出文件夹，我们需要从 JSON 中筛选
+              const matchingDevices = [];
+              if (jsonData.devices) {
+                for (const [devName, devConfig] of Object.entries(jsonData.devices)) {
+                  if (devConfig.type === folderName) {
+                    matchingDevices.push({
+                      name: devName,
+                      model: devConfig.model,
+                      files: devConfig.files
+                    });
+                  }
+                }
+              }
+
+              if (matchingDevices.length === 0) {
+                fwStatus.textContent = `没有找到 ${selectedType} 类型的固件`;
+                fwLoadLocalBinBtn.textContent = LANGS[currentLang]['fw-load-local-bin'];
+                fwLoadLocalBinBtn.disabled = false;
+                return;
+              }
+
+              // 如果只有一个设备，自动选择
+              if (matchingDevices.length === 1) {
+                deviceType = folderName;
+                deviceModel = matchingDevices[0].model;
+                fileNames = matchingDevices[0].files;
+                console.log('[DEBUG] [手动模式] 找到唯一设备:', deviceModel);
+              }
+              // 如果有多个设备，让用户选择型号
+              else {
+                // 显示设备型号选择器
+                const modelSelect = document.createElement('select');
+                modelSelect.style.padding = '8px 12px';
+                modelSelect.style.border = '1px solid #4f8cff';
+                modelSelect.style.borderRadius = '6px';
+                modelSelect.style.background = '#fff';
+                modelSelect.style.color = '#3358e0';
+                modelSelect.style.fontSize = '0.95em';
+                modelSelect.style.cursor = 'pointer';
+                modelSelect.style.marginBottom = '12px';
+
+                const defaultOption = document.createElement('option');
+                defaultOption.value = '';
+                defaultOption.textContent = '-- 请选择设备型号 --';
+                defaultOption.disabled = true;
+                defaultOption.selected = true;
+                modelSelect.appendChild(defaultOption);
+
+                matchingDevices.forEach(device => {
+                  const option = document.createElement('option');
+                  option.value = device.model;
+                  option.textContent = device.name;
+                  option.dataset.model = device.model;
+                  option.dataset.files = JSON.stringify(device.files);
+                  modelSelect.appendChild(option);
+                });
+
+                modelSelect.onchange = function() {
+                  const selectedOption = modelSelect.options[modelSelect.selectedIndex];
+                  deviceType = folderName;
+                  deviceModel = selectedOption.dataset.model;
+                  fileNames = JSON.parse(selectedOption.dataset.files);
+
+                  // 继续加载文件
+                  loadFirmwareFiles(basePath, deviceType, deviceModel, fileNames);
+                };
+
+                fwBinFileList.innerHTML = '';
+                fwBinFileList.appendChild(modelSelect);
+                fwBinFileList.style.display = 'flex';
+                fwLoadLocalBinBtn.textContent = LANGS[currentLang]['fw-load-local-bin'];
+                fwLoadLocalBinBtn.disabled = false;
+                return;
+              }
+            }
           } else {
-            console.warn('无法读取files.json，使用默认列表');
-            // 如果JSON读取失败，使用默认列表
-            fileNames = ['remote.bin', 'controller.bin', 'transmitter.bin', 'sensor.bin'];
+            console.warn('无法读取files.json');
+            fwStatus.textContent = '无法读取固件配置文件';
+            fwLoadLocalBinBtn.textContent = LANGS[currentLang]['fw-load-local-bin'];
+            fwLoadLocalBinBtn.disabled = false;
+            return;
           }
         } catch (error) {
-          console.warn('读取files.json失败，使用默认列表', error);
-          fileNames = ['remote.bin', 'controller.bin', 'transmitter.bin', 'sensor.bin'];
-        }
-
-        if (fileNames.length === 0) {
-          fwStatus.textContent = 'JSON中没有该设备类型的文件列表';
+          console.warn('读取files.json失败', error);
+          fwStatus.textContent = '读取固件配置文件失败';
           fwLoadLocalBinBtn.textContent = LANGS[currentLang]['fw-load-local-bin'];
           fwLoadLocalBinBtn.disabled = false;
           return;
         }
+
+        if (fileNames.length === 0) {
+          fwStatus.textContent = useManualMode ? '该设备类型没有可用的固件文件' : `设备 ${deviceName} 没有可用的固件文件`;
+          fwLoadLocalBinBtn.textContent = LANGS[currentLang]['fw-load-local-bin'];
+          fwLoadLocalBinBtn.disabled = false;
+          return;
+        }
+
+        // 构建设备文件夹路径 (格式: bin/type/model/)
+        const binPath = basePath + 'bin/' + deviceType + '/' + deviceModel + '/';
+
+        // 加载固件文件
+        await loadFirmwareFiles(basePath, deviceType, deviceModel, fileNames);
+
+      } catch (error) {
+        console.error('Error loading local bin files:', error);
+        fwStatus.textContent = LANGS[currentLang]['fw-load-error'];
+        fwLoadLocalBinBtn.textContent = LANGS[currentLang]['fw-load-local-bin'];
+        fwLoadLocalBinBtn.disabled = false;
+      }
+    };
+
+    // 提取固件文件加载逻辑为独立函数
+    async function loadFirmwareFiles(basePath, deviceType, deviceModel, fileNames) {
+      const binPath = basePath + 'bin/' + deviceType + '/' + deviceModel + '/';
 
         let foundFiles = [];
 
@@ -5288,7 +5414,7 @@ const calibStyle = document.createElement('style');
           // 添加默认选项
           const defaultOption = document.createElement('option');
           defaultOption.value = '';
-          defaultOption.textContent = '-- 请选择文件 --';
+          defaultOption.textContent = '-- 请选择固件版本 --';
           defaultOption.disabled = true;
           defaultOption.selected = true;
           select.appendChild(defaultOption);
@@ -5322,14 +5448,8 @@ const calibStyle = document.createElement('style');
 
         fwLoadLocalBinBtn.textContent = LANGS[currentLang]['fw-load-local-bin'];
         fwLoadLocalBinBtn.disabled = false;
+    }
 
-      } catch (error) {
-        console.error('Error loading local bin files:', error);
-        fwStatus.textContent = LANGS[currentLang]['fw-load-error'];
-        fwLoadLocalBinBtn.textContent = LANGS[currentLang]['fw-load-local-bin'];
-        fwLoadLocalBinBtn.disabled = false;
-      }
-    };
 
     // 设备类型变化时清空文件列表
     fwDeviceTypeSelect.onchange = function() {
@@ -5512,7 +5632,6 @@ const calibStyle = document.createElement('style');
       }
       return false;
     }
-
     window.feedFwYmodemReadyBytes = feedFwYmodemReadyBytes;
 
     function startFwReadyCheck() {
@@ -5800,7 +5919,7 @@ const calibStyle = document.createElement('style');
         const SOH = 0x01, STX = 0x02, EOT = 0x04, ACK = 0x06, NAK = 0x15, CAN = 0x18, CRC = 0x43;
         const PACKET_SIZE = 1024;
         const PACKET_SIZE_128 = 128;
-        const MAX_RETRY = 10;
+        const MAX_RETRY = 7;
         const TIMEOUT = 5000; // ms
         // 工具函数
         function crc16(buf) {
@@ -7560,10 +7679,10 @@ const calibStyle = document.createElement('style');
           autoRefresh('TX');
         }
       }
-      // 新增：切换到设备配置页面时渲染通道/trim/中心点
-      if (page === 'config') {
-        renderConfigPage();
-      }
+      // // 新增：切换到设备配置页面时渲染通道/trim/中心点
+      // if (page === 'config') {
+      //   renderConfigPage();
+      // }
     };
 
     let channelFlag  = 0;
@@ -7572,7 +7691,7 @@ const calibStyle = document.createElement('style');
       const configPage = document.getElementById('page-config');
       if (!configPage) return;
       // 操作模式定义
-
+      let channeLNumFlag = 8; // 默认通道数
       const dev = window._deviceInfo;
       if(isMT8Device())
       {
@@ -7587,6 +7706,8 @@ const calibStyle = document.createElement('style');
         channeLNumFlag = 10;
       }
 
+      writer.write(new Uint8Array([0xA5,0x55,0x0D,0,0,0x0D,0x0A]));
+      
       // const modeList = [
       //   { name: 'M1', map: ['ELE', 'RUD', 'THR', 'AIL'] },
       //   { name: 'M2', map: ['THR', 'RUD', 'ELE', 'AIL'] },
@@ -7755,18 +7876,31 @@ const calibStyle = document.createElement('style');
                 ${(() => {
                   let html = '';
                   const channelCount = channeLNumFlag;//window.channelMap ? window.channelMap.channelMapNum : 10;
-                  for (let i = 0; i < channelCount; i++) {
-        html += `<div style="display:flex;align-items:center;gap:32px;background:linear-gradient(90deg,#f4f8ff 60%,#eaf1ff 100%);border-radius:16px;padding:8px 18px;box-shadow:0 2px 16px #e0e7ff;min-height:32px;">
-          <span style="color:#3358e0;font-weight:bold;font-size:1.25em;min-width:70px;letter-spacing:2px;">CH${i+1}</span>
-          <div style="flex:1;display:flex;align-items:center;gap:18px;">
-            <div id="ch-bar-${i}" style="flex:1;height:22px;background:#e0e7ff;border-radius:12px;overflow:hidden;position:relative;box-shadow:0 1px 8px #b3cfff;">
-              <div style="height:100%;background:linear-gradient(90deg,#4f8cff 0%,#3358e0 100%);width:${((1500-988)/(2012-988)*100)}%;transition:width 0.05s;"></div>
-              <div style="position:absolute;left:${((1500-988)/(2012-988)*100)}%;top:0;bottom:0;width:3px;background:#e74c3c;opacity:0.7;"></div>
-            </div>
-            <span id="ch-val-${i}" style="font-family:'Roboto',monospace;font-size:1.35em;color:#222;background:#fff;border-radius:8px;padding:4px 18px;margin-left:8px;box-shadow:0 1px 4px #e0e7ff;min-width:4.5em;display:inline-block;text-align:center;">1500</span>
-          </div>
-        </div>`;
-      }
+                  // —— 常量与百分比只算一次（原版每次循环都在算同一个表达式）——
+                  const MIN = 988, MAX = 2012, VAL = 1500;
+                  const pct = ((VAL - MIN) / (MAX - MIN) * 100).toFixed(1);   // 74.8
+
+                  html = Array.from({ length: channelCount }, (_, i) => `
+                    <div class="ch-row">
+                      <span class="ch-label">CH${i + 1}</span>
+                      <div class="ch-track">
+                        <div class="ch-bar" id="ch-bar-${i}" style="--pct:${pct}">
+                          <div class="ch-fill"></div>
+                          <div class="ch-marker"></div>
+                        </div>
+                        <span class="ch-val" id="ch-val-${i}">${VAL}</span>
+                      </div>
+                    </div>`).join('');
+
+                  // 挂载后缓存元素引用，之后更新走 setChannel
+                  const barEls = Array.from({ length: channelCount }, (_, i) => document.getElementById(`ch-bar-${i}`));
+                  const valEls = Array.from({ length: channelCount }, (_, i) => document.getElementById(`ch-val-${i}`));
+
+                  function setChannel(i, value) {
+                    const p = ((value - MIN) / (MAX - MIN) * 100).toFixed(1);
+                    barEls[i].style.setProperty('--pct', p);   // 只改一处 CSS 变量
+                    valEls[i].textContent = value;             // textContent 比 innerHTML 快且防注入
+                  }
                   return html;
                 })()}
               </div>
@@ -10616,6 +10750,19 @@ const calibStyle = document.createElement('style');
           if(bar) bar.style.width = ((processedCH[i]-988)/(2012-988)*100) + '%';
           let barAttr = document.getElementById(`ch-bar-attr-${i}`)?.children[0];
           if(barAttr) barAttr.style.width = ((processedCH[i]-988)/(2012-988)*100) + '%';
+
+          // 下位机属性数据变化时，同步刷新通道正反按钮的视觉状态。
+          const dirBtn = document.getElementById(`ch-dir-btn-${i}`);
+          const isReversed = window.channelMap && window.channelMap.channelDirRecv
+            ? !!window.channelMap.channelDirRecv[i]
+            : false;
+          if (dirBtn) {
+            dirBtn.textContent = isReversed ? 'REV' : 'NOR';
+            if (!dirBtn.disabled) {
+              dirBtn.style.background = isReversed ? '#ffe066' : '#fff';
+              dirBtn.style.color = isReversed ? '#e74c3c' : '#3358e0';
+            }
+          }
         }
       }
       window.origChannelData = recvChannel;
@@ -11939,7 +12086,7 @@ const calibStyle = document.createElement('style');
 
         <div class="setting-row">
           <span class="setting-label" data-i18n="rx-voltage-threshold">接收机电压阈值</span>
-          <input id="rx-voltage-threshold-range" min="0" max="150" step="1" value="${(dev.warnVBeeValue || 0)}" type="range" style="flex:1;max-width:220px;">
+          <input id="rx-voltage-threshold-range" min="0" max="350" step="1" value="${(dev.warnVBeeValue || 0)}" type="range" style="flex:1;max-width:220px;">
           <div class="setting-right">
             <span id="rx-voltage-threshold-value" class="setting-value">${((dev.warnVBeeValue || 0) / 10).toFixed(1)}V</span>
           </div>
@@ -12577,7 +12724,7 @@ const calibStyle = document.createElement('style');
         fwProgressBarWrap.style.display = 'none';
         fwStatus.textContent = '';
         fwStatusText.textContent = '';
-        document.getElementById('fw-device-type').disabled = false;
+        //document.getElementById('fw-device-type').disabled = false;
       } else if (upDataFlag === 1) {
         fwEnterUpdateBtn.style.display = 'none';
         fwDropArea.style.display = 'none';
@@ -12588,7 +12735,7 @@ const calibStyle = document.createElement('style');
         fwProgressLabel.style.display = 'none';
         fwProgressBarWrap.style.display = 'none';
         fwStatus.textContent =LANGS[currentLang]['fw-wait-ready'];
-        document.getElementById('fw-device-type').disabled = true;
+        //document.getElementById('fw-device-type').disabled = true;
       } else if (upDataFlag === 2) {
         fwEnterUpdateBtn.style.display = 'none';
         fwDropArea.style.display = '';
@@ -12598,7 +12745,7 @@ const calibStyle = document.createElement('style');
         fwUpdateBtn.style.display = '';
         fwProgressLabel.style.display = '';
         fwProgressBarWrap.style.display = '';
-        document.getElementById('fw-device-type').disabled = true;
+        //document.getElementById('fw-device-type').disabled = true;
         fwStatus.textContent =LANGS[currentLang]['fw-ready-update'];
         fwStatusText.textContent =LANGS[currentLang]['fw-ready-update-text'];
       }
@@ -14108,7 +14255,7 @@ const calibStyle = document.createElement('style');
         'slide_Dir_Sub_mid': 'STE D/R Mid tone',
         'slide_P1_mid': 'P1 Mid tone',
         'slide_P2_mid': 'P2 Mid tone',
-        'update-over': 'update over',
+        'update-over': 'Update completed',
 
 
         'elrs-missing-alert': 'ELRS firmware not detected. Please check the device or restart.',
@@ -14491,6 +14638,6 @@ window.addEventListener('load', function() {
 });
 
   </script>
-  <div id="app-version" style="position:fixed; bottom:10px; right:14px; color:#6b7a99; font-size:12px; z-index:1000; pointer-events:none;">Version 1.9.3</div>
+  <div id="app-version" style="position:fixed; bottom:10px; right:14px; color:#6b7a99; font-size:12px; z-index:1000; pointer-events:none;">Version 1.9.5</div>
 </body>
 </html> 
