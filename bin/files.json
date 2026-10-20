@@ -1,15 +1,23 @@
 { 
-  "remote": [ 
-    "MT8_V1_9.bin" 
+  "devices": { 
+    "RadioMaster MT8": { 
+      "type": "ctl", 
+      "model": "MT8", 
+      "files": [ 
+        "MT8-v1.9.1.bin" 
 , 
-    "T8L.bin" 
-  ] 
+        "MT8-v1.9.2.bin" 
 , 
-  "transmitter": [ 
-    "firmware3.6.0.bin" 
-  ] 
+        "MT8.bin" 
+      ] 
+    } 
 , 
-  "sensor": [ 
-    "sensro_Updata.bin" 
-  ] 
+    "RadioMaster T8L": { 
+      "type": "ctl", 
+      "model": "T8L", 
+      "files": [ 
+        "T8L.bin" 
+      ] 
+    } 
+  } 
 } 
