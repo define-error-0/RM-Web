@@ -20,23 +20,29 @@ set "device[1].name=RadioMaster MT8"
 set "device[1].type=ctl"
 set "device[1].model=MT8"
 
-@REM :: RadioMaster MT6 -> ctl/MT6
-@REM set /a deviceCount+=1
-@REM set "device[2].name=RadioMaster MT6"
-@REM set "device[2].type=ctl"
-@REM set "device[2].model=MT6"
-
 :: RadioMaster T8L -> ctl/T8L
 set /a deviceCount+=1
-set "device[3].name=RadioMaster T8L"
-set "device[3].type=ctl"
-set "device[3].model=T8L"
+set "device[2].name=RadioMaster T8L"
+set "device[2].type=ctl"
+set "device[2].model=T8L"
 
 :: RM ERS Sensor -> sensor/ERS
 set /a deviceCount+=1
-set "device[4].name=RM ERS Sensor"
-set "device[4].type=sensor"
-set "device[4].model=ERS"
+set "device[3].name=RM ERS Sensor"
+set "device[3].type=sensor"
+set "device[3].model=ERS"
+
+:: Radio -> radio
+set /a deviceCount+=1
+set "device[4].name=Radio"
+set "device[4].type=radio"
+set "device[4].model="
+
+@REM :: RadioMaster MT6 -> ctl/MT6
+@REM set /a deviceCount+=1
+@REM set "device[5].name=RadioMaster MT6"
+@REM set "device[5].type=ctl"
+@REM set "device[5].model=MT6"
 
 :: Example for adding new device:
 :: set /a deviceCount+=1
@@ -62,7 +68,13 @@ for /L %%i in (1,1,%deviceCount%) do (
     set "deviceName=!device[%%i].name!"
     set "deviceType=!device[%%i].type!"
     set "deviceModel=!device[%%i].model!"
-    set "devicePath=!deviceType!\!deviceModel!"
+
+    :: Build device path (handle empty model for radio)
+    if "!deviceModel!"=="" (
+        set "devicePath=!deviceType!"
+    ) else (
+        set "devicePath=!deviceType!\!deviceModel!"
+    )
 
     :: Check if device folder exists and has bin files
     if exist "bin\!devicePath!\*.bin" (
