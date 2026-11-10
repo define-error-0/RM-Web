@@ -1330,8 +1330,8 @@ update over<body style="margin:0;">
           var commBtn = document.querySelector('.menu-btn[data-page="comm"]');
           if (commBtn) commBtn.style.display = 'none'; 
         -->
-        <button id="dev-uart"  data-i18n="comm-uart" class="menu-btn" data-page="comm">串口通信</button>
-        <!--button class="menu-btn" data-page="comm" style="display:none;">串口通信</button>-->
+        <!-- <button id="dev-uart"  data-i18n="comm-uart" class="menu-btn" data-page="comm">串口通信</button> -->
+        <button class="menu-btn" data-page="comm" style="display:none;">串口通信</button>
         <!-- <button id="dev-attr"  data-i18n='attr-dev' class="menu-btn" data-page="attr" style="display:none;">设备概况</button> -->
         <button id="dev-attr"  data-i18n='attr-dev' class="menu-btn" data-page="attr" >设备概况</button>
         <!--<button data-i18n='config-dev' class="menu-btn" data-page="config">设备配置</button>
@@ -2270,29 +2270,86 @@ update over<body style="margin:0;">
       connectBtn.disabled = true;
       statusBox.textContent =LANGS[currentLang]['connecting'];
       try {
-        // 始终弹出串口选择
-        
-        if (navigator.userAgent.indexOf("Chrome") != -1 && !navigator.userAgent.indexOf("Edge") != -1) {
-        console.log("This is Chrome browser.");
-        
-        // 检查串口API是否可用
-        if (!navigator.serial) {
-          throw new Error('Serial API not available. Please use Chrome/Edge browser.');
-        }
-        
-        console.log('正在请求串口权限...');
-        // 添加短暂延迟，确保浏览器有时间识别新插入的设备
-        await new Promise(resolve => setTimeout(resolve, 100));
-        const selectedPort = await navigator.serial.requestPort().catch(err => {
-          console.error('串口权限请求失败:', err);
-          if (err.name === 'NotAllowedError') {
-            throw new Error(LANGS[currentLang]['serial-permission-denied']);
-          } else if (err.name === 'NotFoundError') {
-            throw new Error(LANGS[currentLang]['serial-not-found']);
-          } else {
-            throw new Error(LANGS[currentLang]['serial-access-failed'] + err.message);
+        // 自动识别并连接Radiomaster设备
+
+        if (navigator.serial) {
+        console.log("Serial API is available.");
+
+        let selectedPort = null;
+        let autoConnectFailed = false;
+
+        // 第一步：尝试从已授权的串口中自动连接
+        console.log('正在检查已授权的串口设备...');
+        const ports = await navigator.serial.getPorts();
+
+        if (ports.length > 0) {
+          console.log(`找到 ${ports.length} 个已授权的串口设备`);
+
+          // 尝试从localStorage读取上次连接的设备信息
+          const lastDeviceInfo = localStorage.getItem('lastConnectedDevice');
+          let targetPort = null;
+
+          if (lastDeviceInfo) {
+            try {
+              const lastDevice = JSON.parse(lastDeviceInfo);
+              console.log('上次连接的设备:', lastDevice);
+
+              // 尝试匹配VID/PID
+              for (const port of ports) {
+                const info = port.getInfo();
+                if (info.usbVendorId === lastDevice.vid && info.usbProductId === lastDevice.pid) {
+                  targetPort = port;
+                  console.log('找到匹配的设备(VID/PID匹配)');
+                  break;
+                }
+              }
+            } catch (e) {
+              console.warn('解析上次连接设备信息失败:', e);
+            }
           }
-        });
+
+          // 如果没有找到匹配的设备，使用第一个可用的串口
+          if (!targetPort && ports.length > 0) {
+            targetPort = ports[0];
+            console.log('使用第一个已授权的串口设备');
+          }
+
+          if (targetPort) {
+            selectedPort = targetPort;
+            const info = targetPort.getInfo();
+            console.log(`自动选择串口 - VID:0x${info.usbVendorId?.toString(16).toUpperCase() || '?'} PID:0x${info.usbProductId?.toString(16).toUpperCase() || '?'}`);
+          }
+        }
+
+        // 第二步：如果没有已授权的串口，弹出选择对话框（不使用filters以显示所有设备）
+        if (!selectedPort) {
+          console.log('没有已授权的串口，正在请求用户选择...');
+          // 添加短暂延迟，确保浏览器有时间识别新插入的设备
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+          selectedPort = await navigator.serial.requestPort().catch(err => {
+            console.error('串口权限请求失败:', err);
+            if (err.name === 'NotAllowedError') {
+              throw new Error(LANGS[currentLang]['serial-permission-denied']);
+            } else if (err.name === 'NotFoundError') {
+              throw new Error(LANGS[currentLang]['serial-not-found']);
+            } else {
+              throw new Error(LANGS[currentLang]['serial-access-failed'] + err.message);
+            }
+          });
+        }
+
+        // 保存设备信息到localStorage，下次自动连接
+        const deviceInfo = selectedPort.getInfo();
+        if (deviceInfo.usbVendorId && deviceInfo.usbProductId) {
+          const deviceRecord = {
+            vid: deviceInfo.usbVendorId,
+            pid: deviceInfo.usbProductId,
+            timestamp: Date.now()
+          };
+          localStorage.setItem('lastConnectedDevice', JSON.stringify(deviceRecord));
+          console.log('已保存设备信息，下次将自动连接');
+        }
         // 根据操作系统选择波特率：Mac直接使用460800，Windows先尝试420000
         let baudRate = 460800;
         if (currentOS === 'Windows') {
@@ -3688,8 +3745,8 @@ update over<body style="margin:0;">
 
           ${CAR_CALIB_CHANNELS.map(channel => {
             const labelMap = {
-              'steering': currentLang === 'en' ? 'Steering STE' : '方向 STE',
-              'throttle': currentLang === 'en' ? 'Throttle THR' : '油门 THR',
+              'throttle': currentLang === 'en' ? 'Steering STE' : '方向 STE',
+              'steering': currentLang === 'en' ? 'Throttle THR' : '油门 THR',
               'p1': 'P1',
               'p2': 'P2'
             };
@@ -6315,7 +6372,7 @@ const calibStyle = document.createElement('style');
               dialog.appendChild(inner);
               // 每1.5秒发送06
               poller = setInterval(() => {
-                const arrPoll = [0xA5, 0x33, modeByte, param.paramNum, 6, 0x0D, 0x0A];
+                const arrPoll = [0xA5, 0x33, modeByte, param.paramNum, 1, 0x0D, 0x0A];
                 if (writer) writer.write(new Uint8Array(arrPoll));
                 console.log('持续类轮询发送POLL:', arrPoll.map(x=>x.toString(16).padStart(2,'0')).join(' '));
               }, 1500);
@@ -7284,7 +7341,9 @@ const calibStyle = document.createElement('style');
         let warnVBeeValue = 0;
         let warnVBeeFreq = 0;
         let powerTime = 0;
-
+        let warnVBeeDelayFlag = 0;
+        let thrLock   = 0;
+        let steLock   = 0;
         if(isMT8DeviceName(devName) || isMT6DeviceName(devName))
         {
           slideMT8Mid = [
@@ -7309,6 +7368,9 @@ const calibStyle = document.createElement('style');
             warnVBeeValue = (buf[offset+9+34] | buf[offset+9+35]<<8) || 0;
             warnVBeeFreq = (buf[offset+9+36] | buf[offset+9+37]<<8) || 0;
             powerTime = buf[offset+9+38] || 0;
+            warnVBeeDelayFlag = buf[offset+9+39] || 0;
+            thrLock = buf[offset+9+40] || 0;
+            steLock = buf[offset+9+41] || 0;
           }
           console.log(warnVBeeFlag,warnVBeeValue,warnVBeeFreq);
           console.log(MT8_DEVICE_NAME);
@@ -7333,14 +7395,14 @@ const calibStyle = document.createElement('style');
           devVolume, serialNumber, elrsFirmWare, deviceFirmWare, elrsName, companyName, devName,
           sendPackSpeed, returnSpeed, calibrationFlag, connectProtocol, channelNum, secretKey, powerVal, remoteCtlClass, mixedCtl,
           keyModel,slideMid,slideMidData,RxWarning,LowPowerWarning,LeftTrimReset,RightTrimReset,slideMT8Mid,slideMT8MidData,
-          ledBrightness, workLedMode, warnVBeeFlag, warnVBeeValue, warnVBeeFreq, powerTime
+          ledBrightness, workLedMode, warnVBeeFlag, warnVBeeValue, warnVBeeFreq, powerTime, warnVBeeDelayFlag, thrLock, steLock
 
         });
         return {
           devVolume, serialNumber, elrsFirmWare, deviceFirmWare, elrsName, companyName, devName,
           sendPackSpeed, returnSpeed, calibrationFlag, connectProtocol, channelNum, secretKey, powerVal, remoteCtlClass, mixedCtl,
           keyModel,slideMid,slideMidData,RxWarning,LowPowerWarning,LeftTrimReset,RightTrimReset,slideMT8Mid,slideMT8MidData,
-          ledBrightness, workLedMode, warnVBeeFlag, warnVBeeValue, warnVBeeFreq, powerTime
+          ledBrightness, workLedMode, warnVBeeFlag, warnVBeeValue, warnVBeeFreq, powerTime, warnVBeeDelayFlag, thrLock, steLock
         };
       }
     }
@@ -7629,7 +7691,7 @@ const calibStyle = document.createElement('style');
               closeBtn.style.cursor = 'pointer';
               closeBtn.onclick = () => {
                 if (poller) clearInterval(poller);
-                const arrStop = [0xA5, 0x33, modeByte, param.paramNum, 5, 0x0D, 0x0A];
+                const arrStop = [0xA5, 0x33, modeByte, param.paramNum, 4, 0x0D, 0x0A];
                 if (writer) writer.write(new Uint8Array(arrStop));
                 document.body.removeChild(dialog);
               };
@@ -7638,9 +7700,10 @@ const calibStyle = document.createElement('style');
               dialog.appendChild(inner);
               // 每1.5秒发送06
               poller = setInterval(() => {
-                const arrPoll = [0xA5, 0x33, modeByte, param.paramNum, 6, 0x0D, 0x0A];
+                const arrPoll = [0xA5, 0x33, modeByte, param.paramNum, 1, 0x0D, 0x0A];
                 if (writer) writer.write(new Uint8Array(arrPoll));
                 console.log('持续类轮询发送POLL:', arrPoll.map(x=>x.toString(16).padStart(2,'0')).join(' '));
+                closeBtn.click();
               }, 1500);
             }
           };
@@ -7775,7 +7838,7 @@ const calibStyle = document.createElement('style');
                 <table style="border-collapse:separate;border-spacing:0 10px;width:100%;background:none;">
                   <thead>
                     <tr style="background:#f4f8ff;">
-                      <th style="padding:10px 18px;color:#3358e0;font-weight:bold;font-size:1.08em;border-radius:10px 0 0 10px;">Channels</th>
+                      <th style="padding:10px 18px;color:#3358e0;font-weight:bold;font-size:1.08em;border-radius:10px 0 0 10px;" data-i18n="channels">Channels</th>
                       <th style="padding:10px 18px;color:#3358e0;font-weight:bold;font-size:1.08em;" data-i18n="channel-map-default-output">默认输出</th>
                       <th style="padding:10px 18px;color:#3358e0;font-weight:bold;font-size:1.08em;border-radius:0 10px 10px 0;" data-i18n="channel-map-channel-input">通道输入</th>
                     </tr>
@@ -8085,21 +8148,21 @@ const calibStyle = document.createElement('style');
                 </div>
                 <div style="display:flex;flex-direction:column;gap:12px;padding:16px;background:#f4f8ff;border-radius:12px;box-shadow:0 2px 8px #e0e7ff;">
                   <div style="font-size:0.92em;color:#5a6f9e;text-align:center;" data-i18n="expo-graph-hint">图表：横轴为输入 X，纵轴为输出 Y；红色为测试输入点，绿色为摇杆实际输入点</div>
-                  <div style="display:flex;flex-direction:row;align-items:flex-start;gap:16px;">
-                    <canvas id="expo-graph-canvas" width="600" height="600" style="background:#fff;border-radius:8px;box-shadow:0 1px 4px #d0d7e6;"></canvas>
-                  <div style="display:flex;flex-direction:row;gap:20px;flex:1;">
+                  <div style="display:flex;flex-direction:row;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+                    <canvas id="expo-graph-canvas" width="600" height="600" style="background:#fff;border-radius:8px;box-shadow:0 1px 4px #d0d7e6;max-width:100%;height:auto;"></canvas>
+                  <div style="display:flex;flex-direction:row;gap:20px;flex:1;min-width:0;flex-wrap:wrap;">
                     <!-- X&lt;0 半轴曲线参数 -->
                     <div style="display:flex;flex-direction:column;gap:16px;min-width:224px;padding:16px;background:#fff;border-radius:8px;border:2px solid #4f8cff;">
                       <div style="color:#4f8cff;font-weight:600;font-size:1em;text-align:center;margin-bottom:8px;" data-i18n="expo-params-neg">X &lt; 0 曲线参数</div>
                       <div style="display:flex;flex-direction:column;gap:8px;">
                         <label style="color:#3358e0;font-weight:500;font-size:0.95em;" data-i18n="rate-value">Rate值:</label>
-                        <input type="range" id="k-slider-left" min="-100" max="100" value="0" ${isMT8Device() ? 'disabled' : ''} style="width:100%;height:6px;border-radius:4px;background:linear-gradient(90deg, #e0e7ff 0%, #4f8cff 50%, #e0e7ff 100%);outline:none;accent-color:#4f8cff;${isMT8Device() ? 'opacity:0.55;pointer-events:none;cursor:default;' : ''}">
-                        <input type="number" id="k-input-left" min="-100" max="100" step="1" value="0" ${isMT8Device() ? 'readonly tabindex="-1"' : ''} style="width:100%;padding:6px 8px;border:2px solid #e0e7ff;border-radius:6px;background:${isMT8Device() ? '#f5f7fa' : '#fff'};color:#3358e0;font-size:1em;text-align:center;outline:none;${isMT8Device() ? 'cursor:default;' : ''}">
+                        <input type="range" id="k-slider-left" min="-100" max="100" value="0" ${isMT8Device() ? 'disabled' : ''} style="width:100%;height:6px;border-radius:4px;background:linear-gradient(90deg, #e0e7ff 0%, #4f8cff 50%, #e0e7ff 100%);outline:none;accent-color:#4f8cff;box-sizing:border-box;${isMT8Device() ? 'opacity:0.55;pointer-events:none;cursor:default;' : ''}">
+                        <input type="number" id="k-input-left" min="-100" max="100" step="1" value="0" ${isMT8Device() ? 'readonly tabindex="-1"' : ''} style="width:100%;padding:6px 8px;border:2px solid #e0e7ff;border-radius:6px;background:${isMT8Device() ? '#f5f7fa' : '#fff'};color:#3358e0;font-size:1em;text-align:center;outline:none;box-sizing:border-box;${isMT8Device() ? 'cursor:default;' : ''}">
                       </div>
                       <div style="display:flex;flex-direction:column;gap:8px;">
                         <label style="color:#3358e0;font-weight:500;font-size:0.95em;" data-i18n="expo-value">Expo值:</label>
-                        <input type="range" id="expo-slider-left" min="-100" max="100" value="0" style="width:100%;height:6px;border-radius:4px;background:linear-gradient(90deg, #e0e7ff 0%, #4f8cff 50%, #e0e7ff 100%);outline:none;accent-color:#4f8cff;">
-                        <input type="number" id="expo-input-left" min="-100" max="100" step="1" value="0" style="width:100%;padding:6px 8px;border:2px solid #e0e7ff;border-radius:6px;background:#fff;color:#3358e0;font-size:1em;text-align:center;outline:none;">
+                        <input type="range" id="expo-slider-left" min="-100" max="100" value="0" style="width:100%;height:6px;border-radius:4px;background:linear-gradient(90deg, #e0e7ff 0%, #4f8cff 50%, #e0e7ff 100%);outline:none;accent-color:#4f8cff;box-sizing:border-box;">
+                        <input type="number" id="expo-input-left" min="-100" max="100" step="1" value="0" style="width:100%;padding:6px 8px;border:2px solid #e0e7ff;border-radius:6px;background:#fff;color:#3358e0;font-size:1em;text-align:center;outline:none;box-sizing:border-box;">
                       </div>
                     </div>
                     <!-- X≥0 半轴曲线参数 -->
@@ -8107,13 +8170,13 @@ const calibStyle = document.createElement('style');
                       <div style="color:#e74c3c;font-weight:600;font-size:1em;text-align:center;margin-bottom:8px;" data-i18n="expo-params-pos">X ≥ 0 曲线参数</div>
                       <div style="display:flex;flex-direction:column;gap:8px;">
                         <label style="color:#3358e0;font-weight:500;font-size:0.95em;" data-i18n="rate-value">Rate值:</label>
-                        <input type="range" id="k-slider-right" min="-100" max="100" value="0" ${isMT8Device() ? 'disabled' : ''} style="width:100%;height:6px;border-radius:4px;background:linear-gradient(90deg, #e0e7ff 0%, #e74c3c 50%, #e0e7ff 100%);outline:none;accent-color:#e74c3c;${isMT8Device() ? 'opacity:0.55;pointer-events:none;cursor:default;' : ''}">
-                        <input type="number" id="k-input-right" min="-100" max="100" step="1" value="0" ${isMT8Device() ? 'readonly tabindex="-1"' : ''} style="width:100%;padding:6px 8px;border:2px solid #e0e7ff;border-radius:6px;background:${isMT8Device() ? '#f5f7fa' : '#fff'};color:#3358e0;font-size:1em;text-align:center;outline:none;${isMT8Device() ? 'cursor:default;' : ''}">
+                        <input type="range" id="k-slider-right" min="-100" max="100" value="0" ${isMT8Device() ? 'disabled' : ''} style="width:100%;height:6px;border-radius:4px;background:linear-gradient(90deg, #e0e7ff 0%, #e74c3c 50%, #e0e7ff 100%);outline:none;accent-color:#e74c3c;box-sizing:border-box;${isMT8Device() ? 'opacity:0.55;pointer-events:none;cursor:default;' : ''}">
+                        <input type="number" id="k-input-right" min="-100" max="100" step="1" value="0" ${isMT8Device() ? 'readonly tabindex="-1"' : ''} style="width:100%;padding:6px 8px;border:2px solid #e0e7ff;border-radius:6px;background:${isMT8Device() ? '#f5f7fa' : '#fff'};color:#3358e0;font-size:1em;text-align:center;outline:none;box-sizing:border-box;${isMT8Device() ? 'cursor:default;' : ''}">
                       </div>
                       <div style="display:flex;flex-direction:column;gap:8px;">
                         <label style="color:#3358e0;font-weight:500;font-size:0.95em;" data-i18n="expo-value">Expo值:</label>
-                        <input type="range" id="expo-slider-right" min="-100" max="100" value="0" style="width:100%;height:6px;border-radius:4px;background:linear-gradient(90deg, #e0e7ff 0%, #e74c3c 50%, #e0e7ff 100%);outline:none;accent-color:#e74c3c;">
-                        <input type="number" id="expo-input-right" min="-100" max="100" step="1" value="0" style="width:100%;padding:6px 8px;border:2px solid #e0e7ff;border-radius:6px;background:#fff;color:#3358e0;font-size:1em;text-align:center;outline:none;">
+                        <input type="range" id="expo-slider-right" min="-100" max="100" value="0" style="width:100%;height:6px;border-radius:4px;background:linear-gradient(90deg, #e0e7ff 0%, #e74c3c 50%, #e0e7ff 100%);outline:none;accent-color:#e74c3c;box-sizing:border-box;">
+                        <input type="number" id="expo-input-right" min="-100" max="100" step="1" value="0" style="width:100%;padding:6px 8px;border:2px solid #e0e7ff;border-radius:6px;background:#fff;color:#3358e0;font-size:1em;text-align:center;outline:none;box-sizing:border-box;">
                       </div>
                     </div>
                   </div>
@@ -10814,13 +10877,13 @@ const calibStyle = document.createElement('style');
       let tmpRouteData = new Array(10);
       for(let i = 0; i < 10; i++)
       {
-        tmpRouteData[i] = recvChannel[window.channelMap.channelMapSend[i]-1];
+        tmpRouteData[i] = recvChannel[channelMapSend[i]-1];
       }
       
         for (let i = 0; i < 10; i++) {
         // 先中心点+行程
         let raw = tmpRouteData[i];
-        let midOffset = (i < 4) ? (centerVal[window.channelMap.channelMapSend[i]-1] || 0) : 0;
+        let midOffset = (i < 4) ? (centerVal[channelMapSend[i]-1] || 0) : 0;
         let leftPercent = routeLeft[i] || 0;
         let rightPercent = routeRight[i] || 0;
         if (raw >= channlMidRoute) {
@@ -10830,7 +10893,7 @@ const calibStyle = document.createElement('style');
         }
         // 再Trim（仅前4个）
         if (i < 4) {
-          let handOffset = trimVal[window.channelMap.channelMapSend[i]-1] || 0;
+          let handOffset = trimVal[channelMapSend[i]-1] || 0;
           if (handOffset > 0) {
             if (tmpRouteData[i] + handOffset > channlMaxRoute) {
               tmpRouteData[i] = channlMaxRoute;
@@ -11705,6 +11768,7 @@ const calibStyle = document.createElement('style');
         console.log('[FW] 退出固件更新，已清除localStorage中的upDataFlag');
 
         if (isContinuousExitFwUpdateDevice()) {
+        
           if (_exitFwUpdateSending) return;
           _exitFwUpdateSending = true;
           exitFwUpdateBtn.disabled = true;
@@ -12085,6 +12149,14 @@ const calibStyle = document.createElement('style');
         </div>
 
         <div class="setting-row">
+          <span class="setting-label" data-i18n="rx-voltage-warning-delay">接收机电压警告延迟</span>
+          <input id="rx-voltage-warning-delay-range" min="0" max="10" step="1" value="${(dev.warnVBeeDelayFlag || 0)}" type="range" style="flex:1;max-width:220px;">
+          <div class="setting-right">
+            <span id="rx-voltage-warning-delay-value" class="setting-value">${(dev.warnVBeeDelayFlag || 0)}s</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
           <span class="setting-label" data-i18n="rx-voltage-threshold">接收机电压阈值</span>
           <input id="rx-voltage-threshold-range" min="0" max="350" step="1" value="${(dev.warnVBeeValue || 0)}" type="range" style="flex:1;max-width:220px;">
           <div class="setting-right">
@@ -12099,6 +12171,46 @@ const calibStyle = document.createElement('style');
             <span id="rx-voltage-beep-freq-value" class="setting-value">${dev.warnVBeeFreq || 2000}Hz</span>
           </div>
         </div>
+
+        ${isMT8DeviceName(dev.devName) || isMT6DeviceName(dev.devName) ? `
+        <div id="thr-lock-group" class="setting-row">
+          <span class="setting-label" data-i18n="thr-lock">油门锁</span>
+          <select id="thr-lock-select" style="flex:1;max-width:220px;padding:8px 12px;border:2px solid #e0e7ff;border-radius:8px;background:#fff;color:#3358e0;font-size:1em;outline:none;cursor:pointer;">
+            <option value="0" ${(dev.thrLock || 0) === 0 ? 'selected' : ''} data-i18n="lock-none">None</option>
+            <option value="1" ${(dev.thrLock || 0) === 1 ? 'selected' : ''}>P1 High</option>
+            <option value="2" ${(dev.thrLock || 0) === 2 ? 'selected' : ''}>P1 Low</option>
+            <option value="3" ${(dev.thrLock || 0) === 3 ? 'selected' : ''}>P2 High</option>
+            <option value="4" ${(dev.thrLock || 0) === 4 ? 'selected' : ''}>P2 Low</option>
+            <option value="5" ${(dev.thrLock || 0) === 5 ? 'selected' : ''}>SW1 Up</option>
+            <option value="6" ${(dev.thrLock || 0) === 6 ? 'selected' : ''}>SW1 Down</option>
+            <option value="7" ${(dev.thrLock || 0) === 7 ? 'selected' : ''}>SW2 Up</option>
+            <option value="8" ${(dev.thrLock || 0) === 8 ? 'selected' : ''}>SW2 Down</option>
+            <option value="9" ${(dev.thrLock || 0) === 9 ? 'selected' : ''}>SW3 Up</option>
+            <option value="10" ${(dev.thrLock || 0) === 10 ? 'selected' : ''}>SW3 Down</option>
+            <option value="11" ${(dev.thrLock || 0) === 11 ? 'selected' : ''}>SW4 Up</option>
+            <option value="12" ${(dev.thrLock || 0) === 12 ? 'selected' : ''}>SW4 Down</option>
+          </select>
+        </div>
+
+        <div id="ste-lock-group" class="setting-row">
+          <span class="setting-label" data-i18n="ste-lock">方向锁</span>
+          <select id="ste-lock-select" style="flex:1;max-width:220px;padding:8px 12px;border:2px solid #e0e7ff;border-radius:8px;background:#fff;color:#3358e0;font-size:1em;outline:none;cursor:pointer;">
+            <option value="0" ${(dev.steLock || 0) === 0 ? 'selected' : ''} data-i18n="lock-none">None</option>
+            <option value="1" ${(dev.steLock || 0) === 1 ? 'selected' : ''}>P1 High</option>
+            <option value="2" ${(dev.steLock || 0) === 2 ? 'selected' : ''}>P1 Low</option>
+            <option value="3" ${(dev.steLock || 0) === 3 ? 'selected' : ''}>P2 High</option>
+            <option value="4" ${(dev.steLock || 0) === 4 ? 'selected' : ''}>P2 Low</option>
+            <option value="5" ${(dev.steLock || 0) === 5 ? 'selected' : ''}>SW1 Up</option>
+            <option value="6" ${(dev.steLock || 0) === 6 ? 'selected' : ''}>SW1 Down</option>
+            <option value="7" ${(dev.steLock || 0) === 7 ? 'selected' : ''}>SW2 Up</option>
+            <option value="8" ${(dev.steLock || 0) === 8 ? 'selected' : ''}>SW2 Down</option>
+            <option value="9" ${(dev.steLock || 0) === 9 ? 'selected' : ''}>SW3 Up</option>
+            <option value="10" ${(dev.steLock || 0) === 10 ? 'selected' : ''}>SW3 Down</option>
+            <option value="11" ${(dev.steLock || 0) === 11 ? 'selected' : ''}>SW4 Up</option>
+            <option value="12" ${(dev.steLock || 0) === 12 ? 'selected' : ''}>SW4 Down</option>
+          </select>
+        </div>
+        ` : ''}
 
         <div id="trim-reset_lf-group" style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#eaf1ff;border-radius:12px;padding:12px 18px;">
           <span style="color:#3358e0;font-weight:500;min-width:90px;" data-i18n="trim-left-reset-test">左Trim复位功能</span>
@@ -12621,6 +12733,29 @@ const calibStyle = document.createElement('style');
         }
       }
 
+      // 接收机电压警告延迟
+      const RxVoltageWarningDelay = document.getElementById('rx-voltage-warning-delay-range');
+      const RxVoltageWarningDelayValue = document.getElementById('rx-voltage-warning-delay-value');
+      if (RxVoltageWarningDelay && RxVoltageWarningDelayValue) {
+        RxVoltageWarningDelay.oninput = function() {
+          const value = parseInt(RxVoltageWarningDelay.value);
+          RxVoltageWarningDelayValue.textContent = value + 's';
+        };
+        RxVoltageWarningDelay.onchange = function() {
+          const value = parseInt(RxVoltageWarningDelay.value);
+          if (window._deviceInfo) {
+            window._deviceInfo.warnVBeeDelayFlag = value;
+          }
+          const sendData = new Uint8Array([
+            0xA5, 0x55, 0x38,
+            value,
+            0x0D, 0x0A
+          ]);
+          console.log('[RX-Voltage] 发送接收机电压警告延迟:', value, 's');
+          setTimeout(() => { writer.write(sendData); }, 100);
+        };
+      }
+
       // 接收机电压阈值
       const RxVoltageThreshold = document.getElementById('rx-voltage-threshold-range');
       const RxVoltageThresholdValue = document.getElementById('rx-voltage-threshold-value');
@@ -12673,6 +12808,76 @@ const calibStyle = document.createElement('style');
           console.log('[RX-Voltage] 发送接收机蜂鸣器频率:', freq, 'Hz');
           setTimeout(() => { writer.write(sendData); }, 100);
         };
+      }
+
+      // 油门锁 (THR Lock)
+      const thrLockSelect = document.getElementById('thr-lock-select');
+      if (thrLockSelect && (isMT8Device() || isMT6Device())) {
+        // 过滤掉处于click模式的SW选项
+        filterLockSwitchOptions(thrLockSelect);
+
+        thrLockSelect.onchange = function() {
+          const value = parseInt(thrLockSelect.value, 10);
+          if (window._deviceInfo) {
+            window._deviceInfo.thrLock = value;
+          }
+          const sendData = new Uint8Array([
+            0xA5, 0x55, 0x39,
+            1,  // 通道1 = 油门锁
+            value,
+            0x0D, 0x0A
+          ]);
+          console.log('[THR-Lock] 发送油门锁设置:', value);
+          setTimeout(() => { writer.write(sendData); }, 100);
+        };
+      }
+
+      // 方向锁 (STE Lock)
+      const steLockSelect = document.getElementById('ste-lock-select');
+      if (steLockSelect && (isMT8Device() || isMT6Device())) {
+        // 过滤掉处于click模式的SW选项
+        filterLockSwitchOptions(steLockSelect);
+
+        steLockSelect.onchange = function() {
+          const value = parseInt(steLockSelect.value, 10);
+          if (window._deviceInfo) {
+            window._deviceInfo.steLock = value;
+          }
+          const sendData = new Uint8Array([
+            0xA5, 0x55, 0x39,
+            2,  // 通道2 = 方向锁
+            value,
+            0x0D, 0x0A
+          ]);
+          console.log('[STE-Lock] 发送方向锁设置:', value);
+          setTimeout(() => { writer.write(sendData); }, 100);
+        };
+      }
+
+      // 过滤锁开关选项：仅保留处于click模式（单击3、双击2）的SW选项
+      function filterLockSwitchOptions(selectElement) {
+        if (!selectElement) return;
+        const keyModel = (window._deviceInfo && window._deviceInfo.keyModel) || [];
+        const clickModes = [3, 2]; // 单击、双击模式可作为锁触发源
+
+        // SW1-SW4对应option value 5-12（每个SW有up和down两个选项）
+        for (let i = 0; i < 4; i++) {
+          const mode = parseInt(keyModel[i], 10);
+          if (!clickModes.includes(mode)) {
+            // 非click模式（双态1、三态4、触发6）的SW没有稳定触发源，移除选项
+            const upValue = 5 + i * 2;
+            const downValue = 6 + i * 2;
+            const upOption = selectElement.querySelector(`option[value="${upValue}"]`);
+            const downOption = selectElement.querySelector(`option[value="${downValue}"]`);
+            if (upOption) upOption.remove();
+            if (downOption) downOption.remove();
+          }
+        }
+
+        // 如果当前选中的选项被移除了，重置为0（None）
+        if (!selectElement.querySelector(`option[value="${selectElement.value}"]`)) {
+          selectElement.value = '0';
+        }
       }
 
       const ctlPowerRange = document.getElementById('ctl-powerTime-range');
@@ -13957,8 +14162,8 @@ const calibStyle = document.createElement('style');
         'confirm-update': '确定要进入固件更新状态吗？进入后将无法进行其他操作，需退出更新后恢复。',
         'confirm-center-point': '确认中心点',
         'car-calib-title': 'MT8 车控校准',
-        'throttle-channel': '油门 THR ',
-        'steering-channel': '方向 STE ',
+        'throttle-channel': '方向 STE ',
+        'steering-channel': '油门 THR ',
         'car-calib-step-label-center-point': '请将油门 THR、方向 STE、P1、P2 置于中位，然后点击确认',
         'car-calib-step-label-done': '已获取中立点，请拨动四个通道到最小和最大位置',
         'car-calib-ready-confirm': '四个通道已完成扫描，请点击校准完成',
@@ -13975,6 +14180,7 @@ const calibStyle = document.createElement('style');
         "execute": "执行",
         'command-running': '正在操作...',
         'command-end': '结束',
+        'channels': '通道',
         'channel-map-default-output': '默认输出',
         'channel-map-channel-input': '默认输入',
         'Sub-trim-title': '舵机中立点',
@@ -13999,8 +14205,12 @@ const calibStyle = document.createElement('style');
         'serial-warning-test':'接收机即将丢失警告',
         'lowpower-warning-test':'电量过低警告',
         'rx-voltage-warning':'接收机电压警告开关',
+        'rx-voltage-warning-delay':'接收机电压警告延迟',
         'rx-voltage-threshold':'接收机电压阈值',
         'rx-voltage-beep-freq':'接收机警告蜂鸣器频率',
+        'thr-lock':'油门锁',
+        'ste-lock':'方向锁',
+        'lock-none':'不开启',
         'channel-confirm':'通道确认',
         'send-success':'已发送',
         'trim-left-reset-test':'左Trim复位功能',
@@ -14221,8 +14431,8 @@ const calibStyle = document.createElement('style');
         'comm-disconnect-btn': 'Disconnect',
         'recv-hex-checked': 'Hex Display',
         'car-calib-title': 'MT8 Car Calibration',
-        'throttle-channel': 'Throttle THR',
-        'steering-channel': 'Steering STE',
+        'throttle-channel': 'Steering STE',
+        'steering-channel': 'Throttle THR',
         'car-calib-step-label-center-point': 'Place THR, STE, P1, and P2 at center, then confirm',
         'car-calib-step-label-done': 'Center points received. Move all four channels to minimum and maximum',
         'car-calib-ready-confirm': 'All four channels are scanned. Click Calibration Done',
@@ -14243,6 +14453,7 @@ const calibStyle = document.createElement('style');
         "execute": "Execute",
         'command-running': 'Running...',
         'command-end': 'End',
+        'channels': 'Channels',
         'channel-map-default-output': 'Default',
         'channel-map-channel-input': 'Input',
         'factory-reset-confirm': 'Are you sure you want to restore the factory settings? This will initialize all configurations and calibrations!!! This operation should not be ignored!',
@@ -14270,8 +14481,12 @@ const calibStyle = document.createElement('style');
         'serial-warning-test':'Receiver loss warning',
         'lowpower-warning-test':'Low power warning',
         'rx-voltage-warning':'RX Voltage Warning Switch',
+        'rx-voltage-warning-delay':'RX Voltage Warning Delay',
         'rx-voltage-threshold':'RX Voltage Threshold',
         'rx-voltage-beep-freq':'RX Warning Beeper Frequency',
+        'thr-lock':'Throttle Lock',
+        'ste-lock':'Steering Lock',
+        'lock-none':'None',
         'channel-confirm':'Save',
         'send-success':'Sent',
         'trim-left-reset-test':'Trim left reset function',
@@ -14638,6 +14853,6 @@ window.addEventListener('load', function() {
 });
 
   </script>
-  <div id="app-version" style="position:fixed; bottom:10px; right:14px; color:#6b7a99; font-size:12px; z-index:1000; pointer-events:none;">Version 1.9.5</div>
+  <div id="app-version" style="position:fixed; bottom:10px; right:14px; color:#6b7a99; font-size:12px; z-index:1000; pointer-events:none;">Version 2.0.1</div>
 </body>
 </html> 

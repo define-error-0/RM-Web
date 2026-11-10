@@ -9,6 +9,8 @@
         "MT8-v1.9.2.bin" 
 , 
         "MT8.bin" 
+, 
+        "MT8_V2_5.bin" 
       ] 
     } 
 , 
@@ -24,11 +26,9 @@
       "type": "sensor", 
       "model": "ERS", 
       "files": [ 
-        "RM_ERS_Sensor-v1.4-updata-2026.04.16 - 副本 (2).bin" 
-, 
-        "RM_ERS_Sensor-v1.4-updata-2026.04.16 - 副本.bin" 
-, 
         "RM_ERS_Sensor-v1.4-updata-2026.04.16.bin" 
+, 
+        "RM_ERS_Sensor-v2_0-updata-2026_10_14.bin" 
       ] 
     } 
 , 
