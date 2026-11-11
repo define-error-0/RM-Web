@@ -12128,14 +12128,10 @@ const calibStyle = document.createElement('style');
           <span class="setting-label" data-i18n="thr-lock">油门锁</span>
           <select id="thr-lock-select" style="flex:1;max-width:220px;padding:8px 12px;border:2px solid #e0e7ff;border-radius:8px;background:#fff;color:#3358e0;font-size:1em;outline:none;cursor:pointer;">
             <option value="0" ${(dev.thrLock || 0) === 0 ? 'selected' : ''} data-i18n="lock-none">None</option>
-            <option value="5" ${(dev.thrLock || 0) === 5 ? 'selected' : ''}>SW1 Up</option>
-            <option value="6" ${(dev.thrLock || 0) === 6 ? 'selected' : ''}>SW1 Down</option>
-            <option value="7" ${(dev.thrLock || 0) === 7 ? 'selected' : ''}>SW2 Up</option>
-            <option value="8" ${(dev.thrLock || 0) === 8 ? 'selected' : ''}>SW2 Down</option>
-            <option value="9" ${(dev.thrLock || 0) === 9 ? 'selected' : ''}>SW3 Up</option>
-            <option value="10" ${(dev.thrLock || 0) === 10 ? 'selected' : ''}>SW3 Down</option>
-            <option value="11" ${(dev.thrLock || 0) === 11 ? 'selected' : ''}>SW4 Up</option>
-            <option value="12" ${(dev.thrLock || 0) === 12 ? 'selected' : ''}>SW4 Down</option>
+            <option value="5" ${(dev.thrLock || 0) === 5 ? 'selected' : ''}>SW1</option>
+            <option value="7" ${(dev.thrLock || 0) === 7 ? 'selected' : ''}>SW2</option>
+            <option value="9" ${(dev.thrLock || 0) === 9 ? 'selected' : ''}>SW3</option>
+            <option value="11" ${(dev.thrLock || 0) === 11 ? 'selected' : ''}>SW4</option>
           </select>
         </div>
 
@@ -12782,9 +12778,6 @@ const calibStyle = document.createElement('style');
       // 油门锁 (THR Lock)
       const thrLockSelect = document.getElementById('thr-lock-select');
       if (thrLockSelect && (isMT8Device() || isMT6Device())) {
-        // 过滤掉处于click模式的SW选项
-        filterLockSwitchOptions(thrLockSelect);
-
         thrLockSelect.onchange = function() {
           const value = parseInt(thrLockSelect.value, 10);
           if (window._deviceInfo) {
@@ -12804,9 +12797,6 @@ const calibStyle = document.createElement('style');
       // 方向锁 (STE Lock)
       const steLockSelect = document.getElementById('ste-lock-select');
       if (steLockSelect && (isMT8Device() || isMT6Device())) {
-        // 过滤掉处于click模式的SW选项
-        filterLockSwitchOptions(steLockSelect);
-
         steLockSelect.onchange = function() {
           const value = parseInt(steLockSelect.value, 10);
           if (window._deviceInfo) {
@@ -12821,32 +12811,6 @@ const calibStyle = document.createElement('style');
           console.log('[STE-Lock] 发送方向锁设置:', value);
           setTimeout(() => { writer.write(sendData); }, 100);
         };
-      }
-
-      // 过滤锁开关选项：仅保留处于click模式（单击3、双击2）的SW选项
-      function filterLockSwitchOptions(selectElement) {
-        if (!selectElement) return;
-        const keyModel = (window._deviceInfo && window._deviceInfo.keyModel) || [];
-        const clickModes = [3, 2]; // 单击、双击模式可作为锁触发源
-
-        // SW1-SW4对应option value 5-12（每个SW有up和down两个选项）
-        for (let i = 0; i < 4; i++) {
-          const mode = parseInt(keyModel[i], 10);
-          if (!clickModes.includes(mode)) {
-            // 非click模式（双态1、三态4、触发6）的SW没有稳定触发源，移除选项
-            const upValue = 5 + i * 2;
-            const downValue = 6 + i * 2;
-            const upOption = selectElement.querySelector(`option[value="${upValue}"]`);
-            const downOption = selectElement.querySelector(`option[value="${downValue}"]`);
-            if (upOption) upOption.remove();
-            if (downOption) downOption.remove();
-          }
-        }
-
-        // 如果当前选中的选项被移除了，重置为0（None）
-        if (!selectElement.querySelector(`option[value="${selectElement.value}"]`)) {
-          selectElement.value = '0';
-        }
       }
 
       const ctlPowerRange = document.getElementById('ctl-powerTime-range');
@@ -14812,6 +14776,6 @@ window.addEventListener('load', function() {
 });
 
   </script>
-  <div id="app-version" style="position:fixed; bottom:10px; right:14px; color:#6b7a99; font-size:12px; z-index:1000; pointer-events:none;">Version 2.0.1</div>
+  <div id="app-version" style="position:fixed; bottom:10px; right:14px; color:#6b7a99; font-size:12px; z-index:1000; pointer-events:none;">Version 2.0.2</div>
 </body>
 </html> 
