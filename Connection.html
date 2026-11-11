@@ -6461,6 +6461,15 @@ const calibStyle = document.createElement('style');
       const v = Math.max(-128, Math.min(127, Math.round(intVal)));
       return v & 0xFF;
     }
+    // int16 与 UI 中的互转（双字节有符号）
+    function uint16ToSignedInt16(wordVal) {
+      const w = wordVal & 0xFFFF;
+      return w > 32767 ? w - 65536 : w;
+    }
+    function signedInt16ToUint16(intVal) {
+      const v = Math.max(-32768, Math.min(32767, Math.round(intVal)));
+      return v < 0 ? v + 65536 : v;
+    }
     function clampDrExpoValue(v) {
       return Math.max(-100, Math.min(100, Math.round(parseFloat(v) || 0)));
     }
@@ -6477,22 +6486,13 @@ const calibStyle = document.createElement('style');
     /** MT8：Rate 由外部旋钮/HMI 输入，只读；T8L：Rate 可页面手动调节 */
     function applyExpoRateUiByDevice() {
       const readonly = typeof isMT8Device === 'function' && isMT8Device();
-      ['k-slider-left', 'k-slider-right'].forEach((id) => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.disabled = readonly;
-        el.style.opacity = readonly ? '0.55' : '1';
-        el.style.cursor = readonly ? 'default' : 'pointer';
-        el.style.pointerEvents = readonly ? 'none' : 'auto';
-      });
-      ['k-input-left', 'k-input-right'].forEach((id) => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.readOnly = readonly;
-        el.tabIndex = readonly ? -1 : 0;
-        el.style.background = readonly ? '#f5f7fa' : '#fff';
-        el.style.cursor = readonly ? 'default' : 'text';
-      });
+      const kInput = document.getElementById('k-input-unified');
+      if (kInput) {
+        kInput.readOnly = readonly;
+        kInput.tabIndex = readonly ? -1 : 0;
+        kInput.style.background = readonly ? '#f5f7fa' : '#fff';
+        kInput.style.cursor = readonly ? 'default' : 'text';
+      }
     }
     function applyExpoRateReadonlyUi() {
       applyExpoRateUiByDevice();
@@ -6515,16 +6515,10 @@ const calibStyle = document.createElement('style');
       const ui = channelSelect ? parseInt(channelSelect.value, 10) : 0;
       const rates = getHmiDrRatesForUiChannel(ui);
       if (!rates) return;
-      const left = clampDrExpoValue(rates[0]);
-      const right = clampDrExpoValue(rates[1]);
-      const kSliderLeft = document.getElementById('k-slider-left');
-      const kInputLeft = document.getElementById('k-input-left');
-      const kSliderRight = document.getElementById('k-slider-right');
-      const kInputRight = document.getElementById('k-input-right');
-      if (kSliderLeft) kSliderLeft.value = left;
-      if (kInputLeft) kInputLeft.value = left;
-      if (kSliderRight) kSliderRight.value = right;
-      if (kInputRight) kInputRight.value = right;
+      // 使用左侧rate值（统一）
+      const rate = clampDrExpoValue(rates[0]);
+      const kInput = document.getElementById('k-input-unified');
+      if (kInput) kInput.value = rate;
       if (typeof window.drawExpoGraph === 'function') window.drawExpoGraph();
     }
     function applyHmiDrPacketRates(thrLeft, thrRight, steLeft, steRight) {
@@ -7344,6 +7338,7 @@ const calibStyle = document.createElement('style');
         let warnVBeeDelayFlag = 0;
         let thrLock   = 0;
         let steLock   = 0;
+        let warnVOffset = 0;
         if(isMT8DeviceName(devName) || isMT6DeviceName(devName))
         {
           slideMT8Mid = [
@@ -7371,6 +7366,8 @@ const calibStyle = document.createElement('style');
             warnVBeeDelayFlag = buf[offset+9+39] || 0;
             thrLock = buf[offset+9+40] || 0;
             steLock = buf[offset+9+41] || 0;
+            // 单字节有符号char（-10~10）
+            warnVOffset = uint8ToSignedInt8(buf[offset+9+42] || 0);
           }
           console.log(warnVBeeFlag,warnVBeeValue,warnVBeeFreq);
           console.log(MT8_DEVICE_NAME);
@@ -7383,6 +7380,8 @@ const calibStyle = document.createElement('style');
             warnVBeeValue = (buf[offset+9+14] | buf[offset+9+15]<<8) || 0;
             warnVBeeFreq = (buf[offset+9+16] | buf[offset+9+17]<<8) || 0;
             powerTime = buf[offset+9+18] || 0;
+            warnVBeeDelayFlag = buf[offset+9+19] || 0;
+            warnVOffset = buf[offset+9+20] || 0;
           }
           console.log(warnVBeeFlag,warnVBeeValue,warnVBeeFreq);
           console.log("RadioMaster T8L");
@@ -7395,14 +7394,14 @@ const calibStyle = document.createElement('style');
           devVolume, serialNumber, elrsFirmWare, deviceFirmWare, elrsName, companyName, devName,
           sendPackSpeed, returnSpeed, calibrationFlag, connectProtocol, channelNum, secretKey, powerVal, remoteCtlClass, mixedCtl,
           keyModel,slideMid,slideMidData,RxWarning,LowPowerWarning,LeftTrimReset,RightTrimReset,slideMT8Mid,slideMT8MidData,
-          ledBrightness, workLedMode, warnVBeeFlag, warnVBeeValue, warnVBeeFreq, powerTime, warnVBeeDelayFlag, thrLock, steLock
+          ledBrightness, workLedMode, warnVBeeFlag, warnVBeeValue, warnVBeeFreq, powerTime, warnVBeeDelayFlag, thrLock, steLock, warnVOffset
 
         });
         return {
           devVolume, serialNumber, elrsFirmWare, deviceFirmWare, elrsName, companyName, devName,
           sendPackSpeed, returnSpeed, calibrationFlag, connectProtocol, channelNum, secretKey, powerVal, remoteCtlClass, mixedCtl,
           keyModel,slideMid,slideMidData,RxWarning,LowPowerWarning,LeftTrimReset,RightTrimReset,slideMT8Mid,slideMT8MidData,
-          ledBrightness, workLedMode, warnVBeeFlag, warnVBeeValue, warnVBeeFreq, powerTime, warnVBeeDelayFlag, thrLock, steLock
+          ledBrightness, workLedMode, warnVBeeFlag, warnVBeeValue, warnVBeeFreq, powerTime, warnVBeeDelayFlag, thrLock, steLock, warnVOffset
         };
       }
     }
@@ -8150,33 +8149,27 @@ const calibStyle = document.createElement('style');
                   <div style="font-size:0.92em;color:#5a6f9e;text-align:center;" data-i18n="expo-graph-hint">图表：横轴为输入 X，纵轴为输出 Y；红色为测试输入点，绿色为摇杆实际输入点</div>
                   <div style="display:flex;flex-direction:row;align-items:flex-start;gap:16px;flex-wrap:wrap;">
                     <canvas id="expo-graph-canvas" width="600" height="600" style="background:#fff;border-radius:8px;box-shadow:0 1px 4px #d0d7e6;max-width:100%;height:auto;"></canvas>
-                  <div style="display:flex;flex-direction:row;gap:20px;flex:1;min-width:0;flex-wrap:wrap;">
-                    <!-- X&lt;0 半轴曲线参数 -->
-                    <div style="display:flex;flex-direction:column;gap:16px;min-width:224px;padding:16px;background:#fff;border-radius:8px;border:2px solid #4f8cff;">
-                      <div style="color:#4f8cff;font-weight:600;font-size:1em;text-align:center;margin-bottom:8px;" data-i18n="expo-params-neg">X &lt; 0 曲线参数</div>
-                      <div style="display:flex;flex-direction:column;gap:8px;">
+                  <div style="display:flex;flex-direction:column;gap:20px;flex:1;min-width:280px;max-width:480px;">
+                    <!-- 统一曲线参数 -->
+                    <div style="display:flex;flex-direction:column;gap:20px;padding:24px;background:#fff;border-radius:12px;border:2px solid #4f8cff;box-shadow:0 2px 12px rgba(79,140,255,0.15);">
+                      <div style="color:#4f8cff;font-weight:600;font-size:1.15em;text-align:center;margin-bottom:4px;" data-i18n="expo-params-unified">曲线参数</div>
+
+                      <!-- Rate值 -->
+                      <div style="display:flex;flex-direction:column;gap:10px;">
                         <label style="color:#3358e0;font-weight:500;font-size:0.95em;" data-i18n="rate-value">Rate值:</label>
-                        <input type="range" id="k-slider-left" min="-100" max="100" value="0" ${isMT8Device() ? 'disabled' : ''} style="width:100%;height:6px;border-radius:4px;background:linear-gradient(90deg, #e0e7ff 0%, #4f8cff 50%, #e0e7ff 100%);outline:none;accent-color:#4f8cff;box-sizing:border-box;${isMT8Device() ? 'opacity:0.55;pointer-events:none;cursor:default;' : ''}">
-                        <input type="number" id="k-input-left" min="-100" max="100" step="1" value="0" ${isMT8Device() ? 'readonly tabindex="-1"' : ''} style="width:100%;padding:6px 8px;border:2px solid #e0e7ff;border-radius:6px;background:${isMT8Device() ? '#f5f7fa' : '#fff'};color:#3358e0;font-size:1em;text-align:center;outline:none;box-sizing:border-box;${isMT8Device() ? 'cursor:default;' : ''}">
+                        <div style="display:flex;align-items:center;gap:12px;">
+                          <div style="flex:1;min-width:0;"></div>
+                          <input type="number" id="k-input-unified" min="-100" max="100" step="1" value="0" ${isMT8Device() ? 'readonly tabindex="-1"' : ''} style="width:90px;flex-shrink:0;padding:8px 10px;border:2px solid #e0e7ff;border-radius:8px;background:${isMT8Device() ? '#f5f7fa' : '#fff'};color:#3358e0;font-size:1.05em;text-align:center;outline:none;box-sizing:border-box;${isMT8Device() ? 'cursor:default;' : ''}">
+                        </div>
                       </div>
-                      <div style="display:flex;flex-direction:column;gap:8px;">
+
+                      <!-- Expo值 -->
+                      <div style="display:flex;flex-direction:column;gap:10px;">
                         <label style="color:#3358e0;font-weight:500;font-size:0.95em;" data-i18n="expo-value">Expo值:</label>
-                        <input type="range" id="expo-slider-left" min="-100" max="100" value="0" style="width:100%;height:6px;border-radius:4px;background:linear-gradient(90deg, #e0e7ff 0%, #4f8cff 50%, #e0e7ff 100%);outline:none;accent-color:#4f8cff;box-sizing:border-box;">
-                        <input type="number" id="expo-input-left" min="-100" max="100" step="1" value="0" style="width:100%;padding:6px 8px;border:2px solid #e0e7ff;border-radius:6px;background:#fff;color:#3358e0;font-size:1em;text-align:center;outline:none;box-sizing:border-box;">
-                      </div>
-                    </div>
-                    <!-- X≥0 半轴曲线参数 -->
-                    <div style="display:flex;flex-direction:column;gap:16px;min-width:224px;padding:16px;background:#fff;border-radius:8px;border:2px solid #e74c3c;">
-                      <div style="color:#e74c3c;font-weight:600;font-size:1em;text-align:center;margin-bottom:8px;" data-i18n="expo-params-pos">X ≥ 0 曲线参数</div>
-                      <div style="display:flex;flex-direction:column;gap:8px;">
-                        <label style="color:#3358e0;font-weight:500;font-size:0.95em;" data-i18n="rate-value">Rate值:</label>
-                        <input type="range" id="k-slider-right" min="-100" max="100" value="0" ${isMT8Device() ? 'disabled' : ''} style="width:100%;height:6px;border-radius:4px;background:linear-gradient(90deg, #e0e7ff 0%, #e74c3c 50%, #e0e7ff 100%);outline:none;accent-color:#e74c3c;box-sizing:border-box;${isMT8Device() ? 'opacity:0.55;pointer-events:none;cursor:default;' : ''}">
-                        <input type="number" id="k-input-right" min="-100" max="100" step="1" value="0" ${isMT8Device() ? 'readonly tabindex="-1"' : ''} style="width:100%;padding:6px 8px;border:2px solid #e0e7ff;border-radius:6px;background:${isMT8Device() ? '#f5f7fa' : '#fff'};color:#3358e0;font-size:1em;text-align:center;outline:none;box-sizing:border-box;${isMT8Device() ? 'cursor:default;' : ''}">
-                      </div>
-                      <div style="display:flex;flex-direction:column;gap:8px;">
-                        <label style="color:#3358e0;font-weight:500;font-size:0.95em;" data-i18n="expo-value">Expo值:</label>
-                        <input type="range" id="expo-slider-right" min="-100" max="100" value="0" style="width:100%;height:6px;border-radius:4px;background:linear-gradient(90deg, #e0e7ff 0%, #e74c3c 50%, #e0e7ff 100%);outline:none;accent-color:#e74c3c;box-sizing:border-box;">
-                        <input type="number" id="expo-input-right" min="-100" max="100" step="1" value="0" style="width:100%;padding:6px 8px;border:2px solid #e0e7ff;border-radius:6px;background:#fff;color:#3358e0;font-size:1em;text-align:center;outline:none;box-sizing:border-box;">
+                        <div style="display:flex;align-items:center;gap:12px;">
+                          <input type="range" id="expo-slider-unified" min="-100" max="100" value="0" style="flex:1;min-width:0;height:8px;border-radius:4px;background:linear-gradient(90deg, #e0e7ff 0%, #4f8cff 50%, #e0e7ff 100%);outline:none;accent-color:#4f8cff;box-sizing:border-box;cursor:pointer;">
+                          <input type="number" id="expo-input-unified" min="-100" max="100" step="1" value="0" style="width:90px;flex-shrink:0;padding:8px 10px;border:2px solid #e0e7ff;border-radius:8px;background:#fff;color:#3358e0;font-size:1.05em;text-align:center;outline:none;box-sizing:border-box;">
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -8813,22 +8806,20 @@ const calibStyle = document.createElement('style');
             }
           }
           
-          // 获取当前参数值（左右两套参数）
-          const kInputLeft = document.getElementById('k-input-left');
-          const expoInputLeft = document.getElementById('expo-input-left');
-          const kInputRight = document.getElementById('k-input-right');
-          const expoInputRight = document.getElementById('expo-input-right');
+          // 获取当前参数值（统一参数）
+          const kInput = document.getElementById('k-input-unified');
+          const expoInput = document.getElementById('expo-input-unified');
           const switchChannelSelect = document.getElementById('expo-switch-channel-select');
-          
-          if (!kInputLeft || !expoInputLeft || !kInputRight || !expoInputRight) {
+
+          if (!kInput || !expoInput) {
             console.log('Expo graph: Missing input elements');
             return;
           }
-          
-          const kLeft = (parseFloat(kInputLeft.value) || 0) / 100; // 左侧Rate值从-100到100，除以100得到-1到1
-          const expoLeft = parseFloat(expoInputLeft.value) || 0; // 左侧Expo值 -100到100
-          const kRight = (parseFloat(kInputRight.value) || 0) / 100; // 右侧Rate值从-100到100，除以100得到-1到1
-          const expoRight = parseFloat(expoInputRight.value) || 0; // 右侧Expo值 -100到100
+
+          const kLeft = (parseFloat(kInput.value) || 0) / 100; // Rate值从-100到100，除以100得到-1到1
+          const expoLeft = parseFloat(expoInput.value) || 0; // Expo值 -100到100
+          const kRight = kLeft;
+          const expoRight = expoLeft;
           
           // 获取开关通道索引（用于模拟，实际应该从设备读取该通道的值）
           const switchChannelIdx = switchChannelSelect ? parseInt(switchChannelSelect.value) : 0;
@@ -9090,17 +9081,10 @@ const calibStyle = document.createElement('style');
             const selectedChannel = channelSelect ? parseInt(channelSelect.value) : 0;
             
             let k, expo;
-            if (normalizedInput < 0) {
-              const kInputLeft = document.getElementById('k-input-left');
-              const expoInputLeft = document.getElementById('expo-input-left');
-              k = (parseFloat(kInputLeft?.value) || 0) / 100;
-              expo = parseFloat(expoInputLeft?.value) || 0;
-            } else {
-              const kInputRight = document.getElementById('k-input-right');
-              const expoInputRight = document.getElementById('expo-input-right');
-              k = (parseFloat(kInputRight?.value) || 0) / 100;
-              expo = parseFloat(expoInputRight?.value) || 0;
-            }
+            const kInput = document.getElementById('k-input-unified');
+            const expoInput = document.getElementById('expo-input-unified');
+            k = (parseFloat(kInput?.value) || 0) / 100;
+            expo = parseFloat(expoInput?.value) || 0;
             
             // 应用expo算法计算输出
             let outputY = normalizedInput;
@@ -9221,18 +9205,11 @@ const calibStyle = document.createElement('style');
         const initExpoPage = () => {
           window.applyConfigPageDataSourceDefaults('expo');
 
-          // 左侧参数元素
-          const kSliderLeft = document.getElementById('k-slider-left');
-          const kInputLeft = document.getElementById('k-input-left');
-          const expoSliderLeft = document.getElementById('expo-slider-left');
-          const expoInputLeft = document.getElementById('expo-input-left');
-          
-          // 右侧参数元素
-          const kSliderRight = document.getElementById('k-slider-right');
-          const kInputRight = document.getElementById('k-input-right');
-          const expoSliderRight = document.getElementById('expo-slider-right');
-          const expoInputRight = document.getElementById('expo-input-right');
-          
+          // 统一参数元素
+          const kInput = document.getElementById('k-input-unified');
+          const expoSlider = document.getElementById('expo-slider-unified');
+          const expoInput = document.getElementById('expo-input-unified');
+
           // 其他元素
           const channelSelect = document.getElementById('expo-channel-select');
           const switchChannelSelect = document.getElementById('expo-switch-channel-select');
@@ -9343,45 +9320,36 @@ const calibStyle = document.createElement('style');
             input.onchange = syncRateInput;
           };
 
-          // MT8：Rate 只读，由 HMI/查询回包更新；T8L：可手动拖动
-          if (kSliderLeft && kInputLeft) {
-            kInputLeft.value = Math.round(parseFloat(kSliderLeft.value) || 0);
-            if (!isMT8Device()) bindExpoRateControl(kSliderLeft, kInputLeft);
+          // Rate输入框事件（统一，MT8只读）
+          if (kInput) {
+            kInput.value = Math.round(parseFloat(kInput.value) || 0);
+            if (!isMT8Device()) {
+              kInput.oninput = function() {
+                let rate = parseFloat(this.value);
+                if (isNaN(rate)) rate = 0;
+                rate = Math.max(-100, Math.min(100, rate));
+                this.value = Math.round(rate);
+                drawExpoGraph();
+              };
+            }
           }
-          
-          // 左侧Expo值滑块和输入框同步
-          if (expoSliderLeft && expoInputLeft) {
-            expoSliderLeft.oninput = function() {
-              expoInputLeft.value = this.value;
+
+          // Expo值滑块和输入框同步（统一）
+          if (expoSlider && expoInput) {
+            expoSlider.oninput = function() {
+              expoInput.value = this.value;
               drawExpoGraph();
             };
-            expoInputLeft.oninput = function() {
+            expoInput.oninput = function() {
               let expo = parseFloat(this.value);
               if (isNaN(expo)) expo = 0;
               expo = Math.max(-100, Math.min(100, expo));
               this.value = Math.round(expo);
-              expoSliderLeft.value = expo;
+              expoSlider.value = expo;
               drawExpoGraph();
             };
-            expoInputLeft.onchange = function() {
-              let expo = parseFloat(this.value);
-              if (isNaN(expo)) expo = 0;
-              expo = Math.max(-100, Math.min(100, expo));
-              this.value = Math.round(expo);
-              expoSliderLeft.value = expo;
-              drawExpoGraph();
-            };
-            // 初始化 - 确保输入框和滑块同步
-            expoInputLeft.value = expoSliderLeft.value;
-            console.log('Left Expo initialized:', expoSliderLeft.value);
           }
-          
-          // MT8：Rate 只读；T8L：可手动拖动
-          if (kSliderRight && kInputRight) {
-            kInputRight.value = Math.round(parseFloat(kSliderRight.value) || 0);
-            if (!isMT8Device()) bindExpoRateControl(kSliderRight, kInputRight);
-          }
-          
+
           // 测试输入框事件
           const testXInput = document.getElementById('expo-test-x');
           if (testXInput) {
@@ -9396,34 +9364,7 @@ const calibStyle = document.createElement('style');
               drawExpoGraph();
             };
           }
-          
-          // 右侧Expo值滑块和输入框同步
-          if (expoSliderRight && expoInputRight) {
-            expoSliderRight.oninput = function() {
-              expoInputRight.value = this.value;
-              drawExpoGraph();
-            };
-            expoInputRight.oninput = function() {
-              let expo = parseFloat(this.value);
-              if (isNaN(expo)) expo = 0;
-              expo = Math.max(-100, Math.min(100, expo));
-              this.value = Math.round(expo);
-              expoSliderRight.value = expo;
-              drawExpoGraph();
-            };
-            expoInputRight.onchange = function() {
-              let expo = parseFloat(this.value);
-              if (isNaN(expo)) expo = 0;
-              expo = Math.max(-100, Math.min(100, expo));
-              this.value = Math.round(expo);
-              expoSliderRight.value = expo;
-              drawExpoGraph();
-            };
-            // 初始化 - 确保输入框和滑块同步
-            expoInputRight.value = expoSliderRight.value;
-            console.log('Right Expo initialized:', expoSliderRight.value);
-          }
-          
+
           // 通道选择：自动查询当前通道
           if (channelSelect) {
             channelSelect.onchange = function() {
@@ -9475,11 +9416,13 @@ const calibStyle = document.createElement('style');
                 kLeft = hmiRates[0];
                 kRight = hmiRates[1];
               } else {
-                kLeft = clampDrExpoValue(kInputLeft ? kInputLeft.value : 0);
-                kRight = clampDrExpoValue(kInputRight ? kInputRight.value : 0);
+                // 统一Rate值，左右同步
+                kLeft = clampDrExpoValue(kInput ? kInput.value : 0);
+                kRight = kLeft;
               }
-              const expoLeft = clampDrExpoValue(expoInputLeft ? expoInputLeft.value : 0);
-              const expoRight = clampDrExpoValue(expoInputRight ? expoInputRight.value : 0);
+              // 统一Expo值，左右同步
+              const expoLeft = clampDrExpoValue(expoInput ? expoInput.value : 0);
+              const expoRight = expoLeft;
               
               const dirGear = (isMT8Device()||isMT6Device()) ? 0 : (typeof window.getExpoDirGear === 'function' ? window.getExpoDirGear() : 2);
               const mt8SwWire = (isMT8Device()||isMT6Device()) ? getMt8ExpoSwitchSwWire() : 0;
@@ -12172,15 +12115,19 @@ const calibStyle = document.createElement('style');
           </div>
         </div>
 
+        <div class="setting-row">
+          <span class="setting-label" data-i18n="rx-voltage-offset">接收机电压偏移</span>
+          <input id="rx-voltage-offset-range" min="-10" max="10" step="1" value="${dev.warnVOffset || 0}" type="range" style="flex:1;max-width:220px;">
+          <div class="setting-right">
+            <span id="rx-voltage-offset-value" class="setting-value">${((dev.warnVOffset || 0) / 10).toFixed(1)}V</span>
+          </div>
+        </div>
+
         ${isMT8DeviceName(dev.devName) || isMT6DeviceName(dev.devName) ? `
         <div id="thr-lock-group" class="setting-row">
           <span class="setting-label" data-i18n="thr-lock">油门锁</span>
           <select id="thr-lock-select" style="flex:1;max-width:220px;padding:8px 12px;border:2px solid #e0e7ff;border-radius:8px;background:#fff;color:#3358e0;font-size:1em;outline:none;cursor:pointer;">
             <option value="0" ${(dev.thrLock || 0) === 0 ? 'selected' : ''} data-i18n="lock-none">None</option>
-            <option value="1" ${(dev.thrLock || 0) === 1 ? 'selected' : ''}>P1 High</option>
-            <option value="2" ${(dev.thrLock || 0) === 2 ? 'selected' : ''}>P1 Low</option>
-            <option value="3" ${(dev.thrLock || 0) === 3 ? 'selected' : ''}>P2 High</option>
-            <option value="4" ${(dev.thrLock || 0) === 4 ? 'selected' : ''}>P2 Low</option>
             <option value="5" ${(dev.thrLock || 0) === 5 ? 'selected' : ''}>SW1 Up</option>
             <option value="6" ${(dev.thrLock || 0) === 6 ? 'selected' : ''}>SW1 Down</option>
             <option value="7" ${(dev.thrLock || 0) === 7 ? 'selected' : ''}>SW2 Up</option>
@@ -12192,14 +12139,10 @@ const calibStyle = document.createElement('style');
           </select>
         </div>
 
-        <div id="ste-lock-group" class="setting-row">
+        <!-- <div id="ste-lock-group" class="setting-row">
           <span class="setting-label" data-i18n="ste-lock">方向锁</span>
           <select id="ste-lock-select" style="flex:1;max-width:220px;padding:8px 12px;border:2px solid #e0e7ff;border-radius:8px;background:#fff;color:#3358e0;font-size:1em;outline:none;cursor:pointer;">
             <option value="0" ${(dev.steLock || 0) === 0 ? 'selected' : ''} data-i18n="lock-none">None</option>
-            <option value="1" ${(dev.steLock || 0) === 1 ? 'selected' : ''}>P1 High</option>
-            <option value="2" ${(dev.steLock || 0) === 2 ? 'selected' : ''}>P1 Low</option>
-            <option value="3" ${(dev.steLock || 0) === 3 ? 'selected' : ''}>P2 High</option>
-            <option value="4" ${(dev.steLock || 0) === 4 ? 'selected' : ''}>P2 Low</option>
             <option value="5" ${(dev.steLock || 0) === 5 ? 'selected' : ''}>SW1 Up</option>
             <option value="6" ${(dev.steLock || 0) === 6 ? 'selected' : ''}>SW1 Down</option>
             <option value="7" ${(dev.steLock || 0) === 7 ? 'selected' : ''}>SW2 Up</option>
@@ -12209,7 +12152,7 @@ const calibStyle = document.createElement('style');
             <option value="11" ${(dev.steLock || 0) === 11 ? 'selected' : ''}>SW4 Up</option>
             <option value="12" ${(dev.steLock || 0) === 12 ? 'selected' : ''}>SW4 Down</option>
           </select>
-        </div>
+        </div> -->
         ` : ''}
 
         <div id="trim-reset_lf-group" style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#eaf1ff;border-radius:12px;padding:12px 18px;">
@@ -12284,6 +12227,8 @@ const calibStyle = document.createElement('style');
 
     attrPage.innerHTML = html; 
     
+
+    //document.getElementById('ste-lock-select').style.display="none";
     if(isMT8Device())
     {
       document.getElementById('trim-reset_lf-group').style.display="none";
@@ -12806,6 +12751,30 @@ const calibStyle = document.createElement('style');
             0x0D, 0x0A
           ]);
           console.log('[RX-Voltage] 发送接收机蜂鸣器频率:', freq, 'Hz');
+          setTimeout(() => { writer.write(sendData); }, 100);
+        };
+      }
+
+      // 接收机电压偏移
+      const RxVoltageOffset = document.getElementById('rx-voltage-offset-range');
+      const RxVoltageOffsetValue = document.getElementById('rx-voltage-offset-value');
+      if (RxVoltageOffset && RxVoltageOffsetValue) {
+        RxVoltageOffset.oninput = function() {
+          const value = parseInt(RxVoltageOffset.value);
+          RxVoltageOffsetValue.textContent = (value / 10).toFixed(1) + 'V';
+        };
+        RxVoltageOffset.onchange = function() {
+          const value = parseInt(RxVoltageOffset.value);
+          if (window._deviceInfo) {
+            window._deviceInfo.warnVOffset = value;
+          }
+          // 单字节有符号char，负值按补码转换
+          const sendData = new Uint8Array([
+            0xA5, 0x55, 0x3A,
+            signedInt8ToUint8(value),
+            0x0D, 0x0A
+          ]);
+          console.log('[RX-Voltage] 发送接收机电压偏移:', (value / 10).toFixed(1), 'V');
           setTimeout(() => { writer.write(sendData); }, 100);
         };
       }
@@ -13373,35 +13342,21 @@ const calibStyle = document.createElement('style');
             applyHmiDrRatesToCurrentChannel();
           }
         } else {
-          const kSliderLeft = document.getElementById('k-slider-left');
-          const kInputLeft = document.getElementById('k-input-left');
-          if (kSliderLeft && kInputLeft) {
-            kSliderLeft.value = drLeft;
-            kInputLeft.value = Math.round(drLeft);
-          }
-
-          const kSliderRight = document.getElementById('k-slider-right');
-          const kInputRight = document.getElementById('k-input-right');
-          if (kSliderRight && kInputRight) {
-            kSliderRight.value = drRight;
-            kInputRight.value = Math.round(drRight);
+          // 统一Rate值（左右同步）
+          const kInput = document.getElementById('k-input-unified');
+          if (kInput) {
+            kInput.value = Math.round(drLeft);
           }
         }
         
-        // 更新左侧Expo值
-        const expoSliderLeft = document.getElementById('expo-slider-left');
-        const expoInputLeft = document.getElementById('expo-input-left');
-        if (expoSliderLeft && expoInputLeft) {
-          expoSliderLeft.value = expoLeft;
-          expoInputLeft.value = Math.round(expoLeft);
-        }
-        
-        // 更新右侧Expo值
-        const expoSliderRight = document.getElementById('expo-slider-right');
-        const expoInputRight = document.getElementById('expo-input-right');
-        if (expoSliderRight && expoInputRight) {
-          expoSliderRight.value = expoRight;
-          expoInputRight.value = Math.round(expoRight);
+        // 更新Expo值（左右同步，使用统一元素）
+        const expoSlider = document.getElementById('expo-slider-unified');
+        const expoInput = document.getElementById('expo-input-unified');
+        if (expoSlider && expoInput) {
+          // 左右Expo值一致，取左侧（或右侧）即可
+          const expoValue = (typeof expoLeft !== 'undefined' && expoLeft !== null) ? expoLeft : expoRight;
+          expoSlider.value = expoValue;
+          expoInput.value = Math.round(expoValue);
         }
         
         // 重新绘制图表
@@ -14208,6 +14163,7 @@ const calibStyle = document.createElement('style');
         'rx-voltage-warning-delay':'接收机电压警告延迟',
         'rx-voltage-threshold':'接收机电压阈值',
         'rx-voltage-beep-freq':'接收机警告蜂鸣器频率',
+        'rx-voltage-offset':'接收机电压偏移',
         'thr-lock':'油门锁',
         'ste-lock':'方向锁',
         'lock-none':'不开启',
@@ -14240,6 +14196,7 @@ const calibStyle = document.createElement('style');
         'expo-real-coord-label': '实际坐标',
         'expo-params-neg': 'X < 0 曲线参数',
         'expo-params-pos': 'X ≥ 0 曲线参数',
+        'expo-params-unified': '曲线参数',
         'expo-graph-hint': '图表：横轴为输入 X，纵轴为输出 Y；红色为测试输入点，绿色为摇杆实际输入点',
         'expo-legend-segment': '分段函数曲线',
         'expo-legend-real': '实际坐标输入',
@@ -14484,7 +14441,8 @@ const calibStyle = document.createElement('style');
         'rx-voltage-warning-delay':'RX Voltage Warning Delay',
         'rx-voltage-threshold':'RX Voltage Threshold',
         'rx-voltage-beep-freq':'RX Warning Beeper Frequency',
-        'thr-lock':'Throttle Lock',
+        'rx-voltage-offset':'RX Voltage Offset',
+        'thr-lock':'Throttle Cut',
         'ste-lock':'Steering Lock',
         'lock-none':'None',
         'channel-confirm':'Save',
@@ -14519,6 +14477,7 @@ const calibStyle = document.createElement('style');
         'expo-real-coord-label': 'Live coord',
         'expo-params-neg': 'Curve params (X < 0)',
         'expo-params-pos': 'Curve params (X ≥ 0)',
+        'expo-params-unified': 'Curve Parameters',
         'expo-graph-hint': 'X = input, Y = output. Red = test point, green = live stick input.',
         'expo-legend-segment': 'Piecewise curve',
         'expo-legend-real': 'Live input',
@@ -14669,14 +14628,14 @@ const calibStyle = document.createElement('style');
       window.deviceStats.bindConnect = buf[2];
       window.deviceStats.downLinkRssi = buf[3];
       window.deviceStats.upLinkRssi = buf[4];
-      window.deviceStats.rxbatteryVoltage = (buf[5] | (buf[6]<<8));
+      window.deviceStats.rxbatteryVoltage = signedInt16ToUint16(buf[5] | (buf[6]<<8));
       window.deviceStats.rxbatteryCurrent = (buf[7] | (buf[8]<<8));
       // window.deviceStats.rxBattery = buf[9]; // 你说先不用
       window.deviceStats.txbatteryVoltage = (buf[10] | (buf[11]<<8));
       window.deviceStats.txBattery = buf[12];
       window._batteryPercent = buf[12];
 
-      console.log('parseDeviceStats: devConnectStats=', window.deviceStats.devConnectStats);
+       console.log('parseDeviceStats: devConnectStats=', window.deviceStats.devConnectStats);
       //             'bindConnect=', window.deviceStats.bindConnect,
       //             'txLinkSnr=', window.deviceStats.txLinkSnr,
       //             'rxLinkSnr=', window.deviceStats.rxLinkSnr,
