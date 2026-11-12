@@ -6611,13 +6611,13 @@ const calibStyle = document.createElement('style');
      * - MT8 实时摇杆：origChannelData 按 0x22 原始包顺序（未经 Channel Mapping），0=STE, 1=THR
      *   输出数据 changeChannelData 按物理 CH，需查 Channel Mapping
      */
-    /** 与 Channel Mapping 下拉 value 一致（顺序即协议值 1~8） */
-    const MT8_INPUT_SOURCE_OPTIONS = ['STE', 'THR', 'SW1', 'SW2', 'SW3', 'SW4', 'P1', 'P2'];
+    /** 与 Channel Mapping 下拉 value 一致（顺序即协议值 0~8） */
+    const MT8_INPUT_SOURCE_OPTIONS = ['NONE', 'STE', 'THR', 'SW1', 'SW2', 'SW3', 'SW4', 'P1', 'P2'];
     /** Expo UI 顺序：wire1=STE, wire2=THR（与 0x22 原始包下标一致） */
     const MT8_EXPO_UI_CHANNEL_NAMES = ['STE', 'THR'];
     function getMt8InputSourceIdByName(name) {
       const idx = MT8_INPUT_SOURCE_OPTIONS.indexOf(name);
-      return idx >= 0 ? idx + 1 : 0;
+      return idx >= 0 ? idx+1 : 0;
     }
     /** Expo 所选逻辑通道名 → Channel Mapping 协议值 */
     function getExpoChannelMapSourceId(uiIndex) {
@@ -7339,6 +7339,7 @@ const calibStyle = document.createElement('style');
         let thrLock   = 0;
         let steLock   = 0;
         let warnVOffset = 0;
+        let radioPowerKey = 0;
         if(isMT8DeviceName(devName) || isMT6DeviceName(devName))
         {
           slideMT8Mid = [
@@ -7368,6 +7369,7 @@ const calibStyle = document.createElement('style');
             steLock = buf[offset+9+41] || 0;
             // 单字节有符号char（-10~10）
             warnVOffset = uint8ToSignedInt8(buf[offset+9+42] || 0);
+            radioPowerKey = buf[offset+9+43] || 0;
           }
           console.log(warnVBeeFlag,warnVBeeValue,warnVBeeFreq);
           console.log(MT8_DEVICE_NAME);
@@ -7382,6 +7384,7 @@ const calibStyle = document.createElement('style');
             powerTime = buf[offset+9+18] || 0;
             warnVBeeDelayFlag = buf[offset+9+19] || 0;
             warnVOffset = buf[offset+9+20] || 0;
+            radioPowerKey = buf[offset+9+21] || 0;
           }
           console.log(warnVBeeFlag,warnVBeeValue,warnVBeeFreq);
           console.log("RadioMaster T8L");
@@ -7394,14 +7397,14 @@ const calibStyle = document.createElement('style');
           devVolume, serialNumber, elrsFirmWare, deviceFirmWare, elrsName, companyName, devName,
           sendPackSpeed, returnSpeed, calibrationFlag, connectProtocol, channelNum, secretKey, powerVal, remoteCtlClass, mixedCtl,
           keyModel,slideMid,slideMidData,RxWarning,LowPowerWarning,LeftTrimReset,RightTrimReset,slideMT8Mid,slideMT8MidData,
-          ledBrightness, workLedMode, warnVBeeFlag, warnVBeeValue, warnVBeeFreq, powerTime, warnVBeeDelayFlag, thrLock, steLock, warnVOffset
+          ledBrightness, workLedMode, warnVBeeFlag, warnVBeeValue, warnVBeeFreq, powerTime, warnVBeeDelayFlag, thrLock, steLock, warnVOffset, radioPowerKey
 
         });
         return {
           devVolume, serialNumber, elrsFirmWare, deviceFirmWare, elrsName, companyName, devName,
           sendPackSpeed, returnSpeed, calibrationFlag, connectProtocol, channelNum, secretKey, powerVal, remoteCtlClass, mixedCtl,
           keyModel,slideMid,slideMidData,RxWarning,LowPowerWarning,LeftTrimReset,RightTrimReset,slideMT8Mid,slideMT8MidData,
-          ledBrightness, workLedMode, warnVBeeFlag, warnVBeeValue, warnVBeeFreq, powerTime, warnVBeeDelayFlag, thrLock, steLock, warnVOffset
+          ledBrightness, workLedMode, warnVBeeFlag, warnVBeeValue, warnVBeeFreq, powerTime, warnVBeeDelayFlag, thrLock, steLock, warnVOffset, radioPowerKey
         };
       }
     }
@@ -7891,7 +7894,7 @@ const calibStyle = document.createElement('style');
                             inSelect = `<select id="ch-map-in2-${i}" style="font-size:1em;padding:4px 12px;border-radius:6px;border:1.5px solid #d0d7e6;">
                               ${inputOptions.map((opt, idx) => {
                                 const mapVal = window.channelMap && window.channelMap.channelMapSend ? window.channelMap.channelMapSend[i] : (i + 1);
-                                return `<option value='${idx+1}'${mapVal === idx + 1 ? ' selected' : ''}>${opt}</option>`;
+                                return `<option value='${idx}'${mapVal === idx ? ' selected' : ''}>${opt}</option>`;
                               }).join('')}
                             </select>`;
                           html += `<tr style="background:#fff;box-shadow:0 1px 8px #e0e7ff;border-radius:10px;">
@@ -7903,8 +7906,8 @@ const calibStyle = document.createElement('style');
                       }
                       else if(isMT6Device())
                       {
-                        // MT6: 6个通道，只有STE/THR/SW1-SW4，没有P1/P2
-                        const inputOptions = ['STE','THR','SW1','SW2','SW3','SW4'];
+                        // MT6: 6个通道，只有NONE/STE/THR/SW1-SW4，没有P1/P2
+                        const inputOptions = ['NONE','STE','THR','SW1','SW2','SW3','SW4'];
                         const nowInputOptions = ['STE','THR','SW1','SW2','SW3','SW4'];
                         for (let i = 0; i < 6; i++) {
                           let chName = `Channel_${i+1}`;
@@ -7912,7 +7915,7 @@ const calibStyle = document.createElement('style');
                           let inSelect = `<select id="ch-map-in2-${i}" style="font-size:1em;padding:4px 12px;border-radius:6px;border:1.5px solid #d0d7e6;">
                               ${inputOptions.map((opt, idx) => {
                                 const mapVal = window.channelMap && window.channelMap.channelMapSend ? window.channelMap.channelMapSend[i] : (i + 1);
-                                return `<option value='${idx+1}'${mapVal === idx + 1 ? ' selected' : ''}>${opt}</option>`;
+                                return `<option value='${idx}'${mapVal === idx ? ' selected' : ''}>${opt}</option>`;
                               }).join('')}
                             </select>`;
                           html += `<tr style="background:#fff;box-shadow:0 1px 8px #e0e7ff;border-radius:10px;">
@@ -8014,19 +8017,19 @@ const calibStyle = document.createElement('style');
                   const isMT8Trim = isMT8Device();
                   const isMT6Trim = isMT6Device();
                   const trimCount = (isMT8Trim || isMT6Trim) ? 2 : 4;
-                  const trimClearBtnStyle = 'margin-top:12px;background:linear-gradient(90deg,#e0e7ff 0%,#b3cfff 100%);color:#3358e0;border:none;border-radius:8px;padding:6px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;' + ((isMT8Trim || isMT6Trim) ? 'opacity:0.55;cursor:not-allowed;' : 'cursor:pointer;');
+                  const trimClearBtnStyle = 'background:linear-gradient(90deg,#e0e7ff 0%,#b3cfff 100%);color:#3358e0;border:none;border-radius:8px;padding:6px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;' + ((isMT8Trim || isMT6Trim) ? 'opacity:0.55;cursor:not-allowed;' : 'cursor:pointer;');
                   for (let i = 0; i < trimCount; i++) {
                     const min = -130, max = 130, val = 0, percent = ((val - min) / (max - min)) * 100;
         html += `<div style="display:flex;align-items:center;gap:32px;background:linear-gradient(90deg,#eaf1ff 60%,#f4f8ff 100%);border-radius:16px;padding:8px 18px;box-shadow:0 2px 16px #e0e7ff;min-height:32px;flex-wrap:wrap;">
-          <span style="color:#3358e0;font-weight:bold;font-size:1.18em;min-width:90px;">${getTrimRowLabel(i, false)}</span>
+          <span style="color:#3358e0;font-weight:bold;font-size:1.18em;width:120px;flex-shrink:0;">${getTrimRowLabel(i, false)}</span>
           <div style="flex:1;display:flex;align-items:center;gap:24px;min-width:320px;position:relative;">
             <div id="trim-bar-${i}" class="progress-bar" style="width:260px;">
               <div class="bar-line"></div>
               <div id="trim-dot-${i}" class="progress-dot" style="background:#4f8cff;"></div>
               <div style="position:absolute;top:50%;left:50%;width:3px;height:26px;background:#e74c3c;border-radius:2px;z-index:3;transform:translate(-50%,-50%);"></div>
             </div>
-            <span id="trim-val-${i}" style="font-family:'Roboto',monospace;font-size:1.18em;background:#fff;border-radius:8px;padding:4px 18px;box-shadow:0 1px 4px #e0e7ff;">0</span>
-            <!-- Trim输入框已彻底隐藏，不渲染 -->
+            <span id="trim-val-${i}" style="font-family:'Roboto',monospace;font-size:1.18em;background:#fff;border-radius:8px;padding:4px 18px;box-shadow:0 1px 4px #e0e7ff;min-width:90px;text-align:center;box-sizing:border-box;">0</span>
+            <div style="width:90px;flex-shrink:0;"></div>
           </div>
           <button class="trim-clear-btn" data-type="trim" data-idx="${i}"${isMT8Trim ? ' disabled' : ''} style="${trimClearBtnStyle}" data-i18n="trim-center-clear">清空</button>
         </div>`;
@@ -8041,19 +8044,19 @@ const calibStyle = document.createElement('style');
                   const isMT8Trim = isMT8Device();
                   const isMT6Trim = isMT6Device();
                   const subTrimCount = (isMT8Trim || isMT6Trim) ? 2 : 4;
-                  const subTrimClearBtnStyle = 'margin-top:12px;background:linear-gradient(90deg,#e0e7ff 0%,#b3cfff 100%);color:#3358e0;border:none;border-radius:8px;padding:6px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;';
+                  const subTrimClearBtnStyle = 'background:linear-gradient(90deg,#e0e7ff 0%,#b3cfff 100%);color:#3358e0;border:none;border-radius:8px;padding:6px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;';
                   for (let i = 0; i < subTrimCount; i++) {
                     const min = -100, max = 100, val = 0, percent = ((val - min) / (max - min)) * 100;
-                    const centerInputHtml = `<input type="number" id="center-input-${i}" value="0" min="-100" max="100" style="width:90px;text-align:center;border:2px solid #b3cfff;border-radius:8px;font-size:1.08em;padding:6px 0;box-shadow:0 1px 6px #e0e7ff;" />`;
+                    const centerInputHtml = `<input type="number" id="center-input-${i}" value="0" min="-100" max="100" style="width:90px;flex-shrink:0;text-align:center;border:2px solid #b3cfff;border-radius:8px;font-size:1.08em;padding:6px 0;box-shadow:0 1px 6px #e0e7ff;" />`;
         html += `<div style="display:flex;align-items:center;gap:32px;background:linear-gradient(90deg,#f4f8ff 60%,#eaf1ff 100%);border-radius:16px;padding:8px 18px;box-shadow:0 2px 16px #e0e7ff;min-height:32px;flex-wrap:wrap;">
-          <span style="color:#3358e0;font-weight:bold;font-size:1.18em;min-width:90px;">${getTrimRowLabel(i, true)}</span>
+          <span style="color:#3358e0;font-weight:bold;font-size:1.18em;width:120px;flex-shrink:0;">${getTrimRowLabel(i, true)}</span>
           <div style="flex:1;display:flex;align-items:center;gap:24px;min-width:320px;position:relative;">
             <div id="center-bar-${i}" class="progress-bar" style="width:260px;">
               <div class="bar-line"></div>
               <div id="center-dot-${i}" class="progress-dot" style="background:#2ecc71;"></div>
               <div style="position:absolute;top:50%;left:50%;width:3px;height:26px;background:#e74c3c;border-radius:2px;z-index:3;transform:translate(-50%,-50%);"></div>
             </div>
-            <span id="center-val-${i}" style="font-family:'Roboto',monospace;font-size:1.18em;background:#fff;border-radius:8px;padding:4px 18px;box-shadow:0 1px 4px #e0e7ff;">0</span>
+            <span id="center-val-${i}" style="display:none;font-family:'Roboto',monospace;font-size:1.18em;background:#fff;border-radius:8px;padding:4px 18px;box-shadow:0 1px 4px #e0e7ff;min-width:90px;text-align:center;box-sizing:border-box;">0</span>
             ${centerInputHtml}
           </div>
           <button class="trim-clear-btn" data-type="center" data-idx="${i}" style="${subTrimClearBtnStyle}" data-i18n="trim-center-clear">清空</button>
@@ -12151,6 +12154,19 @@ const calibStyle = document.createElement('style');
         </div> -->
         ` : ''}
 
+        <div class="setting-row">
+          <span class="setting-label" data-i18n="radio-power-key">动态功率开关</span>
+          <select id="radio-power-key-select" style="flex:1;max-width:220px;padding:8px 12px;border:2px solid #e0e7ff;border-radius:8px;background:#fff;color:#3358e0;font-size:1em;outline:none;cursor:pointer;">
+            <option value="0" ${(dev.radioPowerKey || 0) === 0 ? 'selected' : ''} data-i18n="power-key-none">None</option>
+            <option value="1" ${(dev.radioPowerKey || 0) === 1 ? 'selected' : ''} data-i18n="power-key-thr-cut">THR CUT</option>
+            <option value="2" ${(dev.radioPowerKey || 0) === 2 ? 'selected' : ''}>SW1</option>
+            <option value="3" ${(dev.radioPowerKey || 0) === 3 ? 'selected' : ''}>SW2</option>
+            <option value="4" ${(dev.radioPowerKey || 0) === 4 ? 'selected' : ''}>SW3</option>
+            <option value="5" ${(dev.radioPowerKey || 0) === 5 ? 'selected' : ''}>SW4</option>
+            <option value="6" ${(dev.radioPowerKey || 0) === 6 ? 'selected' : ''}>CH5</option>
+          </select>
+        </div>
+
         <div id="trim-reset_lf-group" style="display:flex;align-items:center;gap:18px;justify-content:space-between;background:#eaf1ff;border-radius:12px;padding:12px 18px;">
           <span style="color:#3358e0;font-weight:500;min-width:90px;" data-i18n="trim-left-reset-test">左Trim复位功能</span>
           <input type="checkbox" id="check_left_trim_reset" value="${dev.LeftTrimReset}">
@@ -12809,6 +12825,24 @@ const calibStyle = document.createElement('style');
             0x0D, 0x0A
           ]);
           console.log('[STE-Lock] 发送方向锁设置:', value);
+          setTimeout(() => { writer.write(sendData); }, 100);
+        };
+      }
+
+      // 动态功率开关
+      const radioPowerKeySelect = document.getElementById('radio-power-key-select');
+      if (radioPowerKeySelect) {
+        radioPowerKeySelect.onchange = function() {
+          const value = parseInt(radioPowerKeySelect.value, 10);
+          if (window._deviceInfo) {
+            window._deviceInfo.radioPowerKey = value;
+          }
+          const sendData = new Uint8Array([
+            0xA5, 0x55, 0x3B,
+            value,
+            0x0D, 0x0A
+          ]);
+          console.log('[Power-Key] 发送动态功率开关设置:', value);
           setTimeout(() => { writer.write(sendData); }, 100);
         };
       }
@@ -14131,6 +14165,9 @@ const calibStyle = document.createElement('style');
         'thr-lock':'油门锁',
         'ste-lock':'方向锁',
         'lock-none':'不开启',
+        'radio-power-key':'动态功率开关',
+        'power-key-none':'关闭',
+        'power-key-thr-cut':'油门切断',
         'channel-confirm':'通道确认',
         'send-success':'已发送',
         'trim-left-reset-test':'左Trim复位功能',
@@ -14401,7 +14438,7 @@ const calibStyle = document.createElement('style');
         'progressStatus-Text':'Processing progress: ',
         'serial-warning-test':'Receiver loss warning',
         'lowpower-warning-test':'Low power warning',
-        'rx-voltage-warning':'RX Voltage Warning Switch',
+        'rx-voltage-warning':'RX Voltage Warning Enable',
         'rx-voltage-warning-delay':'RX Voltage Warning Delay',
         'rx-voltage-threshold':'RX Voltage Threshold',
         'rx-voltage-beep-freq':'RX Warning Beeper Frequency',
@@ -14409,6 +14446,9 @@ const calibStyle = document.createElement('style');
         'thr-lock':'Throttle Cut',
         'ste-lock':'Steering Lock',
         'lock-none':'None',
+        'radio-power-key':'Dynamic Power Key',
+        'power-key-none':'None',
+        'power-key-thr-cut':'THR CUT',
         'channel-confirm':'Save',
         'send-success':'Sent',
         'trim-left-reset-test':'Trim left reset function',
@@ -14776,6 +14816,6 @@ window.addEventListener('load', function() {
 });
 
   </script>
-  <div id="app-version" style="position:fixed; bottom:10px; right:14px; color:#6b7a99; font-size:12px; z-index:1000; pointer-events:none;">Version 2.0.2</div>
+  <div id="app-version" style="position:fixed; bottom:10px; right:14px; color:#6b7a99; font-size:12px; z-index:1000; pointer-events:none;">Version 2.0.3</div>
 </body>
 </html> 
