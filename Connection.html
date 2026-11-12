@@ -7935,7 +7935,7 @@ const calibStyle = document.createElement('style');
             <div class="config-stack-page" data-page="channel" style="display:block;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <div style="font-weight:bold;color:#3358e0;" data-i18n="channel-monitor">通道监视器</div>
-                <button id="channel-data-source-toggle-btn" style="background:linear-gradient(90deg,#3358e0 0%,#4f8cff 100%);color:#fff;border:none;border-radius:8px;padding:8px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;transition:all 0.2s;" data-i18n="channel-data-source-raw">原始数据</button>
+                <button id="channel-data-source-toggle-btn" style="display:none;background:linear-gradient(90deg,#3358e0 0%,#4f8cff 100%);color:#fff;border:none;border-radius:8px;padding:8px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;transition:all 0.2s;" data-i18n="channel-data-source-raw">原始数据</button>
               </div>
               <div style="display:flex;flex-direction:column;gap:18px;">
                 ${(() => {
@@ -8089,7 +8089,7 @@ const calibStyle = document.createElement('style');
             <div class="config-stack-page" data-page="expo" style="display:none;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
                 <div style="font-weight:bold;color:#3358e0;font-size:1.22em;" data-i18n="dual-rate-title-text">Expo</div>
-                <button id="expo-data-source-toggle-btn" style="background:linear-gradient(90deg,#3358e0 0%,#4f8cff 100%);color:#fff;border:none;border-radius:8px;padding:8px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;transition:all 0.2s;" data-i18n="channel-data-source-raw">原始数据</button>
+                <button id="expo-data-source-toggle-btn" style="display:none;background:linear-gradient(90deg,#3358e0 0%,#4f8cff 100%);color:#fff;border:none;border-radius:8px;padding:8px 24px;font-size:1em;font-weight:bold;box-shadow:0 1px 4px #e0e7ff;cursor:pointer;transition:all 0.2s;" data-i18n="channel-data-source-raw">原始数据</button>
               </div>
               <div style="display:flex;flex-direction:column;gap:24px;">
                 <!-- 查询区：始终可见 -->
@@ -11833,15 +11833,16 @@ const calibStyle = document.createElement('style');
       if (dev) {
       if(isMT8Device())
       {
-        // 顺序：单击(6), 双击(2), 三态(4), 双态(1)
+        // 顺序：触发(6), 单击(3), 双击(2), 长按(5)
         const keymodeOptions = [
-          [6, 3, 2, 0], // k1
-          [6, 3, 2, 0], // k2
-          [6, 3, 2, 0], // k3
-          [6, 3, 2, 0], // k4
+          [6, 3, 2, 5, 0], // k1
+          [6, 3, 2, 5, 0], // k2
+          [6, 3, 2, 5, 0], // k3
+          [6, 3, 2, 5, 0], // k4
         ];
         const keyNames = ['SW1', 'SW2', 'SW3', 'SW4'];
         const keymodeLabels = {
+          5: { text: '长按', i18n: 'keymode-longPress' },
           6: { text: '触发', i18n: 'keymode-trigger' },
           3: { text: '单击', i18n: 'keymode-single' },
           2: { text: '双击', i18n: 'keymode-double' },
@@ -11870,13 +11871,14 @@ const calibStyle = document.createElement('style');
       {
         // MT6按键模式设置（与MT8相同）
         const keymodeOptions = [
-          [6, 3, 2, 0], // k1
-          [6, 3, 2, 0], // k2
-          [6, 3, 2, 0], // k3
-          [6, 3, 2, 0], // k4
+          [6, 3, 2, 5, 0], // k1
+          [6, 3, 2, 5, 0], // k2
+          [6, 3, 2, 5, 0], // k3
+          [6, 3, 2, 5, 0], // k4
         ];
         const keyNames = ['SW1', 'SW2', 'SW3', 'SW4'];
         const keymodeLabels = {
+          5: { text: '长按', i18n: 'keymode-longPress' },
           6: { text: '触发', i18n: 'keymode-trigger' },
           3: { text: '单击', i18n: 'keymode-single' },
           2: { text: '双击', i18n: 'keymode-double' },
@@ -13960,6 +13962,7 @@ const calibStyle = document.createElement('style');
         'factory-reset': '恢复出厂设置!',
         'exit-fw-update': '退出固件更新',
         'keymode-title': '按键模式设置',
+        'keymode-longPress': '长按',
         'keymode-single': '单击',
         'keymode-trigger': '触发',
         'keymode-double': '双击',
@@ -14208,6 +14211,7 @@ const calibStyle = document.createElement('style');
         'close-wifi': '关闭WiFi模式',
         'calib-over':'校准完成',
         'ctl-powerTime': '遥控器开关时间',
+        'keymode-longPress': '长按',
         // ... 你可以继续补充 ...
       },
       en: {
@@ -14238,6 +14242,7 @@ const calibStyle = document.createElement('style');
         'factory-reset': 'Factory Reset',
         'exit-fw-update': 'Exit Firmware Update',
         'keymode-title': 'Key Mode Setting',
+        'keymode-longPress': 'Long Press',
         'keymode-single': 'Single',
         'keymode-double': 'Double',
         'keymode-trigger': 'Click',
@@ -14492,6 +14497,7 @@ const calibStyle = document.createElement('style');
         'close-wifi': 'Close WiFi',
         'calib-over': 'Calibration Over',
         'ctl-powerTime': 'Startup time',
+        'keymode-longPress': 'Long Press',
         // ... 你可以继续补充 ...        
         // ... you can continue ...
       }
