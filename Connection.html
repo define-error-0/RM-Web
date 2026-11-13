@@ -5471,7 +5471,8 @@ const calibStyle = document.createElement('style');
           // 添加默认选项
           const defaultOption = document.createElement('option');
           defaultOption.value = '';
-          defaultOption.textContent = '-- 请选择固件版本 --';
+          const lang = typeof getLang === 'function' ? getLang() : currentLang;
+          defaultOption.textContent = (LANGS[lang] && LANGS[lang]['select-firmware-version']) || '-- 请选择固件版本 --';
           defaultOption.disabled = true;
           defaultOption.selected = true;
           select.appendChild(defaultOption);
@@ -6160,246 +6161,6 @@ const calibStyle = document.createElement('style');
       }
     }
 
-    // --- 参数控件渲染增强 ---
-    function renderParameterControls(params, container, parent = 0,mode = null) {
-      if (!mode) {
-        const commTitle = document.querySelector('#page-net .comm-title');
-        if (commTitle && commTitle.textContent.includes('RX')) mode = 'RX';
-        else mode = 'TX';
-      }
-      // 过滤掉VTX Administrator父菜单及其子菜单
-      const vtxFolder = params.find(p => p.baseType === 11 && p.name && p.name.includes('VTX Administrator'));
-      let vtxFolderNum = vtxFolder ? vtxFolder.paramNum : null;
-      let filtered = params.filter(p => {
-        if (vtxFolderNum !== null) {
-          if (p.baseType === 11 && p.paramNum === vtxFolderNum) return false;
-          if (p.parentFolder === vtxFolderNum) return false;
-        }
-        return true;
-      });
-
-
-      // 渲染所有FOLDER类型为菜单
-      filtered.filter(p => p.baseType === 11 && p.parentFolder === parent && !p.hidden).forEach(folder => {
-        const folderDiv = document.createElement('div');
-        folderDiv.className = 'setting-item';
-        folderDiv.style.background = '#eaf1ff';
-        folderDiv.style.cursor = 'pointer';
-        folderDiv.style.fontWeight = 'bold';
-        folderDiv.style.textAlign = 'left';
-        folderDiv.textContent = folder.name;
-        folderDiv.onclick = function() {
-          const sub = folderDiv.nextSibling;
-          if (sub && sub.className === 'param-container') {
-            sub.style.display = (sub.style.display === 'none' ? '' : 'none');
-          }
-        };
-        container.appendChild(folderDiv);
-        const subContainer = document.createElement('div');
-        subContainer.className = 'param-container';
-        subContainer.style.marginLeft = '24px';
-        container.appendChild(subContainer);
-        renderParameterControls(filtered, subContainer, folder.paramNum, mode);
-      });
-      // 渲染当前parent下的非FOLDER参数
-      filtered.filter(p => p.parentFolder === parent && p.baseType !== 11 && !p.hidden).forEach(param => {
-        const item = document.createElement('div');
-        item.className = 'setting-item';
-        item.style.display = 'flex';
-        item.style.alignItems = 'center';
-        item.style.justifyContent = 'space-between';
-        item.style.gap = '18px';
-        const label = document.createElement('span');
-        label.className = 'setting-label';
-        label.textContent = param.name + (param.unit ? ' (' + param.unit + ')' : '');
-        label.style.textAlign = 'left';
-        label.style.flex = '1 1 0';
-        label.style.minWidth = '120px';
-        label.style.maxWidth = '320px';
-        item.appendChild(label);
-        const control = document.createElement('div');
-        control.className = 'setting-control';
-        control.style.flex = '0 0 auto';
-        control.style.display = 'flex';
-        control.style.alignItems = 'center';
-        control.style.gap = '10px';
-        // 数值型
-        if ([0,1,2,3,8].includes(param.baseType)) {
-          const input = document.createElement('input');
-          input.type = 'number';
-          input.value = param.value;
-          if (param.min !== null) input.min = param.min;
-          if (param.max !== null) input.max = param.max;
-          if (param.step !== null) input.step = param.step;
-          input.style.width = '120px';
-          input.style.minWidth = '120px';
-          input.style.maxWidth = '120px';
-          input.style.textAlign = 'right';
-          input.onchange = () => {
-            const modeByte = window._lastRefreshMode === 'TX' ? 0x11 : 0x22;
-            const arr = [0xA5, 0x33, modeByte, param.paramNum, input.value, 0x0D, 0x0A];
-            if (writer) writer.write(new Uint8Array(arr));
-            console.log('数值型控件变更:', param.paramNum, '新值:', input.value);
-          };
-          control.appendChild(input);
-        } else if (param.baseType === 9 && param.options) {
-          // TEXT_SELECTION
-          const select = document.createElement('select');
-          select.style.width = '180px';
-          select.style.minWidth = '180px';
-          select.style.maxWidth = '180px';
-          select.style.textAlign = 'center';
-          param.options.forEach((opt, idx) => {
-            // 只保留数字、字母大小写、括号、空格、负号
-            //let cleanOpt = opt.replace(/[^0-9a-zA-Z\(\)\-: ]/g, '');
-            //let cleanOpt = opt.replace(/[^0-9a-zA-Z$$\-:\/ ]/g, '');
-            let cleanOpt = opt;
-
-            const option = document.createElement('option');
-            option.value = idx;
-
-            if (cleanOpt.length === 0) 
-            {
-              cleanOpt = '(空)';
-              option.hidden = true; // 关键：不在下拉列表中显示
-              option.disabled = true; // 防止被选中
-            }
-            option.textContent = cleanOpt;
-            if (idx === param.value) option.selected = true;
-            select.appendChild(option);
-          });
-          select.onchange = () => {
-            const modeByte = window._lastRefreshMode === 'TX' ? 0x11 : 0x22;
-            const arr = [0xA5, 0x33, modeByte, param.paramNum, Number(select.value), 0x0D, 0x0A];
-            if (writer) writer.write(new Uint8Array(arr));
-            console.log('已发送:', arr.map(x=>x.toString(16).padStart(2,'0')).join(' '));
-          };
-          control.appendChild(select);
-        } else if (param.baseType === 10) {
-          // STRING
-          const input = document.createElement('input');
-          input.type = 'text';
-          input.value = param.value;
-          input.maxLength = param.strMaxLen || 32;
-          input.onchange = () => {
-            console.log('字符串控件变更:', param.paramNum, '新值:', input.value);
-            // sendParameterSet(param, input.value);
-          };
-          control.appendChild(input);
-        } else if (param.baseType === 13) {
-          // COMMAND
-          const btn = document.createElement('button');
-          //btn.textContent = '';//'启动';//langs[lang]['start']; // 统一命名为启动
-          if(currentLang === 'zh') {
-            btn.textContent = '开始';
-          } else {
-            btn.textContent = 'Start';
-          }
-          btn.setAttribute('data-i18n', 'execute');
-          btn.style.minWidth = '130px';
-          btn.style.maxWidth = '130px';
-          btn.onclick = () => {
-            console.log('命令按钮点击:', param.paramNum, '状态:', param.status);
-            const modeByte = window._lastRefreshMode === 'TX' ? 0x11 : 0x22;
-            const arrStart = [0xA5, 0x33, modeByte, param.paramNum, 1, 0x0D, 0x0A];
-            if (writer) writer.write(new Uint8Array(arrStart));
-            console.log('已发送START:', arrStart.map(x=>x.toString(16).padStart(2,'0')).join(' '));
-            // --- 弹窗与自动指令逻辑 ---
-            let dialog = document.createElement('div');
-            dialog.style.position = 'fixed';
-            dialog.style.left = '0';
-            dialog.style.top = '0';
-            dialog.style.width = '100vw';
-            dialog.style.height = '100vh';
-            dialog.style.background = 'rgba(0,0,0,0.18)';
-            dialog.style.display = 'flex';
-            dialog.style.alignItems = 'center';
-            dialog.style.justifyContent = 'center';
-            dialog.style.zIndex = '9999';
-            let inner = document.createElement('div');
-            inner.style.background = '#fff';
-            inner.style.borderRadius = '16px';
-            inner.style.boxShadow = '0 4px 24px rgba(79,140,255,0.18)';
-            inner.style.padding = '38px 48px 32px 48px';
-            inner.style.display = 'flex';
-            inner.style.flexDirection = 'column';
-            inner.style.alignItems = 'center';
-            inner.style.minWidth = '260px';
-            inner.style.maxWidth = '90vw';
-            inner.innerHTML = `<div style="font-size:1.18em;color:#3358e0;font-weight:bold;margin-bottom:18px;">${param.name||'命令操作'}</div>`;
-            let msg = document.createElement('div');
-            msg.style.fontSize = '1.08em';
-            msg.style.color = '#222';
-            msg.style.marginBottom = '18px';
-            inner.appendChild(msg);
-            let closeBtn = null;
-            let timer = null;
-            let poller = null;
-            // 判断bind类
-            const isBind = (param.name && /bind|对频|配对/i.test(param.name)) || (param.info && /bind|对频|配对/i.test(param.info));
-            if (isBind) {
-              msg.textContent = currentLang === 'zh' ? '正在对频...' : 'Binding...';
-              document.body.appendChild(dialog);
-              dialog.appendChild(inner);
-              // 2秒后自动发送06并关闭
-              timer = setTimeout(() => {
-                const arrEnd = [0xA5, 0x33, modeByte, param.paramNum, 6, 0x0D, 0x0A];
-                if (writer) writer.write(new Uint8Array(arrEnd));
-                document.body.removeChild(dialog);
-              }, 2000);
-            } else {
-              msg.textContent = currentLang === 'zh' ? '正在操作...' : 'Operating...';
-              closeBtn = document.createElement('button');
-              closeBtn.textContent = currentLang === 'zh' ? '结束' : 'End';
-              closeBtn.style.marginTop = '12px';
-              closeBtn.style.background = 'linear-gradient(90deg,#e74c3c 0%,#c0392b 100%)';
-              closeBtn.style.color = '#fff';
-              closeBtn.style.border = 'none';
-              closeBtn.style.borderRadius = '8px';
-              closeBtn.style.padding = '10px 32px';
-              closeBtn.style.fontSize = '1.08em';
-              closeBtn.style.fontWeight = 'bold';
-              closeBtn.style.cursor = 'pointer';
-              closeBtn.onclick = () => {
-                if (poller) clearInterval(poller);
-                const arrStop = [0xA5, 0x33, modeByte, param.paramNum, 5, 0x0D, 0x0A];
-                if (writer) writer.write(new Uint8Array(arrStop));
-                console.log('持续类点击结束发送STOP:', arrStop.map(x=>x.toString(16).padStart(2,'0')).join(' '));
-                document.body.removeChild(dialog);
-              };
-              inner.appendChild(closeBtn);
-              document.body.appendChild(dialog);
-              dialog.appendChild(inner);
-              // 每1.5秒发送06
-              poller = setInterval(() => {
-                const arrPoll = [0xA5, 0x33, modeByte, param.paramNum, 1, 0x0D, 0x0A];
-                if (writer) writer.write(new Uint8Array(arrPoll));
-                console.log('持续类轮询发送POLL:', arrPoll.map(x=>x.toString(16).padStart(2,'0')).join(' '));
-              }, 1500);
-            }
-          };
-          control.appendChild(btn);
-          if (param.info) {
-            const infoSpan = document.createElement('span');
-            infoSpan.textContent = param.info;
-            infoSpan.style.marginLeft = '8px';
-            control.appendChild(infoSpan);
-          }
-        } else if (param.baseType === 12) {
-          // INFO
-          const span = document.createElement('span');
-          span.textContent = param.value;
-          control.appendChild(span);
-        } else {
-          // 其他类型只读
-          const span = document.createElement('span');
-          span.textContent = param.value;
-          control.appendChild(span);
-        }
-        item.appendChild(control);
-        container.appendChild(item);
-      });
-    }
 
     // --- 无线配置刷新按钮一行横向并排 ---
     const wirelessControls = document.querySelector('.wireless-controls');
@@ -7668,6 +7429,8 @@ const calibStyle = document.createElement('style');
             let poller = null;
             // 判断bind类
             const isBind = (param.name && /bind|对频|配对/i.test(param.name)) || (param.info && /bind|对频|配对/i.test(param.info));
+            // 判断Enable WiFi类
+            const isEnableWiFi = param.name && /Enable WiFi/i.test(param.name);
             if (isBind) {
               msg.textContent = currentLang === 'zh' ? '正在对频...' : 'Binding...';
               document.body.appendChild(dialog);
@@ -7678,6 +7441,35 @@ const calibStyle = document.createElement('style');
                 if (writer) writer.write(new Uint8Array(arrEnd));
                 document.body.removeChild(dialog);
               }, 2000);
+            } else if (isEnableWiFi) {
+              // Enable WiFi: 持续发送，需手动结束，不自动关闭
+              msg.textContent = currentLang === 'zh' ? '正在启用WiFi...' : 'Enabling WiFi...';
+              closeBtn = document.createElement('button');
+              closeBtn.textContent = currentLang === 'zh' ? '结束' : 'End';
+              closeBtn.style.marginTop = '12px';
+              closeBtn.style.background = 'linear-gradient(90deg,#e74c3c 0%,#c0392b 100%)';
+              closeBtn.style.color = '#fff';
+              closeBtn.style.border = 'none';
+              closeBtn.style.borderRadius = '8px';
+              closeBtn.style.padding = '10px 32px';
+              closeBtn.style.fontSize = '1.08em';
+              closeBtn.style.fontWeight = 'bold';
+              closeBtn.style.cursor = 'pointer';
+              closeBtn.onclick = () => {
+                if (poller) clearInterval(poller);
+                const arrStop = [0xA5, 0x33, modeByte, param.paramNum, 5, 0x0D, 0x0A];
+                if (writer) writer.write(new Uint8Array(arrStop));
+                document.body.removeChild(dialog);
+              };
+              inner.appendChild(closeBtn);
+              document.body.appendChild(dialog);
+              dialog.appendChild(inner);
+              // 每0.2秒持续发送，不自动关闭
+              poller = setInterval(() => {
+                const arrPoll = [0xA5, 0x33, modeByte, param.paramNum, 1, 0x0D, 0x0A];
+                if (writer) writer.write(new Uint8Array(arrPoll));
+                console.log('Enable WiFi发送:', arrPoll.map(x=>x.toString(16).padStart(2,'0')).join(' '));
+              }, 200);
             } else {
               msg.textContent = currentLang === 'zh' ? '正在操作...' : 'Operating...';
               closeBtn = document.createElement('button');
@@ -11733,6 +11525,7 @@ const calibStyle = document.createElement('style');
       bindAttrQueryButton();
       bindExitFwUpdateBtn();
       const enterPassthroughBtn = document.getElementById('enter-passthrough-btn');
+      enterPassthroughBtn.style.display = 'none';
       if (enterPassthroughBtn) {
         enterPassthroughBtn.onclick = function() {
           if (typeof writer !== 'undefined' && writer) {
@@ -11742,6 +11535,7 @@ const calibStyle = document.createElement('style');
         };
       }
       const exitPassthroughBtn = document.getElementById('exit-passthrough-btn');
+      exitPassthroughBtn.style.display = 'none';
       if (exitPassthroughBtn) {
         exitPassthroughBtn.onclick = function() {
           if (typeof writer !== 'undefined' && writer) {
@@ -11751,6 +11545,7 @@ const calibStyle = document.createElement('style');
         };
       }
       const enableWifiBtn = document.getElementById('enable-wifi-btn');
+      enableWifiBtn.style.display = 'none';
       if (enableWifiBtn) {
         enableWifiBtn.onclick = function() {
           if (typeof writer !== 'undefined' && writer) {
@@ -11760,6 +11555,7 @@ const calibStyle = document.createElement('style');
         };
       }
       const disableWifiBtn = document.getElementById('disable-wifi-btn');
+      disableWifiBtn.style.display = 'none';
       if (disableWifiBtn) {
         disableWifiBtn.onclick = function() {
           if (typeof writer !== 'undefined' && writer) {
@@ -11820,13 +11616,13 @@ const calibStyle = document.createElement('style');
       html += '<span style="color:#1e40af;font-size:1.4em;font-weight:700;text-shadow:0 1px 2px rgba(255,255,255,0.8);">设备属性</span>';
       html += '</div>';
       if (!sensorMode) {
-        html += `<div style="margin: 24px 0 0 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; max-width: 100%; justify-items: center;">
-        <button id="enter-passthrough-btn" data-i18n="enter-passthrough" style="background: linear-gradient(90deg,#27ae60 0%,#229954 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">进入透传模式</button>
-        <button id="exit-passthrough-btn" data-i18n="exit-passthrough" style="background: linear-gradient(90deg,#f39c12 0%,#e67e22 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">退出透传模式</button>
-        <button id="enable-wifi-btn" data-i18n="open-wifi" style="background: linear-gradient(90deg,#3498db 0%,#2980b9 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">开启WiFi模式</button>
-        <button id="disable-wifi-btn" data-i18n="close-wifi" style="background: linear-gradient(90deg,#95a5a6 0%,#7f8c8d 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">关闭WiFi模式</button>
-        <button id="factory-reset-btn" data-i18n="factory-reset" style="background: linear-gradient(90deg,#e74c3c 0%,#c0392b 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">恢复出厂设置!</button>
-        <button id="exit-fw-update-btn" data-i18n="exit-fw-update" style="background: linear-gradient(90deg,#3498db 0%,#2980b9 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 160px;">退出固件更新</button>
+        html += `<div style="margin: 24px 0 0 0; display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 12px; max-width: 100%;">
+        <button id="enter-passthrough-btn" data-i18n="enter-passthrough" style="background: linear-gradient(90deg,#27ae60 0%,#229954 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 400px;">进入透传模式</button>
+        <button id="exit-passthrough-btn" data-i18n="exit-passthrough" style="background: linear-gradient(90deg,#f39c12 0%,#e67e22 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 400px;">退出透传模式</button>
+        <button id="enable-wifi-btn" data-i18n="open-wifi" style="background: linear-gradient(90deg,#3498db 0%,#2980b9 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 400px;">开启WiFi模式</button>
+        <button id="disable-wifi-btn" data-i18n="close-wifi" style="background: linear-gradient(90deg,#95a5a6 0%,#7f8c8d 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 400px;">关闭WiFi模式</button>
+        <button id="factory-reset-btn" data-i18n="factory-reset" style="background: linear-gradient(90deg,#e74c3c 0%,#c0392b 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 400px;">恢复出厂设置!</button>
+        <button id="exit-fw-update-btn" data-i18n="exit-fw-update" style="background: linear-gradient(90deg,#3498db 0%,#2980b9 100%); color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 1.08em; font-weight: bold; cursor: pointer; width: 400px;">退出固件更新</button>
       </div>`;
       }
 
@@ -13961,6 +13757,7 @@ const calibStyle = document.createElement('style');
         'fw-load-error': '加载失败',
         'factory-reset': '恢复出厂设置!',
         'exit-fw-update': '退出固件更新',
+        'select-firmware-version': '-- 请选择固件版本 --',
         'keymode-title': '按键模式设置',
         'keymode-longPress': '长按',
         'keymode-single': '单击',
@@ -14241,6 +14038,7 @@ const calibStyle = document.createElement('style');
         'fw-load-error': 'Load failed',
         'factory-reset': 'Factory Reset',
         'exit-fw-update': 'Exit Firmware Update',
+        'select-firmware-version': '-- Select Firmware Version --',
         'keymode-title': 'Key Mode Setting',
         'keymode-longPress': 'Long Press',
         'keymode-single': 'Single',
@@ -14822,6 +14620,6 @@ window.addEventListener('load', function() {
 });
 
   </script>
-  <div id="app-version" style="position:fixed; bottom:10px; right:14px; color:#6b7a99; font-size:12px; z-index:1000; pointer-events:none;">Version 2.0.3</div>
+  <div id="app-version" style="position:fixed; bottom:10px; right:14px; color:#6b7a99; font-size:12px; z-index:1000; pointer-events:none;">Version 2.0.4</div>
 </body>
 </html> 
