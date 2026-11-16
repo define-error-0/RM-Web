@@ -1707,7 +1707,12 @@ update over<body style="margin:0;">
       }
       _exitFwUpdateSending = false;
       const exitFwUpdateBtn = document.getElementById('exit-fw-update-btn');
-      if (exitFwUpdateBtn) exitFwUpdateBtn.disabled = false;
+      if (exitFwUpdateBtn) {
+        exitFwUpdateBtn.disabled = false;
+        exitFwUpdateBtn.textContent = (LANGS[currentLang] && LANGS[currentLang]['exit-fw-update']) || '退出固件更新';
+        exitFwUpdateBtn.style.background = 'linear-gradient(90deg,#3498db 0%,#2980b9 100%)';
+        exitFwUpdateBtn.style.cursor = 'pointer';
+      }
     }
 
     function isContinuousExitFwUpdateDevice() {
@@ -1764,12 +1769,54 @@ update over<body style="margin:0;">
 
       if (wasConnected) {
         if (isFwUpdateLikelyComplete()) {
+          // 固件更新完成后断开 → 设备重启
           handleFwUpdateDeviceReboot(reason || 'disconnect');
-        } else if (typeof upDataFlag === 'undefined' || upDataFlag !== 2) {
+        } else if (typeof upDataFlag !== 'undefined' && upDataFlag === 2) {
+          // 固件更新期间断开 → 更新失败
+          console.error('[FW] 固件更新期间设备断开，更新失败');
+
+          upDataFlag = 0;
+          localStorage.removeItem('upDataFlag');
+          window._isYmodemBusy = false;
+          window._fwYmodemBytesSent = 0;
+          window._fwYmodemBytesTotal = 0;
+          window._fwYmodemProgress = 0;
+          window._fwUpdateRebootExpected = false;
+
+          if (typeof window.stopFwReadyCheck === 'function') {
+            window.stopFwReadyCheck('device disconnect during fw update');
+          }
+
+          if (typeof updateFwUI === 'function') updateFwUI();
           if (typeof showConnectPage === 'function') showConnectPage();
           if (typeof hideDeviceInfoBar === 'function') hideDeviceInfoBar();
           if (typeof updateDeviceInfoBar === 'function') updateDeviceInfoBar();
           if (typeof updateAllLangText === 'function') updateAllLangText();
+
+          // 显示错误信息（在页面切换后设置，避免被覆盖）
+          setTimeout(() => {
+            if (statusBox) {
+              statusBox.textContent = (LANGS[currentLang] && LANGS[currentLang]['fw-update-failed-disconnect']) || '固件更新失败：设备断开连接';
+              statusBox.style.color = '#e74c3c';
+            }
+          }, 50);
+        } else {
+          // 正常断开连接
+          if (typeof showConnectPage === 'function') showConnectPage();
+          if (typeof hideDeviceInfoBar === 'function') hideDeviceInfoBar();
+          if (typeof updateDeviceInfoBar === 'function') updateDeviceInfoBar();
+          if (typeof updateAllLangText === 'function') updateAllLangText();
+
+          // 如果是用户主动退出固件更新导致的设备重启，显示友好提示
+          if (window._exitFwUpdateRequested) {
+            window._exitFwUpdateRequested = false;
+            setTimeout(() => {
+              if (statusBox) {
+                statusBox.textContent = (LANGS[currentLang] && LANGS[currentLang]['exit-fw-update-rebooted']) || '设备已重启，请重新连接';
+                statusBox.style.color = '#27ae60';
+              }
+            }, 50);
+          }
         }
       }
 
@@ -2409,35 +2456,35 @@ update over<body style="margin:0;">
         //baudrateInput.disabled = true;
         updateDeviceInfoBar();
         // === 连接成功后自动跳转到设备属性页面 ===
-        if(upDataFlag==1)//进入状态了
-        {
-          if(window.confirm(LANGS[currentLang]['confirm-update'])) {
-            window._deviceInfo = undefined;     //数据清空  激活退出更新
-            // 强制重置当前页面状态，确保initFwPage会被调用
-            window._currentPage = null;
-            showMainPage('fw');
-            // initFwPage已经在showMainPage('fw')中被调用了，不需要重复调用
-            // 但为了确保0x33发送定时器和startFwReadyCheck被正确启动，我们再调用一次
-            // if (typeof initFwPage === 'function') {
-            //   initFwPage();
-            //   console.log('[FW] 连接成功后重新进入固件更新页面，已调用initFwPage');
-            // }
-            document.getElementById('dev-updata').click();
-          }
-          else
-          {
-            window._deviceInfo = undefined;     //数据清空  激活退出更新
-            showMainPage('attr');
-            upDataFlag = 0;
-            localStorage.removeItem('upDataFlag');
-            console.log('[FW] 用户取消固件更新，已清除localStorage中的upDataFlag');
-          }
-        }
-        else 
-        {
-          showMainPage('attr');
-        }
-
+        // if(upDataFlag==1)//进入状态了
+        // {
+          // if(window.confirm(LANGS[currentLang]['confirm-update'])) {
+          //   window._deviceInfo = undefined;     //数据清空  激活退出更新
+          //   // 强制重置当前页面状态，确保initFwPage会被调用
+          //   window._currentPage = null;
+          //   showMainPage('fw');
+          //   // initFwPage已经在showMainPage('fw')中被调用了，不需要重复调用
+          //   // 但为了确保0x33发送定时器和startFwReadyCheck被正确启动，我们再调用一次
+          //   // if (typeof initFwPage === 'function') {
+          //   //   initFwPage();
+          //   //   console.log('[FW] 连接成功后重新进入固件更新页面，已调用initFwPage');
+          //   // }
+          //   document.getElementById('dev-updata').click();
+          // }
+          // else
+          // {
+          //   window._deviceInfo = undefined;     //数据清空  激活退出更新
+          //   showMainPage('attr');
+          //   upDataFlag = 0;
+          //   localStorage.removeItem('upDataFlag');
+          //   console.log('[FW] 用户取消固件更新，已清除localStorage中的upDataFlag');
+          // }
+        //}
+        //else 
+        //{
+          //
+        //}
+        showMainPage('attr');
         mainApp.style.display = '';
         connectPage.style.display = 'none';
         // === 自动查询设备属性 ===
@@ -3079,10 +3126,10 @@ update over<body style="margin:0;">
     if (navigator.serial) {
       navigator.serial.addEventListener('disconnect', (event) => {
         if (!isSerialConnected && port !== event.target) return;
-        if (upDataFlag == 2 && !isFwUpdateLikelyComplete()) {
-          location.reload(true);
-          return;
-        }
+        // 统一由 handleSerialDisconnect 处理：
+        // - 固件更新中且未完成 → 判定更新失败，清理状态并返回连接页
+        // - 固件更新已完成 → 判定设备重启
+        // - 其他 → 正常断开
         handleSerialDisconnect('USB disconnected');
       });
 
@@ -11517,17 +11564,52 @@ const calibStyle = document.createElement('style');
         localStorage.removeItem('upDataFlag');
         console.log('[FW] 退出固件更新，已清除localStorage中的upDataFlag');
 
+        // 设置标志，用于后续设备断开时显示友好提示
+        window._exitFwUpdateRequested = true;
+
+        // 更新按钮UI：禁用、改变文字和样式
+        exitFwUpdateBtn.disabled = true;
+        exitFwUpdateBtn.textContent = (LANGS[currentLang] && LANGS[currentLang]['exit-fw-update-sending']) || '正在退出固件更新...';
+        exitFwUpdateBtn.style.background = 'linear-gradient(90deg,#95a5a6 0%,#7f8c8d 100%)';
+        exitFwUpdateBtn.style.cursor = 'not-allowed';
+
         if (isContinuousExitFwUpdateDevice()) {
-        
+
           if (_exitFwUpdateSending) return;
           _exitFwUpdateSending = true;
-          exitFwUpdateBtn.disabled = true;
           console.log('[ATTR] T8L/MT8/MT6 bootloader：开始连续发送退出固件更新指令，直到串口丢失');
           sendExitCmd();
           _exitFwUpdateSendTimer = setInterval(sendExitCmd, 100);
+
+          // 5秒超时：如果设备仍未重启，恢复按钮（保护机制）
+          setTimeout(() => {
+            if (_exitFwUpdateSending && isSerialConnected) {
+              console.warn('[ATTR] 退出固件更新超时，未检测到设备重启');
+              stopExitFwUpdateContinuousSend('timeout');
+              exitFwUpdateBtn.textContent = (LANGS[currentLang] && LANGS[currentLang]['exit-fw-update']) || '退出固件更新';
+              exitFwUpdateBtn.style.background = 'linear-gradient(90deg,#3498db 0%,#2980b9 100%)';
+              exitFwUpdateBtn.style.cursor = 'pointer';
+              window._exitFwUpdateRequested = false;
+              if (statusBox) {
+                statusBox.textContent = (LANGS[currentLang] && LANGS[currentLang]['exit-fw-update-no-reboot']) || '设备未重启，请检查连接后重试';
+                statusBox.style.color = '#f39c12';
+              }
+            }
+          }, 5000);
         } else {
           sendExitCmd();
           console.log('[ATTR] 已发送退出固件更新指令');
+
+          // 非连续发送设备：2秒后恢复按钮（如果仍连接）
+          setTimeout(() => {
+            if (isSerialConnected && exitFwUpdateBtn.disabled) {
+              exitFwUpdateBtn.disabled = false;
+              exitFwUpdateBtn.textContent = (LANGS[currentLang] && LANGS[currentLang]['exit-fw-update']) || '退出固件更新';
+              exitFwUpdateBtn.style.background = 'linear-gradient(90deg,#3498db 0%,#2980b9 100%)';
+              exitFwUpdateBtn.style.cursor = 'pointer';
+              window._exitFwUpdateRequested = false;
+            }
+          }, 2000);
         }
       };
     }
@@ -13769,6 +13851,9 @@ const calibStyle = document.createElement('style');
         'fw-load-error': '加载失败',
         'factory-reset': '恢复出厂设置!',
         'exit-fw-update': '退出固件更新',
+        'exit-fw-update-sending': '正在退出固件更新...',
+        'exit-fw-update-rebooted': '设备已重启，请重新连接',
+        'exit-fw-update-no-reboot': '设备未重启，请检查连接后重试',
         'select-firmware-version': '-- 请选择固件版本 --',
         'keymode-title': '按键模式设置',
         'keymode-longPress': '长按',
@@ -13957,6 +14042,7 @@ const calibStyle = document.createElement('style');
         'slide_P1_mid': 'P1 中点提示',
         'slide_P2_mid': 'P2 中点提示',  
         'update-over': '更新完毕',
+        'fw-update-failed-disconnect': '固件更新失败：设备断开连接',
 
         'elrs-missing-alert': '未检测到ELRS固件，请检查设备或重启',
         'jump-to-elrs-website': '打开 ExpressLRS 官方烧录',
@@ -14050,6 +14136,9 @@ const calibStyle = document.createElement('style');
         'fw-load-error': 'Load failed',
         'factory-reset': 'Factory Reset',
         'exit-fw-update': 'Exit Firmware Update',
+        'exit-fw-update-sending': 'Exiting firmware update...',
+        'exit-fw-update-rebooted': 'Device rebooted, please reconnect',
+        'exit-fw-update-no-reboot': 'Device did not reboot, please check connection and retry',
         'select-firmware-version': '-- Select Firmware Version --',
         'keymode-title': 'Key Mode Setting',
         'keymode-longPress': 'Single Long',
@@ -14240,6 +14329,7 @@ const calibStyle = document.createElement('style');
         'slide_P1_mid': 'P1 Mid tone',
         'slide_P2_mid': 'P2 Mid tone',
         'update-over': 'Update completed',
+        'fw-update-failed-disconnect': 'Firmware update failed: device disconnected',
 
 
         'elrs-missing-alert': 'ELRS firmware not detected. Please check the device or restart.',
@@ -14632,6 +14722,6 @@ window.addEventListener('load', function() {
 });
 
   </script>
-  <div id="app-version" style="position:fixed; bottom:10px; right:14px; color:#6b7a99; font-size:12px; z-index:1000; pointer-events:none;">Version 2.0.5</div>
+  <div id="app-version" style="position:fixed; bottom:10px; right:14px; color:#6b7a99; font-size:12px; z-index:1000; pointer-events:none;">Version 2.0.6</div>
 </body>
 </html> 
