@@ -1320,7 +1320,7 @@ update over<body style="margin:0;">
   <!-- 统一顶部栏 -->
   <div id="device-info-bar">
     <div class="logo-section">
-      <img id="logo-img" src="RadioMasterLogo.png" alt="logo"/>
+      <img id="logo-img" src="./RadioMasterLogo.png" alt="logo" onerror="this.onerror=null; this.src='RadioMasterLogo.png';"/>
     </div>
     <div class="menu-section">
       <div class="menu-bar">
@@ -1699,6 +1699,9 @@ update over<body style="margin:0;">
     let _serialDisconnectHandled = false;
     let _exitFwUpdateSendTimer = null;
     let _exitFwUpdateSending = false;
+    let _autoConnectTimer = null;
+    let _autoConnectSuspended = false;
+    let _autoConnectAttempting = false;
 
     function stopExitFwUpdateContinuousSend(reason) {
       if (_exitFwUpdateSendTimer) {
@@ -1766,6 +1769,19 @@ update over<body style="margin:0;">
       if (typeof updateSignalStrength === 'function') updateSignalStrength(0);
       if (wasConnected) {
         console.warn('[串口] 连接已断开:', reason || 'unknown');
+      }
+
+      // 自动连接逻辑：用户手动断开时暂停，其他情况重新启动
+      if (reason === 'user disconnect') {
+        _autoConnectSuspended = true;
+        console.log('[自动连接] 用户手动断开，暂停自动重连');
+      } else {
+        // 设备丢失、错误等情况：重新启动自动连接（0.5秒后开始检测）
+        setTimeout(() => {
+          if (!isSerialConnected) {
+            startAutoConnect();
+          }
+        }, 500);
       }
 
       if (wasConnected) {
@@ -2312,79 +2328,18 @@ update over<body style="margin:0;">
 
 
 
-    // 连接逻辑
-    connectBtn.onclick = async () => {
-      if (isSerialConnected) return;
-      connectBtn.disabled = true;
-      statusBox.textContent =LANGS[currentLang]['connecting'];
+    // 串口自动连接功能：提取连接逻辑为独立函数
+    async function connectToSerialPort(selectedPort, isAutoConnect = false) {
+      if (isSerialConnected || !selectedPort) {
+        return false;
+      }
+
       try {
-        // 自动识别并连接Radiomaster设备
-
-        if (navigator.serial) {
-        console.log("Serial API is available.");
-
-        let selectedPort = null;
-        let autoConnectFailed = false;
-
-        // 第一步：尝试从已授权的串口中自动连接
-        console.log('正在检查已授权的串口设备...');
-        const ports = await navigator.serial.getPorts();
-
-        if (ports.length > 0) {
-          console.log(`找到 ${ports.length} 个已授权的串口设备`);
-
-          // 尝试从localStorage读取上次连接的设备信息
-          const lastDeviceInfo = localStorage.getItem('lastConnectedDevice');
-          let targetPort = null;
-
-          if (lastDeviceInfo) {
-            try {
-              const lastDevice = JSON.parse(lastDeviceInfo);
-              console.log('上次连接的设备:', lastDevice);
-
-              // 尝试匹配VID/PID
-              for (const port of ports) {
-                const info = port.getInfo();
-                if (info.usbVendorId === lastDevice.vid && info.usbProductId === lastDevice.pid) {
-                  targetPort = port;
-                  console.log('找到匹配的设备(VID/PID匹配)');
-                  break;
-                }
-              }
-            } catch (e) {
-              console.warn('解析上次连接设备信息失败:', e);
-            }
-          }
-
-          // 如果没有找到匹配的设备，使用第一个可用的串口
-          if (!targetPort && ports.length > 0) {
-            targetPort = ports[0];
-            console.log('使用第一个已授权的串口设备');
-          }
-
-          if (targetPort) {
-            selectedPort = targetPort;
-            const info = targetPort.getInfo();
-            console.log(`自动选择串口 - VID:0x${info.usbVendorId?.toString(16).toUpperCase() || '?'} PID:0x${info.usbProductId?.toString(16).toUpperCase() || '?'}`);
-          }
-        }
-
-        // 第二步：如果没有已授权的串口，弹出选择对话框（不使用filters以显示所有设备）
-        if (!selectedPort) {
-          console.log('没有已授权的串口，正在请求用户选择...');
-          // 添加短暂延迟，确保浏览器有时间识别新插入的设备
-          await new Promise(resolve => setTimeout(resolve, 100));
-
-          selectedPort = await navigator.serial.requestPort().catch(err => {
-            console.error('串口权限请求失败:', err);
-            if (err.name === 'NotAllowedError') {
-              throw new Error(LANGS[currentLang]['serial-permission-denied']);
-            } else if (err.name === 'NotFoundError') {
-              throw new Error(LANGS[currentLang]['serial-not-found']);
-            } else {
-              throw new Error(LANGS[currentLang]['serial-access-failed'] + err.message);
-            }
-          });
+        if (!isAutoConnect) {
+          connectBtn.disabled = true;
+          statusBox.textContent = LANGS[currentLang]['connecting'];
+        } else {
+          statusBox.textContent = (LANGS[currentLang] && LANGS[currentLang]['auto-connecting']) || '正在自动连接...';
         }
 
         // 保存设备信息到localStorage，下次自动连接
@@ -2398,10 +2353,10 @@ update over<body style="margin:0;">
           localStorage.setItem('lastConnectedDevice', JSON.stringify(deviceRecord));
           console.log('已保存设备信息，下次将自动连接');
         }
+
         // 根据操作系统选择波特率：Mac直接使用460800，Windows先尝试420000
         let baudRate = 460800;
         if (currentOS === 'Windows') {
-          // Windows系统：先尝试420000，失败则切换到460800
           baudRate = 420000;
           try {
             console.log('[BaudRate] Windows系统：尝试使用420000波特率连接...');
@@ -2412,7 +2367,6 @@ update over<body style="margin:0;">
             console.warn('[BaudRate] 420000波特率连接失败:', error.message);
             console.log('[BaudRate] 切换到460800波特率尝试连接...');
             try {
-              // 如果已经打开，先关闭
               if (selectedPort.readable) {
                 await selectedPort.close();
               }
@@ -2426,7 +2380,6 @@ update over<body style="margin:0;">
             }
           }
         } else {
-          // Mac或其他系统：直接使用460800（不支持420000）
           console.log(`[BaudRate] ${currentOS}系统：直接使用460800波特率连接（不支持420000）`);
           try {
             await selectedPort.open({ baudRate: 460800 });
@@ -2438,10 +2391,15 @@ update over<body style="margin:0;">
             throw new Error('无法使用460800波特率连接: ' + error.message);
           }
         }
+
         port = selectedPort;
         writer = port.writable.getWriter();
         reader = port.readable.getReader();
         isSerialConnected = true;
+
+        // 停止自动连接定时器（已连接）
+        stopAutoConnect();
+
         // 状态栏显示友好名称（如有）或VID/PID
         let portInfo = '已连接';
         const info = port.getInfo();
@@ -2454,49 +2412,170 @@ update over<body style="margin:0;">
           portInfo = '已连接：' + port.friendlyName;
         }
         statusBox.textContent = portInfo;
-        //baudrateInput.disabled = true;
         updateDeviceInfoBar();
-        // === 连接成功后自动跳转到设备属性页面 ===
-        // if(upDataFlag==1)//进入状态了
-        // {
-          // if(window.confirm(LANGS[currentLang]['confirm-update'])) {
-          //   window._deviceInfo = undefined;     //数据清空  激活退出更新
-          //   // 强制重置当前页面状态，确保initFwPage会被调用
-          //   window._currentPage = null;
-          //   showMainPage('fw');
-          //   // initFwPage已经在showMainPage('fw')中被调用了，不需要重复调用
-          //   // 但为了确保0x33发送定时器和startFwReadyCheck被正确启动，我们再调用一次
-          //   // if (typeof initFwPage === 'function') {
-          //   //   initFwPage();
-          //   //   console.log('[FW] 连接成功后重新进入固件更新页面，已调用initFwPage');
-          //   // }
-          //   document.getElementById('dev-updata').click();
-          // }
-          // else
-          // {
-          //   window._deviceInfo = undefined;     //数据清空  激活退出更新
-          //   showMainPage('attr');
-          //   upDataFlag = 0;
-          //   localStorage.removeItem('upDataFlag');
-          //   console.log('[FW] 用户取消固件更新，已清除localStorage中的upDataFlag');
-          // }
-        //}
-        //else 
-        //{
-          //
-        //}
+
         showMainPage('attr');
         mainApp.style.display = '';
         connectPage.style.display = 'none';
-        // === 自动查询设备属性 ===
+
         onSerialConnected();
-        readLoop();}
-        else
-        {
-          statusBox.textContent =LANGS[currentLang]['browser-not-support']
+        readLoop();
+
+        return true;
+      } catch (err) {
+        console.error('[连接失败]', err);
+        // 自动连接失败时静默处理（设备可能未插入），不覆盖用户可见的状态提示
+        if (isAutoConnect) {
+          console.warn('[自动连接] 打开串口失败（设备可能未插入），稍后重试');
+          return false;
+        }
+        statusBox.textContent = LANGS[currentLang]['connect-failed'] + err;
+        connectBtn.disabled = false;
+        return false;
+      }
+    }
+
+    // 启动自动连接定时器
+    function startAutoConnect() {
+      if (_autoConnectTimer) return; // 已经在运行
+
+      console.log('[自动连接] 启动定时检测 (每0.5秒)');
+      _autoConnectSuspended = false;
+
+      _autoConnectTimer = setInterval(async () => {
+        // 已连接或被暂停 → 不执行
+        if (isSerialConnected || _autoConnectSuspended || _autoConnectAttempting) {
+          return;
+        }
+
+        // 检查是否有保存的设备信息
+        const lastDeviceInfo = localStorage.getItem('lastConnectedDevice');
+        if (!lastDeviceInfo) {
+          return; // 没有保存过设备，不自动连接
+        }
+
+        try {
+          const lastDevice = JSON.parse(lastDeviceInfo);
+          const ports = await navigator.serial.getPorts();
+
+          // 查找匹配的设备 (VID/PID)
+          for (const port of ports) {
+            const info = port.getInfo();
+            if (info.usbVendorId === lastDevice.vid && info.usbProductId === lastDevice.pid) {
+              console.log('[自动连接] 检测到匹配的设备，尝试自动连接...');
+              _autoConnectAttempting = true;
+              const success = await connectToSerialPort(port, true);
+              _autoConnectAttempting = false;
+
+              if (success) {
+                console.log('[自动连接] 连接成功');
+              } else {
+                console.warn('[自动连接] 连接失败，继续监听...');
+              }
+              break;
+            }
+          }
+        } catch (e) {
+          console.warn('[自动连接] 检测出错:', e);
+          _autoConnectAttempting = false;
+        }
+      }, 500); // 每0.5秒检测一次
+    }
+
+    // 停止自动连接定时器
+    function stopAutoConnect() {
+      if (_autoConnectTimer) {
+        clearInterval(_autoConnectTimer);
+        _autoConnectTimer = null;
+        console.log('[自动连接] 已停止定时检测');
+      }
+    }
+
+    // 连接逻辑
+    connectBtn.onclick = async () => {
+      if (isSerialConnected) return;
+
+      // 用户主动点击连接，取消暂停状态（允许后续自动连接）
+      _autoConnectSuspended = false;
+
+      connectBtn.disabled = true;
+      statusBox.textContent = LANGS[currentLang]['connecting'];
+
+      try {
+        // 自动识别并连接Radiomaster设备
+        if (navigator.serial) {
+          console.log("Serial API is available.");
+
+          let selectedPort = null;
+
+          // 第一步：尝试从已授权的串口中自动连接
+          console.log('正在检查已授权的串口设备...');
+          const ports = await navigator.serial.getPorts();
+
+          if (ports.length > 0) {
+            console.log(`找到 ${ports.length} 个已授权的串口设备`);
+
+            // 尝试从localStorage读取上次连接的设备信息
+            const lastDeviceInfo = localStorage.getItem('lastConnectedDevice');
+            let targetPort = null;
+
+            if (lastDeviceInfo) {
+              try {
+                const lastDevice = JSON.parse(lastDeviceInfo);
+                console.log('上次连接的设备:', lastDevice);
+
+                // 尝试匹配VID/PID
+                for (const port of ports) {
+                  const info = port.getInfo();
+                  if (info.usbVendorId === lastDevice.vid && info.usbProductId === lastDevice.pid) {
+                    targetPort = port;
+                    console.log('找到匹配的设备(VID/PID匹配)');
+                    break;
+                  }
+                }
+              } catch (e) {
+                console.warn('解析上次连接设备信息失败:', e);
+              }
+            }
+
+            // 如果没有找到匹配的设备，使用第一个可用的串口
+            if (!targetPort && ports.length > 0) {
+              targetPort = ports[0];
+              console.log('使用第一个已授权的串口设备');
+            }
+
+            if (targetPort) {
+              selectedPort = targetPort;
+              const info = targetPort.getInfo();
+              console.log(`自动选择串口 - VID:0x${info.usbVendorId?.toString(16).toUpperCase() || '?'} PID:0x${info.usbProductId?.toString(16).toUpperCase() || '?'}`);
+            }
+          }
+
+          // 第二步：如果没有已授权的串口，弹出选择对话框
+          if (!selectedPort) {
+            console.log('没有已授权的串口，正在请求用户选择...');
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            selectedPort = await navigator.serial.requestPort().catch(err => {
+              console.error('串口权限请求失败:', err);
+              if (err.name === 'NotAllowedError') {
+                throw new Error(LANGS[currentLang]['serial-permission-denied']);
+              } else if (err.name === 'NotFoundError') {
+                throw new Error(LANGS[currentLang]['serial-not-found']);
+              } else {
+                throw new Error(LANGS[currentLang]['serial-access-failed'] + err.message);
+              }
+            });
+          }
+
+          // 使用统一的连接函数
+          await connectToSerialPort(selectedPort, false);
+        } else {
+          statusBox.textContent = LANGS[currentLang]['browser-not-support'];
+          connectBtn.disabled = false;
         }
       } catch (err) {
-        statusBox.textContent =LANGS[currentLang]['connect-failed'] + err;
+        statusBox.textContent = LANGS[currentLang]['connect-failed'] + err;
         connectBtn.disabled = false;
       }
     };
@@ -3137,6 +3216,10 @@ update over<body style="margin:0;">
       // 监听串口连接事件 - 检测新插入的设备
       navigator.serial.addEventListener('connect', (event) => {
         console.log('检测到新的串口设备已连接:', event);
+        // 新设备插入：恢复自动连接（用户之前手动断开的暂停状态解除）
+        if (!isSerialConnected) {
+          startAutoConnect();
+        }
         // 如果当前未连接，提示用户有新设备可用
         if (!isSerialConnected) {
           const currentStatus = statusBox.textContent;
@@ -3161,6 +3244,11 @@ update over<body style="margin:0;">
     // 页面初始化
     showConnectPage();
     hideDeviceInfoBar();
+
+    // 启动串口自动连接检测（页面加载即开始，每0.5秒检测一次）
+    if (navigator.serial) {
+      startAutoConnect();
+    }
 
     // logo点击跳转设备属性页面
     document.getElementById('logo-img').onclick = () => {
@@ -11620,8 +11708,8 @@ const calibStyle = document.createElement('style');
       bindAttrQueryButton();
       bindExitFwUpdateBtn();
       const enterPassthroughBtn = document.getElementById('enter-passthrough-btn');
-      enterPassthroughBtn.style.display = 'none';
       if (enterPassthroughBtn) {
+        enterPassthroughBtn.style.display = 'none';
         enterPassthroughBtn.onclick = function() {
           if (typeof writer !== 'undefined' && writer) {
             writer.write(new Uint8Array([0xA5, 0x55, 0x2A, 0x0D, 0x0A]));
@@ -11630,8 +11718,8 @@ const calibStyle = document.createElement('style');
         };
       }
       const exitPassthroughBtn = document.getElementById('exit-passthrough-btn');
-      exitPassthroughBtn.style.display = 'none';
       if (exitPassthroughBtn) {
+        exitPassthroughBtn.style.display = 'none';
         exitPassthroughBtn.onclick = function() {
           if (typeof writer !== 'undefined' && writer) {
             writer.write(new Uint8Array([0xA5, 0x55, 0x2B, 0x0D, 0x0A]));
@@ -11640,8 +11728,8 @@ const calibStyle = document.createElement('style');
         };
       }
       const enableWifiBtn = document.getElementById('enable-wifi-btn');
-      enableWifiBtn.style.display = 'none';
       if (enableWifiBtn) {
+        enableWifiBtn.style.display = 'none';
         enableWifiBtn.onclick = function() {
           if (typeof writer !== 'undefined' && writer) {
             writer.write(new Uint8Array([0xA5, 0x66, 0x05, 0x0D, 0x0A]));
@@ -11650,8 +11738,8 @@ const calibStyle = document.createElement('style');
         };
       }
       const disableWifiBtn = document.getElementById('disable-wifi-btn');
-      disableWifiBtn.style.display = 'none';
       if (disableWifiBtn) {
+        disableWifiBtn.style.display = 'none';
         disableWifiBtn.onclick = function() {
           if (typeof writer !== 'undefined' && writer) {
             writer.write(new Uint8Array([0xA5, 0x66, 0x06, 0x0D, 0x0A]));
@@ -14005,6 +14093,7 @@ const calibStyle = document.createElement('style');
         'fw-update-btn': '确认更新',
         'fw-update-progress': '更新进度',
         'connecting': '正在连接...',
+        'auto-connecting': '正在自动连接...',
         'connect-failed': '连接失败: ',
         'serial-permission-denied': '用户拒绝了串口访问权限，或者浏览器环境不支持串口访问。',
         'serial-not-found': '未找到可用的串口设备。如果设备刚插入，请等待几秒后重试。',
@@ -14287,6 +14376,7 @@ const calibStyle = document.createElement('style');
         'fw-update-btn': 'Confirm Update',
         'fw-update-progress': 'Update Progress',
         'connecting': 'Connecting...',
+        'auto-connecting': 'Auto-connecting...',
         'connect-failed': 'Connection failed: ',
         'browser-not-support': 'Browser not support this function, please select Chrome/Edge etc. Google core browser',
         'confirm-update': 'Are you sure you want to continue? Once started, you will not be able to perform any other actions, and any connected receiver will be disconnected. Do not unplug or disconnect the radio during the update process.',//'Are you sure to enter the firmware update state? After entering, you cannot perform other operations, and you need to exit the update to restore.',
